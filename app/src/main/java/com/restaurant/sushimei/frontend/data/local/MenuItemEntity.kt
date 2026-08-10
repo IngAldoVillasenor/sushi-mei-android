@@ -22,7 +22,7 @@ data class MenuItemEntity(
     val id: String,
     val nombre: String,
     val categoria: String,
-    val precio: Double,
+    val precio: java.math.BigDecimal,
     val descripcion: String = "",
     val emoji: String = "🍣",
 

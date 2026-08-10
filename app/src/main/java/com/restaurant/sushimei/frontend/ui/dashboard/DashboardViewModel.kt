@@ -20,13 +20,13 @@ import kotlinx.coroutines.flow.stateIn
  */
 data class DashboardMetrics(
     /** Total recaudado hoy (suma de órdenes DISPATCHED). */
-    val totalHoy: Double = 0.0,
+    val totalHoy: java.math.BigDecimal = java.math.BigDecimal.ZERO,
     /** Número de órdenes despachadas hoy. */
     val ordenesCompletadas: Int = 0,
     /** Número de órdenes activas (PENDING + PREPARING + READY). */
     val ordenesActivas: Int = 0,
     /** Ticket promedio de hoy. 0 si no hay órdenes. */
-    val ticketPromedio: Double = 0.0,
+    val ticketPromedio: java.math.BigDecimal = java.math.BigDecimal.ZERO,
     /** Top 5 productos más vendidos hoy (nombre → unidades). */
     val topProductos: List<Pair<String, Int>> = emptyList(),
     /** Órdenes por hora del día [0..23] (completadas hoy). */
@@ -56,8 +56,8 @@ class DashboardViewModel(
         dispatched: List<Order>,
         active: List<Order>
     ): DashboardMetrics {
-        val total = dispatched.sumOf { it.total }
-        val promedio = if (dispatched.isNotEmpty()) total / dispatched.size else 0.0
+        val total = dispatched.fold(java.math.BigDecimal.ZERO) { acc, order -> acc + order.total }
+        val promedio = if (dispatched.isNotEmpty()) total.divide(java.math.BigDecimal(dispatched.size), 2, java.math.RoundingMode.HALF_UP) else java.math.BigDecimal.ZERO
 
         // Conteo de unidades por producto en todas las órdenes despachadas
         val conteoProductos = mutableMapOf<String, Int>()

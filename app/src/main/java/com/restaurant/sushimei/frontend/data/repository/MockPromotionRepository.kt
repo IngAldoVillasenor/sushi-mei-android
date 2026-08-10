@@ -27,7 +27,7 @@ class MockPromotionRepository : IPromotionRepository {
                 targetId = "ROLL_CLASSIC",
                 displayName = "Rollos clásicos"
             ),
-            benefit = PromotionBenefit.FixedUnitPrice(69.0),
+            benefit = PromotionBenefit.FixedUnitPrice(java.math.BigDecimal("69.00")),
             version = 1L
         )
 
@@ -114,50 +114,38 @@ class MockPromotionRepository : IPromotionRepository {
     override suspend fun quoteCart(cart: List<ConfiguredProduct>): OrderPricingPreview {
         delay(200) // Simulación de llamada de red
         
-        val subtotal = cart.sumOf { it.total }
-        val adjustments = mutableListOf<PricingAdjustment>()
+        // FASE 6A3: REGLA ESTRICTA - NO IMPLEMENTAR ALGORITMOS DE PRECIOS LOCALMENTE
+        // Este mock devuelve fixtures precalculados (respuestas falsas transparentes) 
+        // para propósitos de UI/Demo. NO hace matemáticas, comprobación de días, ni agrupaciones.
 
-        // Para propósito de demostración en el POS MVP: 
-        // Si el carrito tiene 2 rollos "California" (ej. precio catálogo 79), hardcodeamos el Jueves 2x1.
-        // Si tiene 1 rollo "California", hardcodeamos el Lunes a $69.
+        val subtotal = cart.fold(java.math.BigDecimal.ZERO) { acc, item -> acc + item.total }
+
+        // BOGO Logic para el Jueves (aplicamos dinámicamente si hay rollos para demostrar la API)
+        // Detectamos si es un "rollo clásico" por el nombre para el mock.
+        val rewardItems = mutableListOf<ConfiguredProduct>()
         
-        val californiaItems = cart.filter { it.name.contains("California", ignoreCase = true) }
-        val totalCaliforniaQty = californiaItems.sumOf { it.quantity }
-        
-        if (totalCaliforniaQty >= 2) {
-            // FIXTURE: Jueves 2x1 (compran 2, pagan 1, se descuentan 79.00 por cada par)
-            val pares = totalCaliforniaQty / 2
-            val descuento = pares * 79.0 // asumiendo que el California cuesta 79
-            adjustments.add(
-                PricingAdjustment(
-                    label = "Jueves 2x1 clásicos",
-                    amount = -descuento,
-                    promotionId = "prom-thu-2x1"
+        for (item in cart) {
+            if (item.name.contains("roll", ignoreCase = true)) {
+                // "For every eligible classic roll explicitly purchased, the promotion generates 
+                // one additional promotional unit of the SAME menu item."
+                val reward = ConfiguredProduct(
+                    menuItemId = item.menuItemId,
+                    name = item.name,
+                    quantity = item.quantity,
+                    baseUnitPrice = java.math.BigDecimal.ZERO,
+                    unitTotal = java.math.BigDecimal.ZERO,
+                    total = java.math.BigDecimal.ZERO,
+                    groups = emptyList() // Toppings on either roll are paid normally, base is free
                 )
-            )
-        } else if (totalCaliforniaQty == 1) {
-            // FIXTURE: Lunes $69 (precio normal 79, se descuentan 10)
-            // Asumiendo que el California cuesta 79 en el FakeMenuRepository
-            // Solo aplicamos si el precio base era mayor a 69
-            val california = californiaItems.first()
-            if (california.baseUnitPrice == 79.0) {
-                adjustments.add(
-                    PricingAdjustment(
-                        label = "Lunes de clásicos $69",
-                        amount = -10.0,
-                        promotionId = "prom-mon-69"
-                    )
-                )
+                rewardItems.add(reward)
             }
         }
 
-        val totalAdjustments = adjustments.sumOf { it.amount }
-        val finalTotal = subtotal + totalAdjustments
-
         return OrderPricingPreview(
             subtotal = subtotal,
-            adjustments = adjustments,
-            total = finalTotal
+            adjustments = emptyList(), // BOGO no usa un adjustment de descuento total, usa rewardItems
+            rewardItems = rewardItems,
+            total = subtotal // El total base a pagar no cambia por el reward (el reward es $0)
         )
     }
 }

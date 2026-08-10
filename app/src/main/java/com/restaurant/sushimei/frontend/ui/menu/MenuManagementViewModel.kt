@@ -25,6 +25,18 @@ import java.util.UUID
  *  - [selectedProduct]: producto cargado en el formulario del panel derecho
  *  - [isSaving]: indicador de operación en curso
  */
+sealed interface MenuManagementUiState {
+    data class Success(
+        val searchQuery: String = "",
+        val selectedCategory: String? = null,
+        val filteredProducts: List<MenuItem> = emptyList(),
+        val categories: List<String> = emptyList(),
+        val selectedProduct: MenuItem? = null,
+        val isSaving: Boolean = false,
+        val saveSuccess: Boolean = false
+    ) : MenuManagementUiState
+}
+
 class MenuManagementViewModel(
     private val repository: IMenuRepository
 ) : ViewModel() {
@@ -60,15 +72,40 @@ class MenuManagementViewModel(
     // ── Producto seleccionado (panel de formulario) ──────────────────────────
 
     private val _selectedProduct = MutableStateFlow<MenuItem?>(null)
-    val selectedProduct: StateFlow<MenuItem?> = _selectedProduct.asStateFlow()
+
 
     /** true mientras se guarda un producto. */
     private val _isSaving = MutableStateFlow(false)
-    val isSaving: StateFlow<Boolean> = _isSaving.asStateFlow()
 
     /** true después de guardar con éxito (para mostrar feedback visual). */
     private val _saveSuccess = MutableStateFlow(false)
-    val saveSuccess: StateFlow<Boolean> = _saveSuccess.asStateFlow()
+
+    private val filterState = combine(
+        _searchQuery,
+        _selectedCategory,
+        filteredProducts,
+        categories
+    ) { search, category, filtered, cats ->
+        MenuManagementUiState.Success(
+            searchQuery = search,
+            selectedCategory = category,
+            filteredProducts = filtered,
+            categories = cats
+        )
+    }
+
+    val uiState: StateFlow<MenuManagementUiState> = combine(
+        filterState,
+        _selectedProduct,
+        _isSaving,
+        _saveSuccess
+    ) { filter, selected, saving, success ->
+        filter.copy(
+            selectedProduct = selected,
+            isSaving = saving,
+            saveSuccess = success
+        )
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, MenuManagementUiState.Success())
 
     // ── Acciones ─────────────────────────────────────────────────────────────
 
@@ -85,7 +122,7 @@ class MenuManagementViewModel(
             id          = UUID.randomUUID().toString().take(8).uppercase(),
             nombre      = "",
             categoria   = "",
-            precio      = 0.0,
+            precio      = java.math.BigDecimal.ZERO,
             descripcion = "",
             emoji       = "🍣"
         )

@@ -48,7 +48,7 @@ class ConfigurationBuilderViewModel(
                         menuItemId = menuItemId,
                         name = "Nueva Configuración",
                         standaloneOrderable = true,
-                        basePrice = 0.0,
+                        basePrice = java.math.BigDecimal.ZERO,
                         requiresConfiguration = true,
                         groups = emptyList()
                     )
@@ -81,7 +81,7 @@ class ConfigurationBuilderViewModel(
         )
     }
 
-    fun addOption(groupId: Int, name: String, targetMenuItemId: String?, priceAdjustment: Double) {
+    fun addOption(groupId: Int, name: String, targetMenuItemId: String?, priceAdjustment: java.math.BigDecimal) {
         val currentConfig = _uiState.value.configuration ?: return
         val updatedGroups = currentConfig.groups.map { group ->
             if (group.id == groupId) {
@@ -89,7 +89,7 @@ class ConfigurationBuilderViewModel(
                     menuItemId = targetMenuItemId ?: UUID.randomUUID().toString(),
                     name = name,
                     category = "N/A",
-                    catalogPrice = 0.0, 
+                    catalogPrice = java.math.BigDecimal.ZERO, 
                     available = true,
                     requiresConfiguration = false,
                     priceAdjustment = priceAdjustment
@@ -118,7 +118,7 @@ class ConfigurationBuilderViewModel(
         )
     }
 
-    fun updateBaseProperties(name: String, basePrice: Double, standaloneOrderable: Boolean, requiresConfiguration: Boolean) {
+    fun updateBaseProperties(name: String, basePrice: java.math.BigDecimal, standaloneOrderable: Boolean, requiresConfiguration: Boolean) {
         val currentConfig = _uiState.value.configuration ?: return
         _uiState.value = _uiState.value.copy(
             configuration = currentConfig.copy(

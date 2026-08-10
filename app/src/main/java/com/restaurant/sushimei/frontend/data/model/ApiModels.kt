@@ -1,6 +1,7 @@
 package com.restaurant.sushimei.frontend.data.model
 
 import com.google.gson.annotations.SerializedName
+import java.math.BigDecimal
 
 // ============================================================================
 // W I R E   D T O s
@@ -11,7 +12,7 @@ data class CatalogItemDto(
     val name: String,
     val description: String?,
     val category: String,
-    val price: Double,
+    val price: BigDecimal,
     val active: Boolean,
     val available: Boolean,
     val displayOrder: Int,
@@ -28,7 +29,7 @@ data class ConfigurationResponseDto(
     val menuItemId: String,
     val name: String,
     val standaloneOrderable: Boolean,
-    val basePrice: Double,
+    val basePrice: BigDecimal,
     val requiresConfiguration: Boolean,
     val groups: List<ConfigurationGroupDto> = emptyList()
 )
@@ -46,10 +47,10 @@ data class ConfigurationOptionDto(
     val menuItemId: String,
     val name: String,
     val category: String,
-    val catalogPrice: Double,
+    val catalogPrice: BigDecimal,
     val available: Boolean,
     val requiresConfiguration: Boolean,
-    val priceAdjustment: Double
+    val priceAdjustment: BigDecimal
 )
 
 // ----------------------------------------------------------------------------
@@ -76,12 +77,12 @@ data class QuoteResponseDto(
     val menuItemId: String,
     val name: String,
     val quantity: Int,
-    val baseUnitPrice: Double,
-    val baseTotal: Double,
+    val baseUnitPrice: BigDecimal,
+    val baseTotal: BigDecimal,
     val groups: List<QuoteResponseGroupDto> = emptyList(),
-    val unitAdjustmentTotal: Double,
-    val unitTotal: Double,
-    val total: Double
+    val unitAdjustmentTotal: BigDecimal,
+    val unitTotal: BigDecimal,
+    val total: BigDecimal
 )
 
 data class QuoteResponseGroupDto(
@@ -94,8 +95,8 @@ data class QuoteResponseSelectionDto(
     val menuItemId: String,
     val name: String,
     val quantity: Int,
-    val catalogUnitPrice: Double,
-    val priceAdjustment: Double,
+    val catalogUnitPrice: BigDecimal,
+    val priceAdjustment: BigDecimal,
     val groups: List<QuoteResponseGroupDto> = emptyList()
 )
 

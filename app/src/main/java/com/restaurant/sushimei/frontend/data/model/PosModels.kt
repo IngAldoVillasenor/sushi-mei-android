@@ -1,12 +1,15 @@
 package com.restaurant.sushimei.frontend.data.model
 
+import java.math.BigDecimal
+
 data class MenuItem(
     val id: String,
     val nombre: String,
     val categoria: String,
-    val precio: Double,
+    val precio: BigDecimal,
     val descripcion: String = "",
     val emoji: String = "🍣",
+    val activo: Boolean = true,
     // Nuevos campos de configuración Phase 6A2
     val standaloneOrderable: Boolean = true,
     val tags: List<String> = emptyList()
@@ -21,12 +24,12 @@ data class ConfiguredProduct(
     val menuItemId: String,
     val name: String,
     val quantity: Int,
-    val baseUnitPrice: Double,
+    val baseUnitPrice: BigDecimal,
     val groups: List<ConfiguredGroup> = emptyList(),
     
     // El precio total ajustado devuelto por la cotización del backend
-    val unitTotal: Double = baseUnitPrice, 
-    val total: Double = baseUnitPrice * quantity
+    val unitTotal: BigDecimal = baseUnitPrice, 
+    val total: BigDecimal = baseUnitPrice * BigDecimal(quantity)
 )
 
 /**
@@ -45,8 +48,8 @@ data class ConfiguredSelection(
     val menuItemId: String,
     val name: String,
     val quantity: Int,
-    val catalogUnitPrice: Double,
-    val priceAdjustment: Double,
+    val catalogUnitPrice: BigDecimal,
+    val priceAdjustment: BigDecimal,
     val groups: List<ConfiguredGroup> = emptyList()
 )
 
@@ -55,9 +58,10 @@ data class ConfiguredSelection(
  * devuelta por el backend al aplicar promociones.
  */
 data class OrderPricingPreview(
-    val subtotal: Double,
+    val subtotal: BigDecimal,
     val adjustments: List<PricingAdjustment> = emptyList(),
-    val total: Double
+    val rewardItems: List<ConfiguredProduct> = emptyList(),
+    val total: BigDecimal
 )
 
 /**
@@ -66,7 +70,7 @@ data class OrderPricingPreview(
 data class PricingAdjustment(
     val id: String = java.util.UUID.randomUUID().toString(),
     val label: String,
-    val amount: Double, // Negativo para descuentos
+    val amount: BigDecimal, // Negativo para descuentos
     val sourceType: String = "PROMOTION",
     val promotionId: String? = null
 )

@@ -238,7 +238,7 @@ fun PromotionEditorScreen(
             Button(
                 onClick = {
                     val benefit = if (benefitType == "FIXED_UNIT_PRICE") {
-                        PromotionBenefit.FixedUnitPrice(fixedPrice.toDoubleOrNull() ?: 0.0)
+                        PromotionBenefit.FixedUnitPrice(fixedPrice.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO)
                     } else {
                         PromotionBenefit.BuyXPayY(
                             buyQuantity = buyQuantity.toIntOrNull() ?: 2,

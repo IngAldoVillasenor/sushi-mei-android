@@ -84,28 +84,40 @@ class RoomMenuRepository(
             menuItemId = menuItemId,
             name = "Producto de Room",
             standaloneOrderable = true,
-            basePrice = 0.0,
+            basePrice = java.math.BigDecimal.ZERO,
             requiresConfiguration = false
         )
     }
 
-    override suspend fun quoteItem(request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto {
+    override suspend fun quoteItem(menuItemId: String, request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto {
         // En un caso real, esto llamaría a Retrofit. Por ahora, mock genérico:
         return com.restaurant.sushimei.frontend.data.model.QuoteResponseDto(
-            menuItemId = request.groups.firstOrNull()?.selections?.firstOrNull()?.menuItemId ?: "1",
+            menuItemId = menuItemId,
             name = "Item",
             quantity = request.quantity,
-            baseUnitPrice = 0.0,
-            baseTotal = 0.0,
-            unitAdjustmentTotal = 0.0,
-            unitTotal = 0.0,
-            total = 0.0
+            baseUnitPrice = java.math.BigDecimal.ZERO,
+            baseTotal = java.math.BigDecimal.ZERO,
+            unitAdjustmentTotal = java.math.BigDecimal.ZERO,
+            unitTotal = java.math.BigDecimal.ZERO,
+            total = java.math.BigDecimal.ZERO
         )
     }
 
     override suspend fun getTags(): List<com.restaurant.sushimei.frontend.data.model.CatalogTagDto> {
         // En un caso real, esto llamaría a Retrofit. Por ahora, mock genérico:
         return emptyList()
+    }
+
+    override suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto {
+        return tag.copy(id = "1")
+    }
+
+    override suspend fun updateTag(id: String, tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto {
+        return tag
+    }
+
+    override suspend fun deleteTag(id: String) {
+        // No-op
     }
 
     // ── Seed ─────────────────────────────────────────────────────────────────

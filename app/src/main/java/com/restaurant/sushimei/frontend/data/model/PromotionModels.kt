@@ -22,7 +22,7 @@ data class PromotionSchedule(
 
 sealed class PromotionBenefit {
     data class FixedUnitPrice(
-        val amount: Double
+        val amount: java.math.BigDecimal
     ) : PromotionBenefit()
 
     data class BuyXPayY(

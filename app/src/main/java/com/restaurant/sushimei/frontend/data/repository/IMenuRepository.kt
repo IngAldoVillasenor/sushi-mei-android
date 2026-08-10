@@ -74,11 +74,15 @@ interface IMenuRepository {
     /**
      * Solicita una cotización autoritativa al backend para una configuración.
      */
-    suspend fun quoteItem(request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
+    suspend fun quoteItem(menuItemId: String, request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
 
     /**
      * Obtiene todos los Tags del catálogo (ej. ROLL_CLASSIC).
      */
     suspend fun getTags(): List<com.restaurant.sushimei.frontend.data.model.CatalogTagDto>
+
+    suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
+    suspend fun updateTag(id: String, tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
+    suspend fun deleteTag(id: String)
 }
 

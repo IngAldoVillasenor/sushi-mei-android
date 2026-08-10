@@ -137,7 +137,7 @@ class ConfiguratorViewModel(
                     groups = requestGroups
                 )
                 
-                val quote = menuRepository.quoteItem(request)
+                val quote = menuRepository.quoteItem(config.menuItemId, request)
                 _uiState.value = _uiState.value.copy(
                     quoteState = QuoteState.VALID,
                     latestQuote = quote

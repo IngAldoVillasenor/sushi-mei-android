@@ -214,7 +214,7 @@ fun ConfigurationOptionRow(
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (option.available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
             )
-            val priceStr = if (option.priceAdjustment == 0.0) "Incluido" else "+$${option.priceAdjustment}"
+            val priceStr = if (option.priceAdjustment.compareTo(java.math.BigDecimal.ZERO) == 0) "Incluido" else "+$${option.priceAdjustment}"
             Text(
                 text = priceStr,
                 style = MaterialTheme.typography.bodySmall,

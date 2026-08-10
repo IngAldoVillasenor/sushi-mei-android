@@ -24,8 +24,19 @@ import com.restaurant.sushimei.frontend.data.repository.IPromotionRepository
  * el filtrado por categoría y el estado del carrito de compras.
  *
  * Al cobrar, delega en [IOrderRepository] para publicar la orden al módulo
- * de Cocina a través del singleton compartido [MockOrderRepository].
+ * al módulo de Cocina a través del singleton compartido [MockOrderRepository].
  */
+sealed interface PosUiState {
+    object Loading : PosUiState
+    data class Success(
+        val categories: List<String> = listOf("Todos"),
+        val selectedCategory: String? = null,
+        val filteredProducts: List<MenuItem> = emptyList(),
+        val currentCart: List<ConfiguredProduct> = emptyList(),
+        val pricingPreview: OrderPricingPreview = OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO)
+    ) : PosUiState
+}
+
 class PosViewModel(
     private val menuRepository: IMenuRepository,
     private val orderRepository: IOrderRepository,
@@ -37,39 +48,37 @@ class PosViewModel(
     private val _selectedCategory = MutableStateFlow<String?>(null)
     private val _currentCart = MutableStateFlow<List<ConfiguredProduct>>(emptyList())
     private val _isLoading = MutableStateFlow(true)
-    private val _pricingPreview = MutableStateFlow(OrderPricingPreview(0.0, emptyList(), 0.0))
+    private val _pricingPreview = MutableStateFlow(OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO))
 
     // --- Estado público expuesto a la UI ---
-
-    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
-
-    /**
-     * Lista de categorías únicas derivada de los productos cargados.
-     * El primer elemento siempre es "Todos" (filtro global).
-     */
-    val categories: StateFlow<List<String>> = _allProducts
-        .combine(MutableStateFlow(Unit)) { products, _ ->
-            buildList {
+    val uiState: StateFlow<PosUiState> = combine(
+        _allProducts,
+        _selectedCategory,
+        _currentCart,
+        _isLoading,
+        _pricingPreview
+    ) { all, category, cart, loading, preview ->
+        if (loading) {
+            PosUiState.Loading
+        } else {
+            val categories = buildList {
                 add("Todos")
-                addAll(products.map { it.categoria }.distinct().sorted())
+                addAll(all.map { it.categoria }.distinct().sorted())
             }
+            val filtered = if (category == null || category == "Todos") {
+                all
+            } else {
+                all.filter { it.categoria == category }
+            }
+            PosUiState.Success(
+                categories = categories,
+                selectedCategory = category,
+                filteredProducts = filtered,
+                currentCart = cart,
+                pricingPreview = preview
+            )
         }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, listOf("Todos"))
-
-    /**
-     * Productos filtrados según la categoría seleccionada.
-     * Si [_selectedCategory] es null o "Todos", devuelve todos los productos.
-     */
-    val filteredProducts: StateFlow<List<MenuItem>> = combine(
-        _allProducts, _selectedCategory
-    ) { products, category ->
-        if (category == null || category == "Todos") products
-        else products.filter { it.categoria == category }
-    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
-
-    val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
-    val currentCart: StateFlow<List<ConfiguredProduct>> = _currentCart.asStateFlow()
-    val pricingPreview: StateFlow<OrderPricingPreview> = _pricingPreview.asStateFlow()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, PosUiState.Loading)
 
     init {
         // Observa el Flow reactivo de Room — el catálogo del POS se actualiza
@@ -99,25 +108,44 @@ class PosViewModel(
     // --- Acciones del carrito ---
 
     fun addToCart(menuItem: MenuItem) {
-        val currentList = _currentCart.value.toMutableList()
-        val index = currentList.indexOfFirst { it.menuItemId == menuItem.id }
+        viewModelScope.launch {
+            try {
+                // FASE 6A2: Do not derive price locally. Quote it.
+                val quoteRequest = com.restaurant.sushimei.frontend.data.model.QuoteRequestDto(
+                    quantity = 1,
+                    groups = emptyList()
+                )
+                val quote = menuRepository.quoteItem(menuItem.id, quoteRequest)
+                
+                val product = ConfiguredProduct(
+                    menuItemId = quote.menuItemId,
+                    name = quote.name,
+                    quantity = quote.quantity,
+                    baseUnitPrice = quote.baseUnitPrice,
+                    unitTotal = quote.unitTotal,
+                    total = quote.total,
+                    groups = emptyList()
+                )
+                
+                // Add to internal list
+                val currentList = _currentCart.value.toMutableList()
+                val index = currentList.indexOfFirst { it.menuItemId == product.menuItemId && it.groups.isEmpty() }
 
-        if (index >= 0) {
-            val existing = currentList[index]
-            currentList[index] = existing.copy(
-                quantity = existing.quantity + 1,
-                total = existing.unitTotal * (existing.quantity + 1)
-            )
-        } else {
-            currentList.add(ConfiguredProduct(
-                menuItemId = menuItem.id, 
-                name = menuItem.nombre,
-                quantity = 1,
-                baseUnitPrice = menuItem.precio
-            ))
+                if (index >= 0) {
+                    val existing = currentList[index]
+                    currentList[index] = existing.copy(
+                        quantity = existing.quantity + product.quantity,
+                        total = existing.unitTotal * java.math.BigDecimal(existing.quantity + product.quantity)
+                    )
+                } else {
+                    currentList.add(product)
+                }
+                
+                _currentCart.value = currentList
+            } catch (e: Exception) {
+                // handle error / log error
+            }
         }
-
-        _currentCart.value = currentList
     }
 
     fun addConfiguredProduct(configuredProduct: ConfiguredProduct) {
@@ -133,7 +161,7 @@ class PosViewModel(
             val existing = currentList[index]
             currentList[index] = existing.copy(
                 quantity = existing.quantity + configuredProduct.quantity,
-                total = existing.unitTotal * (existing.quantity + configuredProduct.quantity)
+                total = existing.unitTotal * java.math.BigDecimal(existing.quantity + configuredProduct.quantity)
             )
         } else {
             currentList.add(configuredProduct)
@@ -151,7 +179,7 @@ class PosViewModel(
             if (existing.quantity > 1) {
                 currentList[index] = existing.copy(
                     quantity = existing.quantity - 1,
-                    total = existing.unitTotal * (existing.quantity - 1)
+                    total = existing.unitTotal * java.math.BigDecimal(existing.quantity - 1)
                 )
             } else {
                 currentList.removeAt(index)
@@ -184,7 +212,7 @@ class PosViewModel(
         }
     }
 
-    fun getTotal(): Double {
+    fun getTotal(): java.math.BigDecimal {
         return _pricingPreview.value.total
     }
 

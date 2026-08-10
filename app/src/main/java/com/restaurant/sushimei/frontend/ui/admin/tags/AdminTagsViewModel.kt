@@ -48,14 +48,20 @@ class AdminTagsViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
-                // In a real app we'd call repository.saveTag(tag). Since we mock it or only have getTags:
-                // We will simulate it for now.
-                val current = _uiState.value.tags.toMutableList()
-                val idx = current.indexOfFirst { it.id == tag.id }
-                if (idx >= 0) {
-                    current[idx] = tag
+                // If tag has empty ID or pseudo ID, it's create, else update
+                val isNew = tag.id.isEmpty()
+                val savedTag = if (isNew) {
+                    repository.createTag(tag)
                 } else {
-                    current.add(tag)
+                    repository.updateTag(tag.id, tag)
+                }
+                
+                val current = _uiState.value.tags.toMutableList()
+                val idx = current.indexOfFirst { it.id == savedTag.id }
+                if (idx >= 0) {
+                    current[idx] = savedTag
+                } else {
+                    current.add(savedTag)
                 }
                 
                 _uiState.value = _uiState.value.copy(
@@ -63,9 +69,15 @@ class AdminTagsViewModel(
                     tags = current
                 )
             } catch (e: Exception) {
+                val isConflict = e.message?.contains("VERSION_CONFLICT") == true
+                val msg = if (isConflict) {
+                    "Este elemento fue modificado desde otro dispositivo."
+                } else {
+                    "Error al guardar tag: ${e.message}"
+                }
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    errorMessage = "Error al guardar tag: ${e.message}"
+                    errorMessage = msg
                 )
             }
         }

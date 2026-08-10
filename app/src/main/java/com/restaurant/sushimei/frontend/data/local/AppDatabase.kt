@@ -21,11 +21,12 @@ import com.restaurant.sushimei.frontend.data.repository.RoomOrderRepository
  * Al agregar nuevas entidades: incrementar [version] y proveer la [Migration]
  * correspondiente para no perder datos existentes.
  */
-@Database(
+@androidx.room.Database(
     entities = [OrderEntity::class, MenuItemEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
+@androidx.room.TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun orderDao(): OrderDao
@@ -69,6 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "sushimei_db"
                 )
                     .addMigrations(MIGRATION_1_2)
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }
             }
@@ -102,9 +104,8 @@ private var menuRepositoryInstance: IMenuRepository? = null
  */
 fun provideMenuRepository(context: Context): IMenuRepository {
     return menuRepositoryInstance ?: synchronized(AppDatabase::class.java) {
-        menuRepositoryInstance ?: RoomMenuRepository(
-            dao     = AppDatabase.getInstance(context).menuDao(),
-            context = context.applicationContext
+        menuRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemoteMenuRepository(
+            api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
         ).also { menuRepositoryInstance = it }
     }
 }
@@ -112,7 +113,7 @@ fun provideMenuRepository(context: Context): IMenuRepository {
 private var promotionRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.IPromotionRepository? = null
 
 /**
- * Devuelve siempre el mismo [MockPromotionRepository] singleton por ahora (Fase 6B MVP).
+ * Devuelve siempre el mismo [MockPromotionRepository] singleton por ahora (Fase 6A3 MVP).
  */
 fun providePromotionRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.IPromotionRepository {
     return promotionRepositoryInstance ?: synchronized(AppDatabase::class.java) {

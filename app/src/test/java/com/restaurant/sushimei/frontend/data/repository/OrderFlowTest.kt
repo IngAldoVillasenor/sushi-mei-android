@@ -12,16 +12,16 @@ import org.junit.Test
 
 // Items de carrito reutilizables
 private val ITEM_CALIFORNIA = MenuItem(
-    id = "1815495", nombre = "California roll", categoria = "Clásicos", precio = 79.0, emoji = "🍣"
+    id = "1815495", nombre = "California roll", categoria = "Clásicos", precio = java.math.BigDecimal("79.0"), emoji = "🍣"
 )
 private val ITEM_COCA = MenuItem(
-    id = "1815574", nombre = "Coca Normal 355ml", categoria = "Bebidas", precio = 22.0, emoji = "🥤"
+    id = "1815574", nombre = "Coca Normal 355ml", categoria = "Bebidas", precio = java.math.BigDecimal("22.0"), emoji = "🥤"
 )
 private val CART = listOf(
-    ConfiguredProduct(menuItem = ITEM_CALIFORNIA, cantidad = 2),
-    ConfiguredProduct(menuItem = ITEM_COCA, cantidad = 1)
+    ConfiguredProduct(menuItemId = ITEM_CALIFORNIA.id, name = ITEM_CALIFORNIA.nombre, quantity = 2, baseUnitPrice = ITEM_CALIFORNIA.precio),
+    ConfiguredProduct(menuItemId = ITEM_COCA.id, name = ITEM_COCA.nombre, quantity = 1, baseUnitPrice = ITEM_COCA.precio)
 )
-private const val TOTAL = 180.0  // (79 * 2) + 22
+private val TOTAL = java.math.BigDecimal("180.0")  // (79 * 2) + 22
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class OrderFlowTest {
@@ -39,7 +39,7 @@ class OrderFlowTest {
         val orders = MockOrderRepository.activeOrdersFlow.value
         assertEquals(1, orders.size)
         assertEquals(OrderStatus.PENDING, orders.first().status)
-        assertEquals(TOTAL, orders.first().total, 0.001)
+        assertEquals(TOTAL, orders.first().total)
         assertEquals(CART.size, orders.first().items.size)
     }
 
@@ -103,7 +103,7 @@ class OrderFlowTest {
     @Test
     fun multipleOrders_independentStatusTransitions() = runTest {
         MockOrderRepository.placeOrder(CART, TOTAL)
-        MockOrderRepository.placeOrder(listOf(ConfiguredProduct(ITEM_COCA, 3)), 66.0)
+        MockOrderRepository.placeOrder(listOf(ConfiguredProduct(menuItemId = ITEM_COCA.id, name = ITEM_COCA.nombre, quantity = 3, baseUnitPrice = ITEM_COCA.precio)), java.math.BigDecimal("66.0"))
 
         val orders = MockOrderRepository.activeOrdersFlow.value
         assertEquals(2, orders.size)

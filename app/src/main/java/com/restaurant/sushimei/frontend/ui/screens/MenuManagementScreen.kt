@@ -33,6 +33,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.restaurant.sushimei.frontend.data.model.MenuItem
 import com.restaurant.sushimei.frontend.ui.menu.MenuManagementViewModel
 import java.util.UUID
@@ -56,13 +57,16 @@ fun MenuManagementScreen(
         viewModel(factory = MenuManagementViewModel.factory(context))
     }
 ) {
-    val products      by viewModel.filteredProducts.collectAsState()
-    val categories    by viewModel.categories.collectAsState()
-    val searchQuery   by viewModel.searchQuery.collectAsState()
-    val selectedCat   by viewModel.selectedCategory.collectAsState()
-    val selectedItem  by viewModel.selectedProduct.collectAsState()
-    val isSaving      by viewModel.isSaving.collectAsState()
-    val saveSuccess   by viewModel.saveSuccess.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val stateSuccess = uiState as? com.restaurant.sushimei.frontend.ui.menu.MenuManagementUiState.Success
+    
+    val products = stateSuccess?.filteredProducts ?: emptyList()
+    val categories = stateSuccess?.categories ?: emptyList()
+    val searchQuery = stateSuccess?.searchQuery ?: ""
+    val selectedCat = stateSuccess?.selectedCategory
+    val selectedItem = stateSuccess?.selectedProduct
+    val isSaving = stateSuccess?.isSaving ?: false
+    val saveSuccess = stateSuccess?.saveSuccess ?: false
 
     var activeScreen by remember { mutableStateOf("menu") } // "menu", "tags", "config_builder", "promotions_list", "promotion_editor"
     var configTargetId by remember { mutableStateOf<String?>(null) }
@@ -376,7 +380,7 @@ private fun ProductFormPanel(
     onOpenConfigurator: () -> Unit
 ) {
     var nombre      by remember(item.id) { mutableStateOf(item.nombre) }
-    var precio      by remember(item.id) { mutableStateOf(if (item.precio > 0) item.precio.toString() else "") }
+    var precio      by remember(item.id) { mutableStateOf(if (item.precio > java.math.BigDecimal.ZERO) item.precio.toString() else "") }
     var categoria   by remember(item.id) { mutableStateOf(item.categoria) }
     var emoji       by remember(item.id) { mutableStateOf(item.emoji) }
     var descripcion by remember(item.id) { mutableStateOf(item.descripcion) }
@@ -522,7 +526,7 @@ private fun ProductFormPanel(
         // Botones de acción
         val canSave = nombre.isNotBlank() &&
                 categoria.isNotBlank() &&
-                (precio.toDoubleOrNull() ?: 0.0) > 0
+                (precio.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO) > java.math.BigDecimal.ZERO
 
         AnimatedVisibility(visible = saveSuccess) {
             Row(
@@ -550,11 +554,11 @@ private fun ProductFormPanel(
 
             Button(
                 onClick = {
-                    val precioDouble = precio.toDoubleOrNull() ?: return@Button
+                    val precioDecimal = precio.toBigDecimalOrNull() ?: return@Button
                     onSave(
                         item.copy(
                             nombre      = nombre.trim(),
-                            precio      = precioDouble,
+                            precio      = precioDecimal,
                             categoria   = categoria.trim(),
                             emoji       = emoji.ifBlank { "🍣" },
                             descripcion = descripcion.trim()

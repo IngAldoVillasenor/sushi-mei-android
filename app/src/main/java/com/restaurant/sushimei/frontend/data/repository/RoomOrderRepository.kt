@@ -43,7 +43,7 @@ class RoomOrderRepository(private val dao: OrderDao) : IOrderRepository {
                 initialValue = emptyList()
             )
 
-    override suspend fun placeOrder(items: List<ConfiguredProduct>, total: Double) {
+    override suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal) {
         val entity = OrderEntity(
             id         = UUID.randomUUID().toString().take(8).uppercase(),
             itemsJson  = ConfiguredProductTypeConverter.fromList(items),

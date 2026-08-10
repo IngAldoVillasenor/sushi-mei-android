@@ -21,7 +21,7 @@ interface IPromotionRepository {
     /**
      * Evalúa el carrito de compras contra las promociones activas en el backend.
      * Retorna el precio base total, los ajustes promocionales (descuentos) y el precio final.
-     * Android NO ejecuta la lógica de promociones (Phase 6B Rule).
+     * Android NO ejecuta la lógica de promociones (Phase 6A3 Rule).
      */
     suspend fun quoteCart(cart: List<ConfiguredProduct>): OrderPricingPreview
 }

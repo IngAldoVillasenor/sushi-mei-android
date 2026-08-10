@@ -21,7 +21,7 @@ data class OrderEntity(
     /** Lista de ConfiguredProduct serializada como JSON. Ver [ConfiguredProductTypeConverter]. */
     val itemsJson: String,
 
-    val total: Double,
+    val total: java.math.BigDecimal,
     val createdAt: Long,
 
     /** Nombre del enum [com.restaurant.sushimei.frontend.data.model.OrderStatus]. */

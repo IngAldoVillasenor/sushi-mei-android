@@ -474,5 +474,5 @@ private fun StatusBubble(count: Int, label: String, color: Color) {
 // Utilidades
 // ─────────────────────────────────────────────────────────────────────────────
 
-private fun formatMoney(value: Double): String =
-    String.format("%,.2f", value)
+private fun formatMoney(value: java.math.BigDecimal): String =
+    String.format(java.util.Locale.US, "%,.2f", value)

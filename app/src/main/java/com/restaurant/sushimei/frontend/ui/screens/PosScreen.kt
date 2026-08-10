@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.MenuItem
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
@@ -50,15 +51,19 @@ fun PosScreen() {
         )
     )
 
-    val selectedCategory by viewModel.selectedCategory.collectAsState()
-    val cart by viewModel.currentCart.collectAsState()
-    val pricingPreview by viewModel.pricingPreview.collectAsState()
-    val filteredMenuItems by viewModel.filteredProducts.collectAsState()
-    val categories by viewModel.categories.collectAsState()
-    val isLoading by viewModel.isLoading.collectAsState()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+
+    val isLoading = uiState is com.restaurant.sushimei.frontend.ui.pos.PosUiState.Loading
+    val stateSuccess = uiState as? com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success
+    
+    val selectedCategory = stateSuccess?.selectedCategory
+    val cart = stateSuccess?.currentCart ?: emptyList()
+    val pricingPreview = stateSuccess?.pricingPreview ?: com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO)
+    val filteredMenuItems = stateSuccess?.filteredProducts ?: emptyList()
+    val categories = stateSuccess?.categories ?: listOf("Todos")
 
     var showSuccessDialog by remember { mutableStateOf(false) }
-    var lastChargedTotal by remember { mutableDoubleStateOf(0.0) }
+    var lastChargedTotal by remember { mutableStateOf(java.math.BigDecimal.ZERO) }
 
     if (showSuccessDialog) {
         AlertDialog(

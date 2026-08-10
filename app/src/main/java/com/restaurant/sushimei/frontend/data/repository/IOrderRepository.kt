@@ -20,7 +20,7 @@ interface IOrderRepository {
     val activeOrders: StateFlow<List<Order>>
 
     /** Crea una nueva orden a partir del carrito cobrado en el POS. PENDING. */
-    suspend fun placeOrder(items: List<ConfiguredProduct>, total: Double)
+    suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal)
 
     /** Cocina acepta la orden → PENDING → PREPARING. */
     suspend fun acceptOrder(orderId: String)

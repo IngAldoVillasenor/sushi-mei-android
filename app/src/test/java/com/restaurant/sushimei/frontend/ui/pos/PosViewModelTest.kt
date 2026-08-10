@@ -25,7 +25,7 @@ import org.junit.Test
 private class FakeOrderRepository : IOrderRepository {
     override val activeOrders: StateFlow<List<com.restaurant.sushimei.frontend.data.model.Order>> =
         MutableStateFlow(emptyList())
-    override suspend fun placeOrder(items: List<ConfiguredProduct>, total: Double) { /* no-op */ }
+    override suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal) { /* no-op */ }
     override suspend fun acceptOrder(orderId: String) { /* no-op */ }
     override suspend fun markReady(orderId: String) { /* no-op */ }
     override suspend fun dispatch(orderId: String) { /* no-op */ }
@@ -38,15 +38,15 @@ private class FakeOrderRepository : IOrderRepository {
 // Fake repository — datos reales del menú Sushi Mei (subset representativo)
 // ---------------------------------------------------------------------------
 private val FAKE_MENU = listOf(
-    MenuItem(id = "1815495", nombre = "California roll",     categoria = "Clásicos",    precio = 79.0,  emoji = "🍣"),
-    MenuItem(id = "1815494", nombre = "Empanizado roll",     categoria = "Clásicos",    precio = 79.0,  emoji = "🍣"),
-    MenuItem(id = "1815496", nombre = "Philadelphia roll",   categoria = "Clásicos",    precio = 79.0,  emoji = "🍣"),
-    MenuItem(id = "1815497", nombre = "Tampico roll",        categoria = "Clásicos",    precio = 79.0,  emoji = "🍣"),
-    MenuItem(id = "1815498", nombre = "Banana roll",         categoria = "Clásicos",    precio = 79.0,  emoji = "🍣"),
-    MenuItem(id = "1815500", nombre = "Chipotle roll",       categoria = "Especiales",  precio = 89.0,  emoji = "⭐"),
-    MenuItem(id = "1815501", nombre = "Francés roll",        categoria = "Especiales",  precio = 89.0,  emoji = "⭐"),
-    MenuItem(id = "1815574", nombre = "Coca Normal 355ml",   categoria = "Bebidas",     precio = 22.0,  emoji = "🥤"),
-    MenuItem(id = "1815577", nombre = "Calpi 500ml",         categoria = "Bebidas",     precio = 25.0,  emoji = "🥤"),
+    MenuItem(id = "1815495", nombre = "California roll",     categoria = "Clásicos",    precio = java.math.BigDecimal("79.0"),  emoji = "🍣"),
+    MenuItem(id = "1815494", nombre = "Empanizado roll",     categoria = "Clásicos",    precio = java.math.BigDecimal("79.0"),  emoji = "🍣"),
+    MenuItem(id = "1815496", nombre = "Philadelphia roll",   categoria = "Clásicos",    precio = java.math.BigDecimal("79.0"),  emoji = "🍣"),
+    MenuItem(id = "1815497", nombre = "Tampico roll",        categoria = "Clásicos",    precio = java.math.BigDecimal("79.0"),  emoji = "🍣"),
+    MenuItem(id = "1815498", nombre = "Banana roll",         categoria = "Clásicos",    precio = java.math.BigDecimal("79.0"),  emoji = "🍣"),
+    MenuItem(id = "1815500", nombre = "Chipotle roll",       categoria = "Especiales",  precio = java.math.BigDecimal("89.0"),  emoji = "⭐"),
+    MenuItem(id = "1815501", nombre = "Francés roll",        categoria = "Especiales",  precio = java.math.BigDecimal("89.0"),  emoji = "⭐"),
+    MenuItem(id = "1815574", nombre = "Coca Normal 355ml",   categoria = "Bebidas",     precio = java.math.BigDecimal("22.0"),  emoji = "🥤"),
+    MenuItem(id = "1815577", nombre = "Calpi 500ml",         categoria = "Bebidas",     precio = java.math.BigDecimal("25.0"),  emoji = "🥤"),
 )
 
 private class FakeMenuRepository : IMenuRepository {
@@ -62,8 +62,51 @@ private class FakeMenuRepository : IMenuRepository {
         FAKE_MENU.map { it.categoria }.distinct().sorted()
     override suspend fun saveProduct(item: MenuItem) { /* no-op */ }
     override suspend fun setActive(id: String, activo: Boolean) { /* no-op */ }
+    override suspend fun getConfiguration(menuItemId: String): com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto = TODO()
+    override suspend fun quoteItem(menuItemId: String, request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto {
+        val menuItem = FAKE_MENU.first { it.id == menuItemId }
+        val quantity = request.quantity
+        val baseUnitPrice = menuItem.precio
+        val unitTotal = baseUnitPrice
+        val total = unitTotal * java.math.BigDecimal(quantity)
+        return com.restaurant.sushimei.frontend.data.model.QuoteResponseDto(
+            menuItemId = menuItemId,
+            name = menuItem.nombre,
+            quantity = quantity,
+            baseUnitPrice = baseUnitPrice,
+            baseTotal = baseUnitPrice * java.math.BigDecimal(quantity),
+            unitAdjustmentTotal = java.math.BigDecimal.ZERO,
+            unitTotal = unitTotal,
+            total = total,
+            groups = emptyList()
+        )
+    }
+    override suspend fun getTags(): List<com.restaurant.sushimei.frontend.data.model.CatalogTagDto> = TODO()
+    override suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto = TODO()
+    override suspend fun updateTag(id: String, tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto = TODO()
+    override suspend fun deleteTag(id: String): Unit = TODO()
 }
 
+// ---------------------------------------------------------------------------
+// Fake promotion repository — transparent pricing without promotions for tests
+// ---------------------------------------------------------------------------
+private class FakePromotionRepository : com.restaurant.sushimei.frontend.data.repository.IPromotionRepository {
+    override fun observePromotions(): kotlinx.coroutines.flow.Flow<List<com.restaurant.sushimei.frontend.data.model.Promotion>> = kotlinx.coroutines.flow.flowOf(emptyList())
+    override suspend fun getPromotions(): List<com.restaurant.sushimei.frontend.data.model.Promotion> = emptyList()
+    override suspend fun getPromotion(id: String): com.restaurant.sushimei.frontend.data.model.Promotion? = null
+    override suspend fun createPromotion(promotion: com.restaurant.sushimei.frontend.data.model.Promotion): com.restaurant.sushimei.frontend.data.model.Promotion = promotion
+    override suspend fun updatePromotion(promotion: com.restaurant.sushimei.frontend.data.model.Promotion): com.restaurant.sushimei.frontend.data.model.Promotion = promotion
+    override suspend fun archivePromotion(id: String) {}
+    override suspend fun quoteCart(cart: List<com.restaurant.sushimei.frontend.data.model.ConfiguredProduct>): com.restaurant.sushimei.frontend.data.model.OrderPricingPreview {
+        val subtotal = cart.fold(java.math.BigDecimal.ZERO) { acc, item -> acc + item.total }
+        return com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(
+            subtotal = subtotal,
+            adjustments = emptyList(),
+            rewardItems = emptyList(),
+            total = subtotal
+        )
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -77,7 +120,7 @@ class PosViewModelTest {
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        viewModel = PosViewModel(FakeMenuRepository(), FakeOrderRepository())
+        viewModel = PosViewModel(FakeMenuRepository(), FakeOrderRepository(), FakePromotionRepository())
     }
 
     @After
@@ -85,18 +128,25 @@ class PosViewModelTest {
         Dispatchers.resetMain()
     }
 
+    private fun getSuccessState(): com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success {
+        val state = viewModel.uiState.value
+        if (state is com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success) return state
+        throw IllegalStateException("Expected PosUiState.Success but was $state")
+    }
+
+
     // --- Tests de carga del menú ---
 
     @Test
     fun loadMenu_populatesAllProducts() = runTest {
         advanceUntilIdle()
-        assertEquals(FAKE_MENU.size, viewModel.filteredProducts.value.size)
+        assertEquals(FAKE_MENU.size, getSuccessState().filteredProducts.size)
     }
 
     @Test
     fun loadMenu_generatesCorrectCategories() = runTest {
         advanceUntilIdle()
-        val cats = viewModel.categories.value
+        val cats = getSuccessState().categories
         // "Todos" siempre es el primero
         assertEquals("Todos", cats.first())
         // Debe haber una categoría por cada distinta en el fake, más "Todos"
@@ -113,7 +163,7 @@ class PosViewModelTest {
         viewModel.selectCategory("Clásicos")
         advanceUntilIdle()
 
-        val filtered = viewModel.filteredProducts.value
+        val filtered = getSuccessState().filteredProducts
         assertTrue(filtered.isNotEmpty())
         assertTrue(filtered.all { it.categoria == "Clásicos" })
         assertEquals(5, filtered.size)
@@ -127,7 +177,7 @@ class PosViewModelTest {
         viewModel.selectCategory("Todos")
         advanceUntilIdle()
 
-        assertEquals(FAKE_MENU.size, viewModel.filteredProducts.value.size)
+        assertEquals(FAKE_MENU.size, getSuccessState().filteredProducts.size)
     }
 
     // --- Tests de carrito (regresión — deben seguir pasando) ---
@@ -135,63 +185,71 @@ class PosViewModelTest {
     @Test
     fun addToCart_addsNewItem() = runTest {
         advanceUntilIdle()
-        val item = viewModel.filteredProducts.value.first()
-
+        val item = getSuccessState().filteredProducts.first()
         viewModel.addToCart(item)
+        advanceUntilIdle()
 
-        val cart = viewModel.currentCart.value
+        val cart = getSuccessState().currentCart
         assertEquals(1, cart.size)
-        assertEquals(item.id, cart[0].menuItem.id)
-        assertEquals(1, cart[0].cantidad)
-        assertEquals(item.precio, viewModel.getTotal(), 0.001)
+        assertEquals(item.id, cart[0].menuItemId)
+        assertEquals(1, cart[0].quantity)
+        assertEquals(item.precio, viewModel.getTotal())
     }
 
     @Test
     fun addToCart_incrementsQuantity() = runTest {
         advanceUntilIdle()
-        val item = viewModel.filteredProducts.value.first()
-
+        val item = getSuccessState().filteredProducts.first()
         viewModel.addToCart(item)
+        advanceUntilIdle()
         viewModel.addToCart(item)
+        advanceUntilIdle()
 
-        val cart = viewModel.currentCart.value
+        val cart = getSuccessState().currentCart
         assertEquals(1, cart.size)
-        assertEquals(2, cart[0].cantidad)
-        assertEquals(item.precio * 2, viewModel.getTotal(), 0.001)
+        assertEquals(2, cart[0].quantity)
+        assertEquals(item.precio * java.math.BigDecimal("2"), viewModel.getTotal())
     }
 
     @Test
     fun removeFromCart_decreasesQuantityOrRemoves() = runTest {
         advanceUntilIdle()
-        val item = viewModel.filteredProducts.value.first()
+        val item = getSuccessState().filteredProducts.first()
         viewModel.addToCart(item)
+        advanceUntilIdle()
         viewModel.addToCart(item)
+        advanceUntilIdle()
 
-        viewModel.removeFromCart(viewModel.currentCart.value.first())
-        var cart = viewModel.currentCart.value
+        viewModel.removeFromCart(getSuccessState().currentCart.first())
+        advanceUntilIdle()
+        var cart = getSuccessState().currentCart
         assertEquals(1, cart.size)
-        assertEquals(1, cart[0].cantidad)
-        assertEquals(item.precio, viewModel.getTotal(), 0.001)
+        assertEquals(1, cart[0].quantity)
+        assertEquals(item.precio, viewModel.getTotal())
 
         viewModel.removeFromCart(cart.first())
-        cart = viewModel.currentCart.value
+        advanceUntilIdle()
+        cart = getSuccessState().currentCart
         assertTrue(cart.isEmpty())
-        assertEquals(0.0, viewModel.getTotal(), 0.001)
+        assertEquals(java.math.BigDecimal.ZERO, viewModel.getTotal())
     }
 
     @Test
     fun cartTotal_calculatesCorrectlyWithMultipleItems() = runTest {
         advanceUntilIdle()
-        val products = viewModel.filteredProducts.value
+        val products = getSuccessState().filteredProducts
         val clasico = products.first { it.categoria == "Clásicos" }  // $79.0
         val bebida = products.first { it.categoria == "Bebidas" }    // $22.0
-
+        
         viewModel.addToCart(clasico)
+        advanceUntilIdle()
         viewModel.addToCart(clasico)
+        advanceUntilIdle()
         viewModel.addToCart(bebida)
+        advanceUntilIdle()
 
-        val expected = (clasico.precio * 2) + bebida.precio
-        assertEquals(2, viewModel.currentCart.value.size)
-        assertEquals(expected, viewModel.getTotal(), 0.001)
+        val expected = (clasico.precio * java.math.BigDecimal("2")) + bebida.precio
+        assertEquals(2, getSuccessState().currentCart.size)
+        assertEquals(expected, viewModel.getTotal())
     }
 }

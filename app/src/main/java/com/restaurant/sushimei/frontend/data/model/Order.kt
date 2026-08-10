@@ -9,7 +9,7 @@ package com.restaurant.sushimei.frontend.data.model
 data class Order(
     val id: String,                // UUID generado en el cliente
     val items: List<ConfiguredProduct>,     // Snapshot inmutable del carrito al momento de cobrar
-    val total: Double,
+    val total: java.math.BigDecimal,
     val createdAt: Long = System.currentTimeMillis(),
     val status: OrderStatus = OrderStatus.PENDING
 )

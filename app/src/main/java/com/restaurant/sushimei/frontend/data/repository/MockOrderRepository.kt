@@ -42,7 +42,7 @@ object MockOrderRepository : IOrderRepository {
     private val _activeOrders = MutableStateFlow<List<Order>>(emptyList())
     val activeOrdersFlow: StateFlow<List<Order>> = _activeOrders.asStateFlow()
 
-    override suspend fun placeOrder(items: List<ConfiguredProduct>, total: Double) {
+    override suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal) {
         val newOrder = Order(
             id = UUID.randomUUID().toString().take(8).uppercase(),
             items = items,

@@ -3,7 +3,10 @@ package com.restaurant.sushimei.frontend.data.repository
 import android.content.Context
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.restaurant.sushimei.frontend.data.model.CatalogTagDto
 import com.restaurant.sushimei.frontend.data.model.MenuItem
+import com.restaurant.sushimei.frontend.data.model.QuoteRequestDto
+import com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -57,7 +60,7 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
                 menuItemId = menuItemId,
                 name = "Sushi Box Clásica",
                 standaloneOrderable = true,
-                basePrice = 250.0,
+                basePrice = java.math.BigDecimal("250.00"),
                 requiresConfiguration = true,
                 groups = listOf(
                     com.restaurant.sushimei.frontend.data.model.ConfigurationGroupDto(
@@ -67,8 +70,8 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
                         maxSelections = 2,
                         allowDuplicates = true,
                         options = listOf(
-                            com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto("12", "California", "Rollos Clásicos", 79.0, true, false, 0.0),
-                            com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto("28", "Camarón", "Rollos Camarón", 99.0, true, false, 20.0)
+                            com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto("12", "California", "Rollos Clásicos", java.math.BigDecimal("79.00"), true, false, java.math.BigDecimal.ZERO),
+                            com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto("28", "Camarón", "Rollos Camarón", java.math.BigDecimal("99.00"), true, false, java.math.BigDecimal("20.00"))
                         )
                     )
                 )
@@ -79,66 +82,78 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
             menuItemId = menuItemId,
             name = "Producto Simple",
             standaloneOrderable = true,
-            basePrice = 79.0,
+            basePrice = java.math.BigDecimal("79.00"),
             requiresConfiguration = false
         )
     }
 
-    override suspend fun quoteItem(request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto {
+    override suspend fun quoteItem(menuItemId: String, request: QuoteRequestDto): QuoteResponseDto {
         // Fake calculation for Sushi Box
         val isSushiBox = request.groups.any { it.groupId == 7 }
         
         if (isSushiBox) {
-            var adjustmentTotal = 0.0
+            var adjustmentTotal = java.math.BigDecimal.ZERO
             val resSelections = request.groups.first { it.groupId == 7 }.selections.map { sel ->
-                val adjustment = if (sel.menuItemId == "28") 20.0 else 0.0
-                adjustmentTotal += (adjustment * sel.quantity)
+                val adjustment = if (sel.menuItemId == "28") java.math.BigDecimal("20.00") else java.math.BigDecimal.ZERO
+                adjustmentTotal += (adjustment * java.math.BigDecimal(sel.quantity))
                 
                 com.restaurant.sushimei.frontend.data.model.QuoteResponseSelectionDto(
                     menuItemId = sel.menuItemId,
                     name = if (sel.menuItemId == "28") "Camarón" else "California",
                     quantity = sel.quantity,
-                    catalogUnitPrice = if (sel.menuItemId == "28") 99.0 else 79.0,
+                    catalogUnitPrice = if (sel.menuItemId == "28") java.math.BigDecimal("99.00") else java.math.BigDecimal("79.00"),
                     priceAdjustment = adjustment
                 )
             }
             
-            val unitTotal = 250.0 + adjustmentTotal
+            val unitTotal = java.math.BigDecimal("250.00") + adjustmentTotal
             
             return com.restaurant.sushimei.frontend.data.model.QuoteResponseDto(
-                menuItemId = "100",
+                menuItemId = menuItemId,
                 name = "Sushi Box Clásica",
                 quantity = request.quantity,
-                baseUnitPrice = 250.0,
-                baseTotal = 250.0 * request.quantity,
+                baseUnitPrice = java.math.BigDecimal("250.00"),
+                baseTotal = java.math.BigDecimal("250.00") * java.math.BigDecimal(request.quantity),
                 groups = listOf(
                     com.restaurant.sushimei.frontend.data.model.QuoteResponseGroupDto(7, "Elige tus rollos", resSelections)
                 ),
                 unitAdjustmentTotal = adjustmentTotal,
                 unitTotal = unitTotal,
-                total = unitTotal * request.quantity
+                total = unitTotal * java.math.BigDecimal(request.quantity)
             )
         }
         
         // Generic fallback
         return com.restaurant.sushimei.frontend.data.model.QuoteResponseDto(
-            menuItemId = "1",
+            menuItemId = menuItemId,
             name = "Item",
             quantity = request.quantity,
-            baseUnitPrice = 100.0,
-            baseTotal = 100.0 * request.quantity,
-            unitAdjustmentTotal = 0.0,
-            unitTotal = 100.0,
-            total = 100.0 * request.quantity
+            baseUnitPrice = java.math.BigDecimal("100.00"),
+            baseTotal = java.math.BigDecimal("100.00") * java.math.BigDecimal(request.quantity),
+            unitAdjustmentTotal = java.math.BigDecimal.ZERO,
+            unitTotal = java.math.BigDecimal("100.00"),
+            total = java.math.BigDecimal("100.00") * java.math.BigDecimal(request.quantity)
         )
     }
 
     override suspend fun getTags(): List<com.restaurant.sushimei.frontend.data.model.CatalogTagDto> {
         return listOf(
-            com.restaurant.sushimei.frontend.data.model.CatalogTagDto("1", "ROLL", "Rollo", true, 1, 1L),
-            com.restaurant.sushimei.frontend.data.model.CatalogTagDto("2", "ROLL_CLASSIC", "Rollo Clásico", true, 2, 1L),
-            com.restaurant.sushimei.frontend.data.model.CatalogTagDto("3", "TOPPING", "Topping", true, 3, 1L)
+            CatalogTagDto("1", "ROLL", "Rollo", true, 1, 1L),
+            CatalogTagDto("2", "ROLL_CLASSIC", "Rollo Clásico", true, 2, 1L),
+            CatalogTagDto("3", "TOPPING", "Topping", true, 3, 1L)
         )
+    }
+
+    override suspend fun createTag(tag: CatalogTagDto): CatalogTagDto {
+        return tag.copy(id = "mock-id")
+    }
+
+    override suspend fun updateTag(id: String, tag: CatalogTagDto): CatalogTagDto {
+        return tag
+    }
+
+    override suspend fun deleteTag(id: String) {
+        // no-op
     }
 
     // ── Privado ──────────────────────────────────────────────────────────────

@@ -148,7 +148,7 @@ fun BuilderGroupCard(
                 ) {
                     Column {
                         Text(option.name, style = MaterialTheme.typography.bodyMedium)
-                        Text(if (option.priceAdjustment > 0) "+$${option.priceAdjustment}" else "Incluido", style = MaterialTheme.typography.bodySmall)
+                        Text(if (option.priceAdjustment > java.math.BigDecimal.ZERO) "+$${option.priceAdjustment}" else "Incluido", style = MaterialTheme.typography.bodySmall)
                     }
                     IconButton(onClick = { onDeleteOption(option.menuItemId) }) {
                         Icon(Icons.Default.Delete, contentDescription = "Eliminar Opción", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
@@ -209,7 +209,7 @@ fun AddGroupDialog(
 @Composable
 fun AddOptionDialog(
     onDismiss: () -> Unit,
-    onAdd: (String, String?, Double) -> Unit
+    onAdd: (String, String?, java.math.BigDecimal) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var targetId by remember { mutableStateOf("") }
@@ -229,7 +229,7 @@ fun AddOptionDialog(
         },
         confirmButton = {
             Button(onClick = {
-                val priceAdj = priceAdjStr.toDoubleOrNull() ?: 0.0
+                val priceAdj = priceAdjStr.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
                 onAdd(name, targetId.takeIf { it.isNotBlank() }, priceAdj)
             }) {
                 Text("Agregar")
