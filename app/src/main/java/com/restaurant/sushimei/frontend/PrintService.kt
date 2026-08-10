@@ -3,6 +3,7 @@ package com.restaurant.sushimei.frontend
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
 import android.content.Context
+import com.restaurant.sushimei.frontend.data.model.Order
 import com.restaurant.sushimei.frontend.data.model.OrderRecord
 import java.io.OutputStream
 import java.util.UUID
@@ -41,6 +42,32 @@ class PrintService(private val context: Context) {
             true
         } catch (e: Exception) {
             println("⚠️ Error Bluetooth: ${e.message}")
+            false
+        }
+    }
+
+    /**
+     * Versión de impresión para órdenes locales del POS ([Order]).
+     * Genera el mismo formato ESC/POS que [printTicket] pero a partir del modelo de dominio.
+     */
+    @SuppressLint("MissingPermission")
+    fun printLocalOrderTicket(order: Order): Boolean {
+        val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
+
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) return false
+
+        val pairedDevices = bluetoothAdapter.bondedDevices
+        if (pairedDevices.isEmpty()) return false
+
+        return try {
+            val socket = pairedDevices.first().createRfcommSocketToServiceRecord(SPP_UUID)
+            socket.connect()
+            imprimirOrdenLocal(socket.outputStream, order)
+            socket.outputStream.flush()
+            socket.close()
+            true
+        } catch (e: Exception) {
             false
         }
     }
@@ -91,6 +118,51 @@ class PrintService(private val context: Context) {
         out.write("A cocinar!\n".toByteArray())
 
         // Espacio para que el ticket salga lo suficiente
+        out.write("\n\n\n\n".toByteArray())
+        out.write(cut)
+    }
+
+    private fun imprimirOrdenLocal(out: OutputStream, order: com.restaurant.sushimei.frontend.data.model.Order) {
+        val ESC: Byte = 0x1B
+        val GS: Byte = 0x1D
+
+        val init    = byteArrayOf(ESC, 0x40)
+        val center  = byteArrayOf(ESC, 0x61, 1)
+        val left    = byteArrayOf(ESC, 0x61, 0)
+        val boldOn  = byteArrayOf(ESC, 0x45, 1)
+        val boldOff = byteArrayOf(ESC, 0x45, 0)
+        val cut     = byteArrayOf(GS, 0x56, 0x41, 0x10)
+
+        out.write(init)
+
+        out.write(center)
+        out.write(boldOn)
+        out.write("SUSHI MEI\n".toByteArray())
+        out.write(boldOff)
+        out.write("================================\n".toByteArray())
+
+        out.write(left)
+        out.write("Ticket: #${order.id}\n".toByteArray())
+        out.write("Tipo: MOSTRADOR\n".toByteArray())
+        out.write("--------------------------------\n".toByteArray())
+
+        out.write(boldOn)
+        out.write("PRODUCTOS:\n".toByteArray())
+        out.write(boldOff)
+
+        order.items.forEach { configuredProduct ->
+            val linea = "${configuredProduct.quantity}x ${configuredProduct.name}" +
+                    "  \$${String.format("%.2f", configuredProduct.total)}\n"
+            out.write(linea.toByteArray())
+        }
+
+        out.write("================================\n".toByteArray())
+        out.write(boldOn)
+        out.write("TOTAL: \$${String.format("%.2f", order.total)}\n".toByteArray())
+        out.write(boldOff)
+
+        out.write(center)
+        out.write("A cocinar!\n".toByteArray())
         out.write("\n\n\n\n".toByteArray())
         out.write(cut)
     }

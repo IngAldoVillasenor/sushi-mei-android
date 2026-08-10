@@ -1,0 +1,970 @@
+[
+  {
+    "id": "1815549",
+    "nombre": "2 calpi 500ml",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815548",
+    "nombre": "2 coca cola 355ml",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815543",
+    "nombre": "3 Topping",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815544",
+    "nombre": "5 Topping",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 169.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1818425",
+    "nombre": "Aderezo chipotle",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1861005",
+    "nombre": "Aderezo ranch",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1818428",
+    "nombre": "Aderezo Sriracha",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1818426",
+    "nombre": "Aderezo tampico",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815585",
+    "nombre": "Agua de pepino c/limón",
+    "categoria": "Bebidas",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1906963",
+    "nombre": "Agua huglez",
+    "categoria": "Bebidas",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1870676",
+    "nombre": "Agua mineral",
+    "categoria": "Bebidas",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1870677",
+    "nombre": "Agua Natural",
+    "categoria": "Bebidas",
+    "precio": 15.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815511",
+    "nombre": "Avocado ebi",
+    "categoria": "Camarón",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🦐"
+  },
+  {
+    "id": "1815503",
+    "nombre": "Avocado roll",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1891987",
+    "nombre": "Baby Boneless BBQ",
+    "categoria": "Toppings",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🔥"
+  },
+  {
+    "id": "1894855",
+    "nombre": "Baby Boneless Bufalo",
+    "categoria": "Toppings",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🔥"
+  },
+  {
+    "id": "1815512",
+    "nombre": "Banana ebi",
+    "categoria": "Camarón",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🦐"
+  },
+  {
+    "id": "1815498",
+    "nombre": "Banana roll",
+    "categoria": "Clásicos",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍣"
+  },
+  {
+    "id": "1861002",
+    "nombre": "Boneless 200g (8pz)",
+    "categoria": "Complementos",
+    "precio": 119.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1861003",
+    "nombre": "Boneless 360g (12 pz)",
+    "categoria": "Complementos",
+    "precio": 149.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1861004",
+    "nombre": "Boneless 540g (18pz)",
+    "categoria": "Complementos",
+    "precio": 199.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1896717",
+    "nombre": "Cajita especial",
+    "categoria": "Servicio a domicilio",
+    "precio": 99.99,
+    "descripcion": "",
+    "emoji": "🛵"
+  },
+  {
+    "id": "1815509",
+    "nombre": "California ebi",
+    "categoria": "Camarón",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🦐"
+  },
+  {
+    "id": "1815495",
+    "nombre": "California roll",
+    "categoria": "Clásicos",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍣"
+  },
+  {
+    "id": "1815577",
+    "nombre": "Calpi 500ml",
+    "categoria": "Bebidas",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815579",
+    "nombre": "Calpi de Fresa 500ml",
+    "categoria": "Bebidas",
+    "precio": 35.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1894858",
+    "nombre": "Calpi de mango",
+    "categoria": "Bebidas",
+    "precio": 35.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815578",
+    "nombre": "Calpi mineral 500ml",
+    "categoria": "Bebidas",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815564",
+    "nombre": "Camarón Em/10",
+    "categoria": "Complementos",
+    "precio": 179.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815562",
+    "nombre": "Camarón Em/4",
+    "categoria": "Complementos",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815563",
+    "nombre": "Camarón Em/6",
+    "categoria": "Complementos",
+    "precio": 109.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815539",
+    "nombre": "Camarón familiar",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 289.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815542",
+    "nombre": "Camarón Supreme",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 449.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1894857",
+    "nombre": "Chiles serranos",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815500",
+    "nombre": "Chipotle roll",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1815502",
+    "nombre": "Chorizo roll",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1815537",
+    "nombre": "Clásica Familiar",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 199.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815540",
+    "nombre": "Clásica Supreme",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 339.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1905230",
+    "nombre": "Coca 1.75 ml",
+    "categoria": "Bebidas",
+    "precio": 45.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1900036",
+    "nombre": "Coca 600 ml",
+    "categoria": "Bebidas",
+    "precio": 28.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815574",
+    "nombre": "Coca Normal 355ml",
+    "categoria": "Bebidas",
+    "precio": 22.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815575",
+    "nombre": "Coca Sin Azúcar 355 ml",
+    "categoria": "Bebidas",
+    "precio": 22.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1900039",
+    "nombre": "Coffee americano/vainilla 230 ml",
+    "categoria": "Bebidas",
+    "precio": 30.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1870520",
+    "nombre": "Combo familiar",
+    "categoria": "Promociones",
+    "precio": 299.99,
+    "descripcion": "",
+    "emoji": "🏷️"
+  },
+  {
+    "id": "1855832",
+    "nombre": "Combo individual",
+    "categoria": "Promociones",
+    "precio": 99.99,
+    "descripcion": "",
+    "emoji": "🏷️"
+  },
+  {
+    "id": "1815517",
+    "nombre": "Combos pareja",
+    "categoria": "Promociones",
+    "precio": 179.99,
+    "descripcion": "",
+    "emoji": "🏷️"
+  },
+  {
+    "id": "1815508",
+    "nombre": "Empanizado ebi",
+    "categoria": "Camarón",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🦐"
+  },
+  {
+    "id": "1815499",
+    "nombre": "Empanizado especial",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1815494",
+    "nombre": "Empanizado roll",
+    "categoria": "Clásicos",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍣"
+  },
+  {
+    "id": "1815538",
+    "nombre": "Especial Familiar",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 249.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815541",
+    "nombre": "Especial Supreme",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 399.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815501",
+    "nombre": "Francés roll",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1815525",
+    "nombre": "Fuego manchego",
+    "categoria": "Toppings",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🔥"
+  },
+  {
+    "id": "1815576",
+    "nombre": "Fuze Tea 600ml",
+    "categoria": "Bebidas",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1894856",
+    "nombre": "Ghohan",
+    "categoria": "Yakimeshi",
+    "precio": 35.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815573",
+    "nombre": "Helado frito",
+    "categoria": "Postres",
+    "precio": 69.0,
+    "descripcion": "",
+    "emoji": "🍧"
+  },
+  {
+    "id": "1815588",
+    "nombre": "Jarra 1.5L",
+    "categoria": "Bebidas",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1900038",
+    "nombre": "Jugo Jumex lata 355 ml",
+    "categoria": "Bebidas",
+    "precio": 22.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1900037",
+    "nombre": "Jugo Jumex vidrio 413 ml",
+    "categoria": "Bebidas",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815566",
+    "nombre": "Kushiagues 1pz",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815567",
+    "nombre": "Kushiagues 4pz",
+    "categoria": "Complementos",
+    "precio": 69.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815568",
+    "nombre": "Kushiagues 6pz",
+    "categoria": "Complementos",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815580",
+    "nombre": "Limonada",
+    "categoria": "Bebidas",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815581",
+    "nombre": "Limonada Rosa",
+    "categoria": "Bebidas",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815518",
+    "nombre": "Lunes $69",
+    "categoria": "Promociones",
+    "precio": 69.0,
+    "descripcion": "",
+    "emoji": "🏷️"
+  },
+  {
+    "id": "1815514",
+    "nombre": "Mango roll",
+    "categoria": "Eztrella roll",
+    "precio": 109.0,
+    "descripcion": "",
+    "emoji": "🌟"
+  },
+  {
+    "id": "1900999",
+    "nombre": "Manzanita sol 600 ml",
+    "categoria": "Bebidas",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815507",
+    "nombre": "Mar y tierra",
+    "categoria": "Camarón",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🦐"
+  },
+  {
+    "id": "1815583",
+    "nombre": "Naranjada Mineral",
+    "categoria": "Bebidas",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815582",
+    "nombre": "Naranjada Natural",
+    "categoria": "Bebidas",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1871449",
+    "nombre": "Nico Nico",
+    "categoria": "Bebidas",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815570",
+    "nombre": "Nuggets 100gr",
+    "categoria": "Complementos",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815572",
+    "nombre": "Nutella roll",
+    "categoria": "Postres",
+    "precio": 69.0,
+    "descripcion": "",
+    "emoji": "🍧"
+  },
+  {
+    "id": "1815527",
+    "nombre": "Olas Cremosas",
+    "categoria": "Toppings",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🔥"
+  },
+  {
+    "id": "1815569",
+    "nombre": "Papas a la francesa 230gr",
+    "categoria": "Complementos",
+    "precio": 45.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815571",
+    "nombre": "Papas al gajo 250gr",
+    "categoria": "Complementos",
+    "precio": 49.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815554",
+    "nombre": "Papas gajo extra",
+    "categoria": "Volcán",
+    "precio": 19.0,
+    "descripcion": "",
+    "emoji": "🌋"
+  },
+  {
+    "id": "1815565",
+    "nombre": "Pepino Mei",
+    "categoria": "Complementos",
+    "precio": 49.99,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815510",
+    "nombre": "Philadelphia ebi",
+    "categoria": "Camarón",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🦐"
+  },
+  {
+    "id": "1815496",
+    "nombre": "Philadelphia roll",
+    "categoria": "Clásicos",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍣"
+  },
+  {
+    "id": "1815584",
+    "nombre": "Piña colada",
+    "categoria": "Bebidas",
+    "precio": 49.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815504",
+    "nombre": "Queso roll Frío",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1815505",
+    "nombre": "Queso roll Frito",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1863190",
+    "nombre": "Ramen Tonkotsu",
+    "categoria": "Ramen tonkotsu",
+    "precio": 189.99,
+    "descripcion": "",
+    "emoji": "🍜"
+  },
+  {
+    "id": "1815515",
+    "nombre": "Salmón roll",
+    "categoria": "Eztrella roll",
+    "precio": 119.0,
+    "descripcion": "",
+    "emoji": "🌟"
+  },
+  {
+    "id": "1818427",
+    "nombre": "Salsa anguila",
+    "categoria": "Complementos",
+    "precio": 20.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1819831",
+    "nombre": "Salsa Soya",
+    "categoria": "Complementos",
+    "precio": 15.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1815519",
+    "nombre": "Servicio a domicilio",
+    "categoria": "Servicio a domicilio",
+    "precio": 35.0,
+    "descripcion": "",
+    "emoji": "🛵"
+  },
+  {
+    "id": "1815520",
+    "nombre": "Servicio a domicilio",
+    "categoria": "Servicio a domicilio",
+    "precio": 40.0,
+    "descripcion": "",
+    "emoji": "🛵"
+  },
+  {
+    "id": "1815521",
+    "nombre": "Servicio a domicilio",
+    "categoria": "Servicio a domicilio",
+    "precio": 45.0,
+    "descripcion": "",
+    "emoji": "🛵"
+  },
+  {
+    "id": "1815522",
+    "nombre": "Servicio a domicilio",
+    "categoria": "Servicio a domicilio",
+    "precio": 50.0,
+    "descripcion": "",
+    "emoji": "🛵"
+  },
+  {
+    "id": "1815523",
+    "nombre": "Servicio a domicilio",
+    "categoria": "Servicio a domicilio",
+    "precio": 55.0,
+    "descripcion": "",
+    "emoji": "🛵"
+  },
+  {
+    "id": "1819832",
+    "nombre": "Soya picante",
+    "categoria": "Complementos",
+    "precio": 15.0,
+    "descripcion": "",
+    "emoji": "🥢"
+  },
+  {
+    "id": "1900040",
+    "nombre": "Strawberry 230 ml",
+    "categoria": "Bebidas",
+    "precio": 30.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815547",
+    "nombre": "Sushi box camarón",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 339.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815545",
+    "nombre": "Sushi box Clásica",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 299.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815546",
+    "nombre": "Sushi box especial",
+    "categoria": "Charolas/Sushi Box",
+    "precio": 319.0,
+    "descripcion": "",
+    "emoji": "🍱"
+  },
+  {
+    "id": "1815561",
+    "nombre": "Sushi Burger",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 59.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815559",
+    "nombre": "Sushi pop Clásica",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 25.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815560",
+    "nombre": "Sushi pop especial",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 29.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815558",
+    "nombre": "Sushi pop P/Arrachera",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815557",
+    "nombre": "Sushi pop P/Camarón",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815555",
+    "nombre": "Sushi pop P/Pollo",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815556",
+    "nombre": "Sushi pop P/Res",
+    "categoria": "Sushi pop premium/Burger",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍔"
+  },
+  {
+    "id": "1815513",
+    "nombre": "Takis roll",
+    "categoria": "Eztrella roll",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🌟"
+  },
+  {
+    "id": "1815506",
+    "nombre": "Tampico especial",
+    "categoria": "Especiales",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "⭐"
+  },
+  {
+    "id": "1815497",
+    "nombre": "Tampico roll",
+    "categoria": "Clásicos",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍣"
+  },
+  {
+    "id": "1815524",
+    "nombre": "Tsunami Roll",
+    "categoria": "Toppings",
+    "precio": 39.0,
+    "descripcion": "",
+    "emoji": "🔥"
+  },
+  {
+    "id": "1900041",
+    "nombre": "Vaso hielo",
+    "categoria": "Bebidas",
+    "precio": 9.0,
+    "descripcion": "",
+    "emoji": "🥤"
+  },
+  {
+    "id": "1815552",
+    "nombre": "Volcán camarón",
+    "categoria": "Volcán",
+    "precio": 109.0,
+    "descripcion": "",
+    "emoji": "🌋"
+  },
+  {
+    "id": "1815550",
+    "nombre": "Volcán clásica",
+    "categoria": "Volcán",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "🌋"
+  },
+  {
+    "id": "1815551",
+    "nombre": "Volcán especial",
+    "categoria": "Volcán",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🌋"
+  },
+  {
+    "id": "1815553",
+    "nombre": "Volcán eztrella",
+    "categoria": "Volcán",
+    "precio": 129.0,
+    "descripcion": "",
+    "emoji": "🌋"
+  },
+  {
+    "id": "1815535",
+    "nombre": "Yakimeshi E camarón",
+    "categoria": "Yakimeshi",
+    "precio": 119.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815536",
+    "nombre": "Yakimeshi E Mixto",
+    "categoria": "Yakimeshi",
+    "precio": 129.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815533",
+    "nombre": "Yakimeshi E Pollo",
+    "categoria": "Yakimeshi",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815534",
+    "nombre": "Yakimeshi E Res",
+    "categoria": "Yakimeshi",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815531",
+    "nombre": "Yakimeshi N camaron",
+    "categoria": "Yakimeshi",
+    "precio": 89.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815532",
+    "nombre": "Yakimeshi N Mixto",
+    "categoria": "Yakimeshi",
+    "precio": 99.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815529",
+    "nombre": "Yakimeshi N Pollo",
+    "categoria": "Yakimeshi",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  },
+  {
+    "id": "1815530",
+    "nombre": "Yakimeshi N Res",
+    "categoria": "Yakimeshi",
+    "precio": 79.0,
+    "descripcion": "",
+    "emoji": "🍚"
+  }
+]

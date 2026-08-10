@@ -23,34 +23,42 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.restaurant.sushimei.frontend.data.model.CartItem
+import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.MenuItem
+import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
+import com.restaurant.sushimei.frontend.data.local.provideOrderRepository
+import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
 import com.restaurant.sushimei.frontend.ui.pos.PosViewModel
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PosScreen(viewModel: PosViewModel = viewModel()) {
+fun PosScreen() {
+    val context = LocalContext.current
+    val viewModel: PosViewModel = viewModel(
+        factory = PosViewModel.factory(
+            menuRepository  = provideMenuRepository(context),
+            orderRepository = provideOrderRepository(context),
+            promotionRepository = providePromotionRepository(context)
+        )
+    )
+
     val selectedCategory by viewModel.selectedCategory.collectAsState()
     val cart by viewModel.currentCart.collectAsState()
+    val pricingPreview by viewModel.pricingPreview.collectAsState()
+    val filteredMenuItems by viewModel.filteredProducts.collectAsState()
+    val categories by viewModel.categories.collectAsState()
+    val isLoading by viewModel.isLoading.collectAsState()
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var lastChargedTotal by remember { mutableDoubleStateOf(0.0) }
-
-    // Filtrar los productos según la categoría seleccionada
-    val filteredMenuItems = remember(selectedCategory) {
-        if (selectedCategory == "Todos") {
-            viewModel.menuItems
-        } else {
-            viewModel.menuItems.filter { it.categoria == selectedCategory }
-        }
-    }
 
     if (showSuccessDialog) {
         AlertDialog(
@@ -87,6 +95,8 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
         )
     }
 
+    var configuringItemId by remember { mutableStateOf<String?>(null) }
+
     Row(modifier = Modifier.fillMaxSize()) {
         // ==========================================
         // LADO IZQUIERDO: 70% Catálogo de Productos
@@ -118,15 +128,15 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
                 )
             }
 
-            // Barra de Categorías (FilterChips)
+            // Barra de Categorías (FilterChips) — derivadas del JSON real
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(bottom = 16.dp)
             ) {
-                items(viewModel.categories) { category ->
-                    val isSelected = category == selectedCategory
+                items(categories) { category ->
+                    val isSelected = (selectedCategory ?: "Todos") == category
                     FilterChip(
                         selected = isSelected,
                         onClick = { viewModel.selectCategory(category) },
@@ -152,11 +162,11 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(filteredMenuItems, key = { it.id }) { item ->
-                    val cartQuantity = cart.find { it.menuItem.id == item.id }?.cantidad ?: 0
+                    val cartQuantity = cart.filter { it.menuItemId == item.id }.sumOf { it.quantity }
                     MenuItemCard(
                         menuItem = item,
                         cartQuantity = cartQuantity,
-                        onAddToCart = { viewModel.addToCart(item) }
+                        onAddToCart = { configuringItemId = item.id }
                     )
                 }
             }
@@ -214,7 +224,7 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
 
             HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp))
 
-            // Lista de CartItems en Vivo
+            // Lista de ConfiguredProducts en Vivo
             if (cart.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -243,14 +253,15 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(cart, key = { it.menuItem.id }) { cartItem ->
+                    items(cart, key = { it.id }) { configuredProduct ->
                         CartItemRow(
-                            cartItem = cartItem,
-                            onIncrement = { viewModel.addToCart(cartItem.menuItem) },
-                            onDecrement = { viewModel.removeFromCart(cartItem) },
-                            onDelete = { viewModel.deleteFromCart(cartItem) }
+                            configuredProduct = configuredProduct,
+                            onIncrement = { configuringItemId = configuredProduct.menuItemId }, // Para incrementar, abrimos de nuevo el configurador por ahora
+                            onDecrement = { viewModel.removeFromCart(configuredProduct) },
+                            onDelete = { viewModel.deleteFromCart(configuredProduct) }
                         )
                     }
                 }
@@ -259,7 +270,7 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
             // Resumen de Total y Botón Cobrar
-            val total = viewModel.getTotal()
+            val total = pricingPreview.total
 
             Card(
                 modifier = Modifier
@@ -269,25 +280,79 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
                     containerColor = MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(16.dp)
                 ) {
-                    Text(
-                        text = "Total a Pagar:",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        text = "$${String.format(Locale.US, "%.2f", total)}",
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                    // Subtotal
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            text = "Subtotal:",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "$${String.format(Locale.US, "%.2f", pricingPreview.subtotal)}",
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                    }
+
+                    // Adjustments (Promociones)
+                    pricingPreview.adjustments.forEach { adjustment ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = adjustment.label,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = Color(0xFFC62828) // Red for discounts
+                            )
+                            Text(
+                                text = "$${String.format(Locale.US, "%.2f", adjustment.amount)}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC62828)
+                            )
+                        }
+                    }
+
+                    if (pricingPreview.adjustments.isNotEmpty()) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 8.dp),
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
+                        )
+                    } else {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+
+                    // Total
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Total a Pagar:",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "$${String.format(Locale.US, "%.2f", total)}",
+                            style = MaterialTheme.typography.headlineMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
 
@@ -295,7 +360,7 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
                 onClick = {
                     if (cart.isNotEmpty()) {
                         lastChargedTotal = total
-                        viewModel.clearCart()
+                        viewModel.cobrarOrden()
                         showSuccessDialog = true
                     }
                 },
@@ -319,9 +384,46 @@ fun PosScreen(viewModel: PosViewModel = viewModel()) {
                     fontWeight = FontWeight.Bold
                 )
             }
+        } // Fin de Column Derecho
+    } // Fin de Row Principal
+
+    // Modal del Configurador
+    configuringItemId?.let { itemId ->
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { configuringItemId = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .fillMaxHeight(0.9f)
+                    .clip(MaterialTheme.shapes.large),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                val context = androidx.compose.ui.platform.LocalContext.current
+                val configViewModel: com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel = 
+                    androidx.lifecycle.viewmodel.compose.viewModel(
+                        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
+                            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                val mockRepo = com.restaurant.sushimei.frontend.data.repository.MockMenuRepository(context)
+                                return com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel(mockRepo) as T
+                            }
+                        }
+                    )
+                
+                com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen(
+                    menuItemId = itemId,
+                    viewModel = configViewModel,
+                    onDismiss = { configuringItemId = null },
+                    onAddToCart = { configuredProduct ->
+                        viewModel.addConfiguredProduct(configuredProduct)
+                        configuringItemId = null
+                    }
+                )
+            }
         }
     }
-}
+} // Fin de PosScreen
 
 @Composable
 fun MenuItemCard(
@@ -407,26 +509,27 @@ fun MenuItemCard(
 
 @Composable
 fun CartItemRow(
-    cartItem: CartItem,
+    configuredProduct: ConfiguredProduct,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        ),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Column(modifier = Modifier.padding(10.dp)) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "${cartItem.menuItem.emoji} ${cartItem.menuItem.nombre}",
+                    text = configuredProduct.name,
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
@@ -435,7 +538,7 @@ fun CartItemRow(
                 )
 
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", cartItem.subtotal)}",
+                    text = "$${String.format(Locale.US, "%.2f", configuredProduct.total)}",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
@@ -450,7 +553,7 @@ fun CartItemRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", cartItem.menuItem.precio)} c/u",
+                    text = "$${String.format(Locale.US, "%.2f", configuredProduct.baseUnitPrice)} c/u",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -468,7 +571,7 @@ fun CartItemRow(
                     }
 
                     Text(
-                        text = "${cartItem.cantidad}",
+                        text = "${configuredProduct.quantity}",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 8.dp)

@@ -1,21 +1,37 @@
 package com.restaurant.sushimei.frontend
 
 import android.content.Context
+
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.restaurant.sushimei.frontend.data.api.RetrofitClient
+import com.restaurant.sushimei.frontend.data.local.provideOrderRepository
+import com.restaurant.sushimei.frontend.data.model.Order
 import com.restaurant.sushimei.frontend.data.model.OrderRecord
+import com.restaurant.sushimei.frontend.data.repository.IOrderRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class KitchenViewModel : ViewModel() {
+class KitchenViewModel(
+    private val orderRepository: IOrderRepository
+) : ViewModel() {
 
-    private val _orders = MutableStateFlow<List<OrderRecord>>(emptyList())
-    val orders: StateFlow<List<OrderRecord>> = _orders
+    // --- Órdenes del backend (Retrofit) ---
+    // Se mantiene intacto. Falla silenciosamente hasta que el backend exista.
+    private val _backendOrders = MutableStateFlow<List<OrderRecord>>(emptyList())
+    val backendOrders: StateFlow<List<OrderRecord>> = _backendOrders.asStateFlow()
+
+    // --- Órdenes locales del POS (IOrderRepository inyectado) ---
+    val localOrders: StateFlow<List<Order>> = orderRepository.activeOrders
+
+    // Alias legacy para KitchenScreen (evita romper el código existente de Retrofit)
+    val orders: StateFlow<List<OrderRecord>> = _backendOrders
 
     init {
         startPollingOrders()
@@ -24,30 +40,62 @@ class KitchenViewModel : ViewModel() {
     private fun startPollingOrders() {
         viewModelScope.launch {
             while (true) {
-                fetchOrders()
+                fetchBackendOrders()
                 delay(5000)
             }
         }
     }
 
-    // Extraemos la consulta para reutilizarla
-    private suspend fun fetchOrders() {
+    private suspend fun fetchBackendOrders() {
         try {
             val response = RetrofitClient.instance.getActiveOrders()
             if (response.isSuccessful) {
-                response.body()?.let { orderList ->
-                    _orders.value = orderList
-                }
+                response.body()?.let { _backendOrders.value = it }
             }
         } catch (e: Exception) {
-            println("⚠️ Error conectando: ${e.message}")
+            // Falla silenciosamente — el backend aún no existe
         }
     }
+
+    // --- Acciones sobre órdenes locales ---
+
+    /**
+     * Acepta una orden local del POS → PENDING → PREPARING.
+     * Adicionalmente imprime el ticket Bluetooth.
+     */
+    fun acceptLocalOrder(order: Order, context: Context) {
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                try {
+                    val printService = PrintService(context)
+                    printService.printLocalOrderTicket(order)
+                } catch (e: Exception) {
+                    // La impresión es opcional — la orden avanza de todas formas
+                }
+            }
+            orderRepository.acceptOrder(order.id)
+        }
+    }
+
+    /** Cocina terminó → PREPARING → READY. La orden desaparece de la vista de cocina. */
+    fun markLocalOrderReady(orderId: String) {
+        viewModelScope.launch {
+            orderRepository.markReady(orderId)
+        }
+    }
+
+    /** Cliente/repartidor recoge → READY → DISPATCHED. */
+    fun dispatchLocalOrder(orderId: String) {
+        viewModelScope.launch {
+            orderRepository.dispatch(orderId)
+        }
+    }
+
+    // --- Acciones sobre órdenes del backend (Retrofit) ---
 
     fun acceptOrder(order: OrderRecord, context: Context) {
         viewModelScope.launch {
             try {
-                // 1. Ejecutamos el Bluetooth en un hilo secundario (IO) para no congelar la app
                 val printSuccess = withContext(Dispatchers.IO) {
                     val printService = PrintService(context)
                     printService.printTicket(order)
@@ -59,11 +107,9 @@ class KitchenViewModel : ViewModel() {
                     println("⚠️ Falló la impresión, pero la orden avanzará a cocina de todos modos.")
                 }
 
-                // 2. Mandamos el aviso a Spring Boot de que cambia a PREPARING
                 val response = RetrofitClient.instance.acceptAndPrepareOrder(order.id)
                 if (response.isSuccessful) {
-                    // 3. Forzamos la actualización visual para que pase a la columna derecha
-                    fetchOrders()
+                    fetchBackendOrders()
                 }
             } catch (e: Exception) {
                 println("⚠️ Error procesando la orden: ${e.message}")
@@ -71,17 +117,12 @@ class KitchenViewModel : ViewModel() {
         }
     }
 
-    // Method que se ejecutará al presionar "Despachar"
     fun completeOrder(orderId: Long) {
         viewModelScope.launch {
             try {
-                // 1. Mandamos el aviso al servidor de que cambia a COMPLETED
                 val response = RetrofitClient.instance.completeOrder(orderId)
-
                 if (response.isSuccessful) {
-                    // 2. Si es exitoso, actualizamos la pantalla.
-                    // Como la base de datos ya no lo reportará ni como PENDING ni PREPARING, desaparecerá.
-                    fetchOrders()
+                    fetchBackendOrders()
                 }
             } catch (e: Exception) {
                 println("⚠️ Error despachando orden: ${e.message}")
@@ -94,11 +135,21 @@ class KitchenViewModel : ViewModel() {
             try {
                 val response = RetrofitClient.instance.validatePayment(orderId)
                 if (response.isSuccessful) {
-                    fetchOrders() // Actualizamos la lista para que aparezca el botón de Imprimir
+                    fetchBackendOrders()
                 }
             } catch (e: Exception) {
                 println("⚠️ Error validando pago: ${e.message}")
             }
         }
+    }
+
+    companion object {
+        fun factory(context: Context): ViewModelProvider.Factory =
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return KitchenViewModel(provideOrderRepository(context)) as T
+                }
+            }
     }
 }

@@ -1,115 +1,158 @@
 package com.restaurant.sushimei.frontend.ui.pos
 
 import androidx.lifecycle.ViewModel
-import com.restaurant.sushimei.frontend.data.model.CartItem
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.MenuItem
+import com.restaurant.sushimei.frontend.data.repository.IMenuRepository
+import com.restaurant.sushimei.frontend.data.repository.IOrderRepository
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import com.restaurant.sushimei.frontend.data.model.OrderPricingPreview
+import com.restaurant.sushimei.frontend.data.repository.IPromotionRepository
 
-class PosViewModel : ViewModel() {
+/**
+ * ViewModel del módulo Punto de Venta.
+ *
+ * Gestiona el catálogo de productos (cargado desde [IMenuRepository]),
+ * el filtrado por categoría y el estado del carrito de compras.
+ *
+ * Al cobrar, delega en [IOrderRepository] para publicar la orden al módulo
+ * de Cocina a través del singleton compartido [MockOrderRepository].
+ */
+class PosViewModel(
+    private val menuRepository: IMenuRepository,
+    private val orderRepository: IOrderRepository,
+    private val promotionRepository: IPromotionRepository
+) : ViewModel() {
 
-    val menuItems: List<MenuItem> = listOf(
-        MenuItem(
-            id = "1",
-            nombre = "Empanizado Ebi",
-            categoria = "Clásicos",
-            precio = 135.0,
-            descripcion = "Camarón, queso crema y empanizado crujiente",
-            emoji = "🍤"
-        ),
-        MenuItem(
-            id = "2",
-            nombre = "Roll California",
-            categoria = "Clásicos",
-            precio = 95.0,
-            descripcion = "Surimi, pepino, aguacate y ajonjolí",
-            emoji = "🥑"
-        ),
-        MenuItem(
-            id = "3",
-            nombre = "Roll Philadelphia",
-            categoria = "Clásicos",
-            precio = 110.0,
-            descripcion = "Salmón fresco, queso crema y ajonjolí",
-            emoji = "🍣"
-        ),
-        MenuItem(
-            id = "4",
-            nombre = "Fuego Manchego",
-            categoria = "Especiales",
-            precio = 165.0,
-            descripcion = "Roll gratinado con queso manchego y serrano",
-            emoji = "🔥"
-        ),
-        MenuItem(
-            id = "5",
-            nombre = "Charola Chica",
-            categoria = "Especiales",
-            precio = 320.0,
-            descripcion = "Combinación de 3 rolls a elegir + edamames",
-            emoji = "🍱"
-        ),
-        MenuItem(
-            id = "6",
-            nombre = "Dragon Roll",
-            categoria = "Especiales",
-            precio = 175.0,
-            descripcion = "Anguila, cobertura de aguacate y salsa unagi",
-            emoji = "🐉"
-        ),
-        MenuItem(
-            id = "7",
-            nombre = "Coca Cola 600ml",
-            categoria = "Bebidas",
-            precio = 35.0,
-            descripcion = "Refresco embotellado frío",
-            emoji = "🥤"
-        ),
-        MenuItem(
-            id = "8",
-            nombre = "Té Helado Jasmine",
-            categoria = "Bebidas",
-            precio = 40.0,
-            descripcion = "Té verde preparado en casa con toque de limón",
-            emoji = "🍵"
-        )
-    )
+    // --- Estado interno ---
+    private val _allProducts = MutableStateFlow<List<MenuItem>>(emptyList())
+    private val _selectedCategory = MutableStateFlow<String?>(null)
+    private val _currentCart = MutableStateFlow<List<ConfiguredProduct>>(emptyList())
+    private val _isLoading = MutableStateFlow(true)
+    private val _pricingPreview = MutableStateFlow(OrderPricingPreview(0.0, emptyList(), 0.0))
 
-    val categories: List<String> = listOf("Todos", "Clásicos", "Especiales", "Bebidas")
+    // --- Estado público expuesto a la UI ---
 
-    private val _selectedCategory = MutableStateFlow("Todos")
-    val selectedCategory: StateFlow<String> = _selectedCategory.asStateFlow()
+    val isLoading: StateFlow<Boolean> = _isLoading.asStateFlow()
 
-    private val _currentCart = MutableStateFlow<List<CartItem>>(emptyList())
-    val currentCart: StateFlow<List<CartItem>> = _currentCart.asStateFlow()
+    /**
+     * Lista de categorías únicas derivada de los productos cargados.
+     * El primer elemento siempre es "Todos" (filtro global).
+     */
+    val categories: StateFlow<List<String>> = _allProducts
+        .combine(MutableStateFlow(Unit)) { products, _ ->
+            buildList {
+                add("Todos")
+                addAll(products.map { it.categoria }.distinct().sorted())
+            }
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, listOf("Todos"))
+
+    /**
+     * Productos filtrados según la categoría seleccionada.
+     * Si [_selectedCategory] es null o "Todos", devuelve todos los productos.
+     */
+    val filteredProducts: StateFlow<List<MenuItem>> = combine(
+        _allProducts, _selectedCategory
+    ) { products, category ->
+        if (category == null || category == "Todos") products
+        else products.filter { it.categoria == category }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    val selectedCategory: StateFlow<String?> = _selectedCategory.asStateFlow()
+    val currentCart: StateFlow<List<ConfiguredProduct>> = _currentCart.asStateFlow()
+    val pricingPreview: StateFlow<OrderPricingPreview> = _pricingPreview.asStateFlow()
+
+    init {
+        // Observa el Flow reactivo de Room — el catálogo del POS se actualiza
+        // automáticamente cuando el dueño edita un producto en Gestión de Menú.
+        viewModelScope.launch {
+            _isLoading.value = true
+            menuRepository.observeActive().collect { products ->
+                _allProducts.value = products
+                _isLoading.value = false
+            }
+        }
+
+        viewModelScope.launch {
+            _currentCart.collect { cart ->
+                val preview = promotionRepository.quoteCart(cart)
+                _pricingPreview.value = preview
+            }
+        }
+    }
+
+    // --- Acciones de categoría ---
 
     fun selectCategory(category: String) {
         _selectedCategory.value = category
     }
 
+    // --- Acciones del carrito ---
+
     fun addToCart(menuItem: MenuItem) {
         val currentList = _currentCart.value.toMutableList()
-        val index = currentList.indexOfFirst { it.menuItem.id == menuItem.id }
+        val index = currentList.indexOfFirst { it.menuItemId == menuItem.id }
 
         if (index >= 0) {
             val existing = currentList[index]
-            currentList[index] = existing.copy(cantidad = existing.cantidad + 1)
+            currentList[index] = existing.copy(
+                quantity = existing.quantity + 1,
+                total = existing.unitTotal * (existing.quantity + 1)
+            )
         } else {
-            currentList.add(CartItem(menuItem = menuItem, cantidad = 1))
+            currentList.add(ConfiguredProduct(
+                menuItemId = menuItem.id, 
+                name = menuItem.nombre,
+                quantity = 1,
+                baseUnitPrice = menuItem.precio
+            ))
         }
 
         _currentCart.value = currentList
     }
 
-    fun removeFromCart(cartItem: CartItem) {
+    fun addConfiguredProduct(configuredProduct: ConfiguredProduct) {
         val currentList = _currentCart.value.toMutableList()
-        val index = currentList.indexOfFirst { it.menuItem.id == cartItem.menuItem.id }
+        // Here we could try to merge identical configurations, but for now we'll just add it as a new line item.
+        // Or we compare if they have the same configuration. Since it's complex, we just add it.
+        // Wait, it's better to check if an exact match exists.
+        val index = currentList.indexOfFirst { 
+            it.menuItemId == configuredProduct.menuItemId && it.groups == configuredProduct.groups 
+        }
 
         if (index >= 0) {
             val existing = currentList[index]
-            if (existing.cantidad > 1) {
-                currentList[index] = existing.copy(cantidad = existing.cantidad - 1)
+            currentList[index] = existing.copy(
+                quantity = existing.quantity + configuredProduct.quantity,
+                total = existing.unitTotal * (existing.quantity + configuredProduct.quantity)
+            )
+        } else {
+            currentList.add(configuredProduct)
+        }
+
+        _currentCart.value = currentList
+    }
+
+    fun removeFromCart(configuredProduct: ConfiguredProduct) {
+        val currentList = _currentCart.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == configuredProduct.id }
+
+        if (index >= 0) {
+            val existing = currentList[index]
+            if (existing.quantity > 1) {
+                currentList[index] = existing.copy(
+                    quantity = existing.quantity - 1,
+                    total = existing.unitTotal * (existing.quantity - 1)
+                )
             } else {
                 currentList.removeAt(index)
             }
@@ -117,9 +160,9 @@ class PosViewModel : ViewModel() {
         }
     }
 
-    fun deleteFromCart(cartItem: CartItem) {
+    fun deleteFromCart(configuredProduct: ConfiguredProduct) {
         val currentList = _currentCart.value.toMutableList()
-        currentList.removeAll { it.menuItem.id == cartItem.menuItem.id }
+        currentList.removeAll { it.id == configuredProduct.id }
         _currentCart.value = currentList
     }
 
@@ -127,7 +170,37 @@ class PosViewModel : ViewModel() {
         _currentCart.value = emptyList()
     }
 
+    /**
+     * Cierra la orden actual: la publica en [IOrderRepository] (visible para Cocina)
+     * y luego limpia el carrito.
+     */
+    fun cobrarOrden() {
+        val items = _currentCart.value
+        if (items.isEmpty()) return
+        val total = _pricingPreview.value.total
+        viewModelScope.launch {
+            orderRepository.placeOrder(items, total)
+            clearCart()
+        }
+    }
+
     fun getTotal(): Double {
-        return _currentCart.value.sumOf { it.subtotal }
+        return _pricingPreview.value.total
+    }
+
+    // --- Factory para creación manual (sin Hilt) ---
+
+    companion object {
+        fun factory(
+            menuRepository: IMenuRepository,
+            orderRepository: IOrderRepository,
+            promotionRepository: IPromotionRepository
+        ): ViewModelProvider.Factory =
+            object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return PosViewModel(menuRepository, orderRepository, promotionRepository) as T
+                }
+            }
     }
 }
