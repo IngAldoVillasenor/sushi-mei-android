@@ -23,13 +23,13 @@ interface IOrderRepository {
     suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal)
 
     /** Cocina acepta la orden → PENDING → PREPARING. */
-    suspend fun acceptOrder(orderId: String)
+    suspend fun acceptOrder(orderId: Long)
 
     /** Cocina termina la orden → PREPARING → READY. Desaparece de la vista de cocina. */
-    suspend fun markReady(orderId: String)
+    suspend fun markReady(orderId: Long)
 
     /** Cliente/repartidor recoge → READY → DISPATCHED. Se elimina de la lista activa. */
-    suspend fun dispatch(orderId: String)
+    suspend fun dispatch(orderId: Long)
 
     /**
      * Flow reactivo de órdenes DISPATCHED desde el inicio del día actual.

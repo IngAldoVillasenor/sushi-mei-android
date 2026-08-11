@@ -32,11 +32,11 @@ interface OrderDao {
 
     /** Actualiza el status de una orden por su id. */
     @Query("UPDATE orders SET status = :status WHERE id = :id")
-    suspend fun updateStatus(id: String, status: String)
+    suspend fun updateStatus(id: Long, status: String)
 
     // --- Solo para tests ---
     @Query("SELECT * FROM orders WHERE id = :id")
-    suspend fun findById(id: String): OrderEntity?
+    suspend fun getOrderById(id: Long): OrderEntity?
 
     @Query("SELECT COUNT(*) FROM orders WHERE status != 'DISPATCHED'")
     suspend fun countActive(): Int

@@ -1,6 +1,11 @@
 package com.restaurant.sushimei.frontend.data.model
 
-import java.util.UUID
+import java.math.BigDecimal
+import java.time.Instant
+
+// ============================================================================
+// D O M A I N   M O D E L S
+// ============================================================================
 
 enum class PromotionTargetType {
     TAG,
@@ -9,7 +14,7 @@ enum class PromotionTargetType {
 
 data class PromotionTarget(
     val type: PromotionTargetType,
-    val targetId: String,
+    val targetId: Long,
     val displayName: String
 )
 
@@ -22,25 +27,86 @@ data class PromotionSchedule(
 
 sealed class PromotionBenefit {
     data class FixedUnitPrice(
-        val amount: java.math.BigDecimal
+        val amount: BigDecimal
     ) : PromotionBenefit()
 
-    data class BuyXPayY(
+    data class BuyXGetYSameItem(
         val buyQuantity: Int,
-        val payQuantity: Int,
+        val rewardQuantity: Int,
         val repeat: Boolean
     ) : PromotionBenefit()
 }
 
 data class Promotion(
-    val id: String = UUID.randomUUID().toString(),
+    val id: Long,
     val name: String,
     val active: Boolean,
     val priority: Int,
-    val validFrom: String? = null,
-    val validUntil: String? = null,
+    val validFrom: Instant? = null,
+    val validUntil: Instant? = null,
     val schedule: PromotionSchedule,
-    val target: PromotionTarget,
+    val targets: List<PromotionTarget>,
     val benefit: PromotionBenefit,
     val version: Long = 1L
+)
+
+// ============================================================================
+// W I R E   D T O s  (Promotions)
+// ============================================================================
+
+data class PromotionResponseDto(
+    val id: Long,
+    val name: String,
+    val active: Boolean,
+    val priority: Int,
+    val validFrom: Instant?,
+    val validUntil: Instant?,
+    val schedule: PromotionScheduleDto,
+    val targets: List<PromotionTargetDto>,
+    val benefit: PromotionBenefitDto,
+    val version: Long
+)
+
+data class PromotionScheduleDto(
+    val daysOfWeek: Set<Int>,
+    val allDay: Boolean,
+    val startTime: String?,
+    val endTime: String?
+)
+
+data class PromotionTargetDto(
+    val type: String, // "TAG" or "ITEM"
+    val targetId: Long,
+    val displayName: String
+)
+
+data class PromotionBenefitDto(
+    val type: String, // "FIXED_UNIT_PRICE" or "BUY_X_GET_Y_SAME_ITEM"
+    val amount: BigDecimal? = null,
+    val buyQuantity: Int? = null,
+    val rewardQuantity: Int? = null,
+    val repeat: Boolean? = null
+)
+
+data class PromotionCreateRequestDto(
+    val name: String,
+    val active: Boolean,
+    val priority: Int,
+    val validFrom: Instant?,
+    val validUntil: Instant?,
+    val schedule: PromotionScheduleDto,
+    val targets: List<PromotionTargetDto>,
+    val benefit: PromotionBenefitDto
+)
+
+data class PromotionUpdateRequestDto(
+    val name: String,
+    val active: Boolean,
+    val priority: Int,
+    val validFrom: Instant?,
+    val validUntil: Instant?,
+    val schedule: PromotionScheduleDto,
+    val targets: List<PromotionTargetDto>,
+    val benefit: PromotionBenefitDto,
+    val version: Long
 )

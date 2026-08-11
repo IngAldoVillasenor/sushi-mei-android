@@ -1,24 +1,96 @@
 package com.restaurant.sushimei.frontend.data.model
 
-import com.google.gson.annotations.SerializedName
 import java.math.BigDecimal
+import java.time.Instant
 
 // ============================================================================
-// W I R E   D T O s
+// E R R O R   D T O s
 // ============================================================================
 
-data class CatalogItemDto(
-    val id: String,
+data class ApiErrorDto(
+    val code: String,
+    val message: String
+)
+
+// ============================================================================
+// C A T A L O G   D T O s
+// ============================================================================
+
+data class CatalogTagSummary(
+    val id: Long,
+    val code: String,
+    val name: String,
+    val active: Boolean,
+    val displayOrder: Int
+)
+
+data class MenuItemResponse(
+    val id: Long,
     val name: String,
     val description: String?,
     val category: String,
     val price: BigDecimal,
     val active: Boolean,
     val available: Boolean,
-    val displayOrder: Int,
     val standaloneOrderable: Boolean,
-    val tags: List<String>?,
+    val displayOrder: Int,
+    val tags: List<CatalogTagSummary>,
+    val version: Long,
+    val createdAt: Instant,
+    val updatedAt: Instant
+)
+
+data class MenuItemCreateRequestDto(
+    val name: String,
+    val description: String?,
+    val category: String,
+    val price: BigDecimal,
+    val available: Boolean,
+    val standaloneOrderable: Boolean,
+    val displayOrder: Int
+)
+
+data class MenuItemUpdateRequestDto(
+    val name: String,
+    val description: String?,
+    val category: String,
+    val price: BigDecimal,
+    val active: Boolean,
+    val available: Boolean,
+    val standaloneOrderable: Boolean,
+    val displayOrder: Int,
     val version: Long
+)
+
+// ----------------------------------------------------------------------------
+// Tags API
+// ----------------------------------------------------------------------------
+
+data class CatalogTagDto(
+    val id: Long,
+    val code: String,
+    val name: String,
+    val active: Boolean,
+    val displayOrder: Int,
+    val version: Long
+)
+
+data class TagCreateRequestDto(
+    val code: String,
+    val name: String,
+    val displayOrder: Int
+)
+
+data class TagUpdateRequestDto(
+    val name: String,
+    val active: Boolean,
+    val displayOrder: Int,
+    val version: Long
+)
+
+data class ItemTagsUpdateRequestDto(
+    val itemVersion: Long,
+    val tagIds: List<Long>
 )
 
 // ----------------------------------------------------------------------------
@@ -26,7 +98,7 @@ data class CatalogItemDto(
 // ----------------------------------------------------------------------------
 
 data class ConfigurationResponseDto(
-    val menuItemId: String,
+    val menuItemId: Long,
     val name: String,
     val standaloneOrderable: Boolean,
     val basePrice: BigDecimal,
@@ -35,7 +107,7 @@ data class ConfigurationResponseDto(
 )
 
 data class ConfigurationGroupDto(
-    val id: Int,
+    val id: Long,
     val name: String,
     val minSelections: Int,
     val maxSelections: Int,
@@ -44,7 +116,7 @@ data class ConfigurationGroupDto(
 )
 
 data class ConfigurationOptionDto(
-    val menuItemId: String,
+    val menuItemId: Long,
     val name: String,
     val category: String,
     val catalogPrice: BigDecimal,
@@ -54,45 +126,69 @@ data class ConfigurationOptionDto(
 )
 
 // ----------------------------------------------------------------------------
-// Quote APIs
+// Quote APIs (Phase 6A2 - Phase 6A3)
 // ----------------------------------------------------------------------------
 
 data class QuoteRequestDto(
+    val lines: List<QuoteRequestLineDto> = emptyList()
+)
+
+data class QuoteRequestLineDto(
+    val lineKey: String,
+    val menuItemId: Long,
     val quantity: Int,
-    val groups: List<QuoteRequestGroupDto> = emptyList()
+    val groups: List<QuoteRequestGroupDto> = emptyList(),
+    val rewardConfigurations: List<QuoteRequestRewardConfigDto> = emptyList()
 )
 
 data class QuoteRequestGroupDto(
-    val groupId: Int,
+    val groupId: Long,
     val selections: List<QuoteRequestSelectionDto> = emptyList()
 )
 
 data class QuoteRequestSelectionDto(
-    val menuItemId: String,
+    val menuItemId: Long,
     val quantity: Int,
     val groups: List<QuoteRequestGroupDto> = emptyList()
 )
 
+data class QuoteRequestRewardConfigDto(
+    val rewardOrdinal: Int,
+    val groups: List<QuoteRequestGroupDto> = emptyList()
+)
+
 data class QuoteResponseDto(
-    val menuItemId: String,
-    val name: String,
-    val quantity: Int,
-    val baseUnitPrice: BigDecimal,
-    val baseTotal: BigDecimal,
-    val groups: List<QuoteResponseGroupDto> = emptyList(),
-    val unitAdjustmentTotal: BigDecimal,
-    val unitTotal: BigDecimal,
+    val quotedAt: Instant,
+    val businessTimeZone: String,
+    val lines: List<QuoteResponseLineDto> = emptyList(),
+    val catalogBaseSubtotal: BigDecimal,
+    val configurationAdjustmentTotal: BigDecimal,
+    val promotionAdjustmentTotal: BigDecimal,
     val total: BigDecimal
 )
 
+data class QuoteResponseLineDto(
+    val lineKey: String,
+    val menuItemId: Long,
+    val name: String,
+    val quantity: Int,
+    val catalogBaseUnitPrice: BigDecimal,
+    val chargedBaseUnitPrice: BigDecimal,
+    val configuration: List<QuoteResponseGroupDto> = emptyList(),
+    val appliedPromotion: PromotionSummaryDto?,
+    val promotionAdjustmentTotal: BigDecimal,
+    val rewards: List<QuoteResponseRewardDto> = emptyList(),
+    val lineTotal: BigDecimal
+)
+
 data class QuoteResponseGroupDto(
-    val groupId: Int,
+    val groupId: Long,
     val name: String,
     val selections: List<QuoteResponseSelectionDto> = emptyList()
 )
 
 data class QuoteResponseSelectionDto(
-    val menuItemId: String,
+    val menuItemId: Long,
     val name: String,
     val quantity: Int,
     val catalogUnitPrice: BigDecimal,
@@ -100,15 +196,67 @@ data class QuoteResponseSelectionDto(
     val groups: List<QuoteResponseGroupDto> = emptyList()
 )
 
+data class QuoteResponseRewardDto(
+    val sourceLineKey: String,
+    val rewardOrdinal: Int,
+    val promotion: PromotionSummaryDto,
+    val menuItemId: Long,
+    val name: String,
+    val catalogBaseUnitPrice: BigDecimal,
+    val chargedBaseUnitPrice: BigDecimal,
+    val configuration: List<QuoteResponseGroupDto> = emptyList(),
+    val configurationAdjustmentTotal: BigDecimal,
+    val total: BigDecimal
+)
+
+data class PromotionSummaryDto(
+    val id: Long,
+    val name: String
+)
+
 // ----------------------------------------------------------------------------
-// Tags API
+// Item Quote APIs (Phase 6A2)
 // ----------------------------------------------------------------------------
 
-data class CatalogTagDto(
-    val id: String,
-    val code: String,
+data class ItemQuoteRequestDto(
+    val quantity: Int,
+    val groups: List<ItemQuoteRequestGroupDto> = emptyList()
+)
+
+data class ItemQuoteRequestGroupDto(
+    val groupId: Long,
+    val selections: List<ItemQuoteRequestSelectionDto> = emptyList()
+)
+
+data class ItemQuoteRequestSelectionDto(
+    val menuItemId: Long,
+    val quantity: Int,
+    val groups: List<ItemQuoteRequestGroupDto> = emptyList()
+)
+
+data class ItemQuoteResponseDto(
+    val menuItemId: Long,
     val name: String,
-    val active: Boolean,
-    val displayOrder: Int,
-    val version: Long
+    val quantity: Int,
+    val baseUnitPrice: BigDecimal,
+    val baseTotal: BigDecimal,
+    val groups: List<ItemQuoteResponseGroupDto> = emptyList(),
+    val unitAdjustmentTotal: BigDecimal,
+    val unitTotal: BigDecimal,
+    val total: BigDecimal
+)
+
+data class ItemQuoteResponseGroupDto(
+    val groupId: Long,
+    val name: String,
+    val selections: List<ItemQuoteResponseSelectionDto> = emptyList()
+)
+
+data class ItemQuoteResponseSelectionDto(
+    val menuItemId: Long,
+    val name: String,
+    val quantity: Int,
+    val catalogUnitPrice: BigDecimal,
+    val priceAdjustment: BigDecimal,
+    val groups: List<ItemQuoteResponseGroupDto> = emptyList()
 )

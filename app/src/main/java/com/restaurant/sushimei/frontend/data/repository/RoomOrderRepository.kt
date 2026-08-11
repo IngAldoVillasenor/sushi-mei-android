@@ -45,7 +45,6 @@ class RoomOrderRepository(private val dao: OrderDao) : IOrderRepository {
 
     override suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal) {
         val entity = OrderEntity(
-            id         = UUID.randomUUID().toString().take(8).uppercase(),
             itemsJson  = ConfiguredProductTypeConverter.fromList(items),
             total      = total,
             createdAt  = System.currentTimeMillis(),
@@ -54,13 +53,13 @@ class RoomOrderRepository(private val dao: OrderDao) : IOrderRepository {
         dao.insert(entity)
     }
 
-    override suspend fun acceptOrder(orderId: String) =
+    override suspend fun acceptOrder(orderId: Long) =
         dao.updateStatus(orderId, OrderStatus.PREPARING.name)
 
-    override suspend fun markReady(orderId: String) =
+    override suspend fun markReady(orderId: Long) =
         dao.updateStatus(orderId, OrderStatus.READY.name)
 
-    override suspend fun dispatch(orderId: String) =
+    override suspend fun dispatch(orderId: Long) =
         dao.updateStatus(orderId, OrderStatus.DISPATCHED.name)
 
     override fun observeDispatchedToday(): Flow<List<Order>> {

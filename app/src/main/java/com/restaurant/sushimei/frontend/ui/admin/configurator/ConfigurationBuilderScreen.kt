@@ -17,13 +17,13 @@ import com.restaurant.sushimei.frontend.data.model.ConfigurationGroupDto
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigurationBuilderScreen(
-    menuItemId: String,
+    menuItemId: Long,
     viewModel: ConfigurationBuilderViewModel,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     var showGroupDialog by remember { mutableStateOf(false) }
-    var optionDialogForGroup by remember { mutableStateOf<Int?>(null) }
+    var optionDialogForGroup by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(menuItemId) {
         viewModel.loadConfiguration(menuItemId)
@@ -120,7 +120,7 @@ fun BuilderGroupCard(
     group: ConfigurationGroupDto,
     onDeleteGroup: () -> Unit,
     onAddOption: () -> Unit,
-    onDeleteOption: (String) -> Unit
+    onDeleteOption: (Long) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
@@ -209,7 +209,7 @@ fun AddGroupDialog(
 @Composable
 fun AddOptionDialog(
     onDismiss: () -> Unit,
-    onAdd: (String, String?, java.math.BigDecimal) -> Unit
+    onAdd: (String, Long?, java.math.BigDecimal) -> Unit
 ) {
     var name by remember { mutableStateOf("") }
     var targetId by remember { mutableStateOf("") }
@@ -230,7 +230,8 @@ fun AddOptionDialog(
         confirmButton = {
             Button(onClick = {
                 val priceAdj = priceAdjStr.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO
-                onAdd(name, targetId.takeIf { it.isNotBlank() }, priceAdj)
+                val targetLong = targetId.takeIf { it.isNotBlank() }?.toLongOrNull()
+                onAdd(name, targetLong, priceAdj)
             }) {
                 Text("Agregar")
             }

@@ -7,7 +7,7 @@ package com.restaurant.sushimei.frontend.data.model
  * Cuando el backend exista, se creará un mapper entre ambos.
  */
 data class Order(
-    val id: String,                // UUID generado en el cliente
+    val id: Long = 0L,                // ID generado por BD o backend
     val items: List<ConfiguredProduct>,     // Snapshot inmutable del carrito al momento de cobrar
     val total: java.math.BigDecimal,
     val createdAt: Long = System.currentTimeMillis(),

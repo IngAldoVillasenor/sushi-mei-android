@@ -5,7 +5,7 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.restaurant.sushimei.frontend.data.api.RetrofitClient
+import com.restaurant.sushimei.frontend.data.api.NetworkModule
 import com.restaurant.sushimei.frontend.data.local.provideOrderRepository
 import com.restaurant.sushimei.frontend.data.model.Order
 import com.restaurant.sushimei.frontend.data.model.OrderRecord
@@ -48,7 +48,7 @@ class KitchenViewModel(
 
     private suspend fun fetchBackendOrders() {
         try {
-            val response = RetrofitClient.instance.getActiveOrders()
+            val response = NetworkModule.sushiMeiApi.getActiveOrders()
             if (response.isSuccessful) {
                 response.body()?.let { _backendOrders.value = it }
             }
@@ -78,14 +78,14 @@ class KitchenViewModel(
     }
 
     /** Cocina terminó → PREPARING → READY. La orden desaparece de la vista de cocina. */
-    fun markLocalOrderReady(orderId: String) {
+    fun markLocalOrderReady(orderId: Long) {
         viewModelScope.launch {
             orderRepository.markReady(orderId)
         }
     }
 
     /** Cliente/repartidor recoge → READY → DISPATCHED. */
-    fun dispatchLocalOrder(orderId: String) {
+    fun dispatchLocalOrder(orderId: Long) {
         viewModelScope.launch {
             orderRepository.dispatch(orderId)
         }
@@ -107,7 +107,7 @@ class KitchenViewModel(
                     println("⚠️ Falló la impresión, pero la orden avanzará a cocina de todos modos.")
                 }
 
-                val response = RetrofitClient.instance.acceptAndPrepareOrder(order.id)
+                val response = NetworkModule.sushiMeiApi.acceptAndPrepareOrder(order.id)
                 if (response.isSuccessful) {
                     fetchBackendOrders()
                 }
@@ -120,7 +120,7 @@ class KitchenViewModel(
     fun completeOrder(orderId: Long) {
         viewModelScope.launch {
             try {
-                val response = RetrofitClient.instance.completeOrder(orderId)
+                val response = NetworkModule.sushiMeiApi.completeOrder(orderId)
                 if (response.isSuccessful) {
                     fetchBackendOrders()
                 }
@@ -133,7 +133,7 @@ class KitchenViewModel(
     fun validatePayment(orderId: Long) {
         viewModelScope.launch {
             try {
-                val response = RetrofitClient.instance.validatePayment(orderId)
+                val response = NetworkModule.sushiMeiApi.validatePayment(orderId)
                 if (response.isSuccessful) {
                     fetchBackendOrders()
                 }

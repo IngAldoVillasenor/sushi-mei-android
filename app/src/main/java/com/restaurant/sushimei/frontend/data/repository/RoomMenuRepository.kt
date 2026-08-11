@@ -54,6 +54,10 @@ class RoomMenuRepository(
     override fun observeActiveCategories(): Flow<List<String>> =
         dao.observeActiveCategories()
 
+    override suspend fun refreshCatalog(standaloneOnly: Boolean?) {
+        // No-op for local database
+    }
+
     // ── Lectura puntual ──────────────────────────────────────────────────────
 
     override suspend fun getProducts(): List<MenuItem> =
@@ -68,17 +72,52 @@ class RoomMenuRepository(
 
     // ── Escritura ────────────────────────────────────────────────────────────
 
-    override suspend fun saveProduct(item: MenuItem) =
+    override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
+        return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
+            id = System.currentTimeMillis(),
+            name = request.name,
+            description = request.description,
+            category = request.category,
+            price = request.price,
+            active = true,
+            available = request.available,
+            standaloneOrderable = request.standaloneOrderable,
+            displayOrder = request.displayOrder,
+            tags = emptyList(),
+            version = 1L,
+            createdAt = java.time.Instant.now(),
+            updatedAt = java.time.Instant.now()
+        )
+    }
+
+    override suspend fun updateProduct(id: Long, request: com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
+        return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
+            id = id,
+            name = request.name,
+            description = request.description,
+            category = request.category,
+            price = request.price,
+            active = request.active,
+            available = request.available,
+            standaloneOrderable = request.standaloneOrderable,
+            displayOrder = request.displayOrder,
+            tags = emptyList(),
+            version = request.version,
+            createdAt = java.time.Instant.now(),
+            updatedAt = java.time.Instant.now()
+        )
+    }
+
+    override suspend fun deleteProduct(id: Long) {
+        // mock
+    }
+
+    override suspend fun setActive(id: Long, activo: Boolean) =
         withContext(Dispatchers.IO) {
-            dao.upsert(item.toEntity())
+            dao.setActive(id.toString(), activo)
         }
 
-    override suspend fun setActive(id: String, activo: Boolean) =
-        withContext(Dispatchers.IO) {
-            dao.setActive(id, activo)
-        }
-
-    override suspend fun getConfiguration(menuItemId: String): com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto {
+    override suspend fun getConfiguration(menuItemId: Long): com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto {
         // En un caso real, esto llamaría a Retrofit. Por ahora, mock genérico:
         return com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto(
             menuItemId = menuItemId,
@@ -89,9 +128,9 @@ class RoomMenuRepository(
         )
     }
 
-    override suspend fun quoteItem(menuItemId: String, request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto {
+    override suspend fun quoteItem(menuItemId: Long, request: com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestDto): com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto {
         // En un caso real, esto llamaría a Retrofit. Por ahora, mock genérico:
-        return com.restaurant.sushimei.frontend.data.model.QuoteResponseDto(
+        return com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto(
             menuItemId = menuItemId,
             name = "Item",
             quantity = request.quantity,
@@ -108,15 +147,15 @@ class RoomMenuRepository(
         return emptyList()
     }
 
-    override suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto {
-        return tag.copy(id = "1")
+    override suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.TagCreateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto {
+        return com.restaurant.sushimei.frontend.data.model.CatalogTagDto(id = 1L, code = tag.code, name = tag.name, active = true, displayOrder = tag.displayOrder, version = 1L)
     }
 
-    override suspend fun updateTag(id: String, tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto {
-        return tag
+    override suspend fun updateTag(id: Long, tag: com.restaurant.sushimei.frontend.data.model.TagUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto {
+        return com.restaurant.sushimei.frontend.data.model.CatalogTagDto(id = id, code = "CODE", name = tag.name, active = tag.active, displayOrder = tag.displayOrder, version = tag.version + 1)
     }
 
-    override suspend fun deleteTag(id: String) {
+    override suspend fun deleteTag(id: Long) {
         // No-op
     }
 

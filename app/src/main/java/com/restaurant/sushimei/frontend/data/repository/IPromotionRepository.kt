@@ -10,13 +10,13 @@ interface IPromotionRepository {
     
     suspend fun getPromotions(): List<Promotion>
     
-    suspend fun getPromotion(id: String): Promotion?
+    suspend fun getPromotion(id: Long): Promotion?
     
     suspend fun createPromotion(promotion: Promotion): Promotion
     
     suspend fun updatePromotion(promotion: Promotion): Promotion
     
-    suspend fun archivePromotion(id: String)
+    suspend fun archivePromotion(id: Long)
     
     /**
      * Evalúa el carrito de compras contra las promociones activas en el backend.

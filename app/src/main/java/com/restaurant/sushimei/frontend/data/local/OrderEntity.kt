@@ -15,8 +15,8 @@ import androidx.room.PrimaryKey
  */
 @Entity(tableName = "orders")
 data class OrderEntity(
-    @PrimaryKey
-    val id: String,
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
 
     /** Lista de ConfiguredProduct serializada como JSON. Ver [ConfiguredProductTypeConverter]. */
     val itemsJson: String,

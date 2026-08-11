@@ -44,7 +44,7 @@ object MockOrderRepository : IOrderRepository {
 
     override suspend fun placeOrder(items: List<ConfiguredProduct>, total: java.math.BigDecimal) {
         val newOrder = Order(
-            id = UUID.randomUUID().toString().take(8).uppercase(),
+            id = System.currentTimeMillis(),
             items = items,
             total = total,
             status = OrderStatus.PENDING
@@ -53,13 +53,13 @@ object MockOrderRepository : IOrderRepository {
         updateActiveOrders()
     }
 
-    override suspend fun acceptOrder(orderId: String) =
+    override suspend fun acceptOrder(orderId: Long) =
         updateStatus(orderId, OrderStatus.PENDING, OrderStatus.PREPARING)
 
-    override suspend fun markReady(orderId: String) =
+    override suspend fun markReady(orderId: Long) =
         updateStatus(orderId, OrderStatus.PREPARING, OrderStatus.READY)
 
-    override suspend fun dispatch(orderId: String) {
+    override suspend fun dispatch(orderId: Long) {
         _allOrders.value = _allOrders.value.map { order ->
             if (order.id == orderId && order.status == OrderStatus.READY) {
                 order.copy(status = OrderStatus.DISPATCHED)
@@ -68,7 +68,7 @@ object MockOrderRepository : IOrderRepository {
         updateActiveOrders()
     }
 
-    private fun updateStatus(orderId: String, from: OrderStatus, to: OrderStatus) {
+    private fun updateStatus(orderId: Long, from: OrderStatus, to: OrderStatus) {
         _allOrders.value = _allOrders.value.map { order ->
             if (order.id == orderId && order.status == from) order.copy(status = to)
             else order

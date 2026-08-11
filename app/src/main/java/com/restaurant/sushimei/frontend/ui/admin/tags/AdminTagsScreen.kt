@@ -139,7 +139,7 @@ fun TagEditDialog(
         confirmButton = {
             Button(onClick = {
                 val newTag = CatalogTagDto(
-                    id = tag?.id ?: UUID.randomUUID().toString(),
+                    id = tag?.id ?: 0L,
                     name = name,
                     code = code.takeIf { it.isNotBlank() } ?: name.uppercase(),
                     active = active,

@@ -129,19 +129,19 @@ fun PromotionCard(
                 }
             }
             Text(text = "Días: $daysStr", style = MaterialTheme.typography.bodySmall)
-            Text(text = "Objetivo: ${promotion.target.displayName} (${promotion.target.type})", style = MaterialTheme.typography.bodySmall)
+            Text(text = "Objetivo: ${promotion.targets.firstOrNull()?.displayName} (${promotion.targets.firstOrNull()?.type})", style = MaterialTheme.typography.bodySmall)
             
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(8.dp))
             
-            when (val benefit = promotion.benefit) {
+        when (val benefit = promotion.benefit) {
                 is PromotionBenefit.FixedUnitPrice -> {
                     Text(text = "Beneficio: Precio fijo $${benefit.amount}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
-                is PromotionBenefit.BuyXPayY -> {
+                is PromotionBenefit.BuyXGetYSameItem -> {
                     Text(
-                        text = "Beneficio: Compra ${benefit.buyQuantity}, Paga ${benefit.payQuantity} (Repetir: ${if(benefit.repeat) "Sí" else "No"})", 
+                        text = "Beneficio: Compra ${benefit.buyQuantity}, Regala ${benefit.rewardQuantity} (Repetir: ${if(benefit.repeat) "Sí" else "No"})", 
                         style = MaterialTheme.typography.bodyMedium, 
                         fontWeight = FontWeight.SemiBold
                     )

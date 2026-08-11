@@ -229,7 +229,7 @@ fun LocalOrderCard(
                         overflow = TextOverflow.Ellipsis
                     )
                     Text(
-                        text = "$${String.format("%.2f", configuredProduct.total)}",
+                        text = "$${String.format(java.util.Locale.US, "%.2f", configuredProduct.total)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -241,12 +241,14 @@ fun LocalOrderCard(
 
             // Total
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("Total:", fontWeight = FontWeight.Bold)
                 Text(
-                    text = "$${String.format("%.2f", order.total)}",
+                    text = "$${String.format(java.util.Locale.US, "%.2f", order.total)}",
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.primary
                 )

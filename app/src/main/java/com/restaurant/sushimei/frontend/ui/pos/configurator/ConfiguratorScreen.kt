@@ -22,7 +22,7 @@ import com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfiguratorScreen(
-    menuItemId: String,
+    menuItemId: Long,
     viewModel: ConfiguratorViewModel,
     onDismiss: () -> Unit,
     onAddToCart: (com.restaurant.sushimei.frontend.data.model.ConfiguredProduct) -> Unit
@@ -121,7 +121,7 @@ fun ConfiguratorScreen(
             contentPadding = padding,
             modifier = Modifier.fillMaxSize()
         ) {
-            items(config.groups) { group ->
+            items(config.groups, key = { it.id }) { group ->
                 val selections = uiState.selections[group.id] ?: emptyList()
                 ConfigurationGroupView(
                     group = group,

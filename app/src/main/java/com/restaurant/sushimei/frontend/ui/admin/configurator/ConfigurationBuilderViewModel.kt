@@ -26,9 +26,9 @@ class ConfigurationBuilderViewModel(
     private val _uiState = MutableStateFlow(ConfigurationBuilderUiState())
     val uiState: StateFlow<ConfigurationBuilderUiState> = _uiState.asStateFlow()
 
-    private var currentMenuItemId: String = ""
+    private var currentMenuItemId: Long = 0L
 
-    fun loadConfiguration(menuItemId: String) {
+    fun loadConfiguration(menuItemId: Long) {
         currentMenuItemId = menuItemId
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null, isSaved = false)
@@ -60,7 +60,7 @@ class ConfigurationBuilderViewModel(
     fun addGroup(name: String, minSelections: Int, maxSelections: Int, allowDuplicates: Boolean) {
         val currentConfig = _uiState.value.configuration ?: return
         val newGroup = ConfigurationGroupDto(
-            id = (currentConfig.groups.maxOfOrNull { it.id } ?: 0) + 1,
+            id = (currentConfig.groups.maxOfOrNull { it.id } ?: 0L) + 1L,
             name = name,
             minSelections = minSelections,
             maxSelections = maxSelections,
@@ -73,7 +73,7 @@ class ConfigurationBuilderViewModel(
         )
     }
 
-    fun removeGroup(groupId: Int) {
+    fun removeGroup(groupId: Long) {
         val currentConfig = _uiState.value.configuration ?: return
         val updatedGroups = currentConfig.groups.filterNot { it.id == groupId }
         _uiState.value = _uiState.value.copy(
@@ -81,12 +81,12 @@ class ConfigurationBuilderViewModel(
         )
     }
 
-    fun addOption(groupId: Int, name: String, targetMenuItemId: String?, priceAdjustment: java.math.BigDecimal) {
+    fun addOption(groupId: Long, name: String, targetMenuItemId: Long?, priceAdjustment: java.math.BigDecimal) {
         val currentConfig = _uiState.value.configuration ?: return
         val updatedGroups = currentConfig.groups.map { group ->
             if (group.id == groupId) {
                 val newOption = ConfigurationOptionDto(
-                    menuItemId = targetMenuItemId ?: UUID.randomUUID().toString(),
+                    menuItemId = targetMenuItemId ?: 0L,
                     name = name,
                     category = "N/A",
                     catalogPrice = java.math.BigDecimal.ZERO, 
@@ -104,7 +104,7 @@ class ConfigurationBuilderViewModel(
         )
     }
 
-    fun removeOption(groupId: Int, optionMenuItemId: String) {
+    fun removeOption(groupId: Long, optionMenuItemId: Long) {
         val currentConfig = _uiState.value.configuration ?: return
         val updatedGroups = currentConfig.groups.map { group ->
             if (group.id == groupId) {

@@ -32,9 +32,14 @@ interface IMenuRepository {
     fun observeActive(): Flow<List<MenuItem>>
 
     /**
-     * Flow de categorías únicas de productos activos, ordenadas alfabéticamente.
+     * Flow de categorías (Strings) que tienen al menos un producto activo.
      */
     fun observeActiveCategories(): Flow<List<String>>
+
+    /**
+     * Fuerza la actualización del catálogo desde la fuente remota.
+     */
+    suspend fun refreshCatalog(standaloneOnly: Boolean? = null)
 
     // ── Lectura puntual (suspend) ─────────────────────────────────────────────
 
@@ -47,20 +52,25 @@ interface IMenuRepository {
     // ── Escritura (CRUD) ──────────────────────────────────────────────────────
 
     /**
-     * Crea o actualiza un producto.
-     * Si [MenuItem.id] ya existe en la BD, se sobreescribe.
-     * Si es nuevo, se inserta.
-     *
-     * Nota API-First: en producción, el precio canónico vendrá del backend.
-     * Los cambios locales solo aplican mientras el backend no tenga el endpoint.
+     * Crea un nuevo producto en el catálogo.
      */
-    suspend fun saveProduct(item: MenuItem)
+    suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse
+
+    /**
+     * Actualiza un producto existente.
+     */
+    suspend fun updateProduct(id: Long, request: com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse
+
+    /**
+     * Elimina un producto.
+     */
+    suspend fun deleteProduct(id: Long)
 
     /**
      * Activa o desactiva un producto.
      * Un producto inactivo ([activo] = false) desaparece del POS en tiempo real.
      */
-    suspend fun setActive(id: String, activo: Boolean)
+    suspend fun setActive(id: Long, activo: Boolean)
 
     // =========================================================================
     // PHASE 6A2: Backend API Contract
@@ -69,20 +79,20 @@ interface IMenuRepository {
     /**
      * Obtiene la configuración (grupos y opciones) para un producto.
      */
-    suspend fun getConfiguration(menuItemId: String): com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto
+    suspend fun getConfiguration(menuItemId: Long): com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto
 
     /**
      * Solicita una cotización autoritativa al backend para una configuración.
      */
-    suspend fun quoteItem(menuItemId: String, request: com.restaurant.sushimei.frontend.data.model.QuoteRequestDto): com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
+    suspend fun quoteItem(menuItemId: Long, request: com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestDto): com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto
 
     /**
      * Obtiene todos los Tags del catálogo (ej. ROLL_CLASSIC).
      */
     suspend fun getTags(): List<com.restaurant.sushimei.frontend.data.model.CatalogTagDto>
 
-    suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
-    suspend fun updateTag(id: String, tag: com.restaurant.sushimei.frontend.data.model.CatalogTagDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
-    suspend fun deleteTag(id: String)
+    suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.TagCreateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
+    suspend fun updateTag(id: Long, tag: com.restaurant.sushimei.frontend.data.model.TagUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
+    suspend fun deleteTag(id: Long)
 }
 

@@ -5,7 +5,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.delay
-import java.util.UUID
 
 class MockPromotionRepository : IPromotionRepository {
 
@@ -14,7 +13,7 @@ class MockPromotionRepository : IPromotionRepository {
     init {
         // Inicializar con los fixtures requeridos (Lunes $69 y Jueves 2x1)
         val mondayPromotion = Promotion(
-            id = "prom-mon-69",
+            id = 100L,
             name = "Lunes de clásicos $69",
             active = true,
             priority = 100,
@@ -22,32 +21,36 @@ class MockPromotionRepository : IPromotionRepository {
                 daysOfWeek = setOf(1), // Lunes
                 allDay = true
             ),
-            target = PromotionTarget(
-                type = PromotionTargetType.TAG,
-                targetId = "ROLL_CLASSIC",
-                displayName = "Rollos clásicos"
+            targets = listOf(
+                PromotionTarget(
+                    type = PromotionTargetType.TAG,
+                    targetId = 1L, // ROLL_CLASSIC
+                    displayName = "Rollos clásicos"
+                )
             ),
             benefit = PromotionBenefit.FixedUnitPrice(java.math.BigDecimal("69.00")),
             version = 1L
         )
 
         val thursdayPromotion = Promotion(
-            id = "prom-thu-2x1",
-            name = "Jueves 2x1 clásicos",
+            id = 200L,
+            name = "Martes 2x1 en Rollos Clásicos",
             active = true,
-            priority = 200,
+            priority = 10, // Menor número = mayor prioridad
             schedule = PromotionSchedule(
-                daysOfWeek = setOf(4), // Jueves
+                daysOfWeek = setOf(2), // 1=Lunes, 2=Martes
                 allDay = true
             ),
-            target = PromotionTarget(
-                type = PromotionTargetType.TAG,
-                targetId = "ROLL_CLASSIC",
-                displayName = "Rollos clásicos"
+            targets = listOf(
+                PromotionTarget(
+                    type = PromotionTargetType.TAG,
+                    targetId = 1L, // Assuming 1L is ROLL_CLASSIC
+                    displayName = "Rollos Clásicos"
+                )
             ),
-            benefit = PromotionBenefit.BuyXPayY(
+            benefit = PromotionBenefit.BuyXGetYSameItem(
                 buyQuantity = 2,
-                payQuantity = 1,
+                rewardQuantity = 1,
                 repeat = true
             ),
             version = 1L
@@ -63,13 +66,13 @@ class MockPromotionRepository : IPromotionRepository {
         return promotionsFlow.value
     }
 
-    override suspend fun getPromotion(id: String): Promotion? {
+    override suspend fun getPromotion(id: Long): Promotion? {
         return promotionsFlow.value.find { it.id == id }
     }
 
     override suspend fun createPromotion(promotion: Promotion): Promotion {
         delay(400)
-        val newPromotion = promotion.copy(id = UUID.randomUUID().toString(), version = 1L)
+        val newPromotion = promotion.copy(id = System.currentTimeMillis(), version = 1L)
         val currentList = promotionsFlow.value.toMutableList()
         currentList.add(newPromotion)
         promotionsFlow.value = currentList
@@ -96,7 +99,7 @@ class MockPromotionRepository : IPromotionRepository {
         }
     }
 
-    override suspend fun archivePromotion(id: String) {
+    override suspend fun archivePromotion(id: Long) {
         val currentList = promotionsFlow.value.toMutableList()
         val index = currentList.indexOfFirst { it.id == id }
         if (index != -1) {
@@ -106,28 +109,15 @@ class MockPromotionRepository : IPromotionRepository {
         }
     }
 
-    /**
-     * Fake implementation that returns pre-computed responses for UI development.
-     * Does NOT execute real pricing algorithms locally.
-     * Instead, it intercepts specific known combinations of Cart items to return hardcoded adjustments.
-     */
     override suspend fun quoteCart(cart: List<ConfiguredProduct>): OrderPricingPreview {
         delay(200) // Simulación de llamada de red
         
-        // FASE 6A3: REGLA ESTRICTA - NO IMPLEMENTAR ALGORITMOS DE PRECIOS LOCALMENTE
-        // Este mock devuelve fixtures precalculados (respuestas falsas transparentes) 
-        // para propósitos de UI/Demo. NO hace matemáticas, comprobación de días, ni agrupaciones.
-
         val subtotal = cart.fold(java.math.BigDecimal.ZERO) { acc, item -> acc + item.total }
 
-        // BOGO Logic para el Jueves (aplicamos dinámicamente si hay rollos para demostrar la API)
-        // Detectamos si es un "rollo clásico" por el nombre para el mock.
         val rewardItems = mutableListOf<ConfiguredProduct>()
         
         for (item in cart) {
             if (item.name.contains("roll", ignoreCase = true)) {
-                // "For every eligible classic roll explicitly purchased, the promotion generates 
-                // one additional promotional unit of the SAME menu item."
                 val reward = ConfiguredProduct(
                     menuItemId = item.menuItemId,
                     name = item.name,
@@ -135,7 +125,7 @@ class MockPromotionRepository : IPromotionRepository {
                     baseUnitPrice = java.math.BigDecimal.ZERO,
                     unitTotal = java.math.BigDecimal.ZERO,
                     total = java.math.BigDecimal.ZERO,
-                    groups = emptyList() // Toppings on either roll are paid normally, base is free
+                    groups = emptyList()
                 )
                 rewardItems.add(reward)
             }
@@ -143,9 +133,9 @@ class MockPromotionRepository : IPromotionRepository {
 
         return OrderPricingPreview(
             subtotal = subtotal,
-            adjustments = emptyList(), // BOGO no usa un adjustment de descuento total, usa rewardItems
+            adjustments = emptyList(),
             rewardItems = rewardItems,
-            total = subtotal // El total base a pagar no cambia por el reward (el reward es $0)
+            total = subtotal 
         )
     }
 }

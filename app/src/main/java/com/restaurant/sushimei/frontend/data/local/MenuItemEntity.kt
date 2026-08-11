@@ -19,16 +19,13 @@ import androidx.room.PrimaryKey
 @Entity(tableName = "menu_items")
 data class MenuItemEntity(
     @PrimaryKey
-    val id: String,
+    val id: Long,
     val nombre: String,
     val categoria: String,
     val precio: java.math.BigDecimal,
     val descripcion: String = "",
     val emoji: String = "🍣",
-
-    /**
-     * Si false, el producto no aparece en el POS ni puede agregarse al carrito.
-     * Útil para productos de temporada o agotados.
-     */
-    val activo: Boolean = true
+    val activo: Boolean = true,
+    val standaloneOrderable: Boolean = true,
+    val tags: String = "[]" // JSON stringified for local storage
 )

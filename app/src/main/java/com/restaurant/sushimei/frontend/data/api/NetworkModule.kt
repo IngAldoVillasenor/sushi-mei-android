@@ -6,18 +6,44 @@ import okhttp3.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import com.restaurant.sushimei.frontend.BuildConfig
 
 object NetworkModule {
 
-    // URL para conectarse al backend real desde el emulador de Android
-    // (En producción esto debería venir de BuildConfig o un archivo de configuración)
-    private const val BASE_URL = "http://10.0.2.2:8080"
+    private val authInterceptor = Interceptor { chain ->
+        val original = chain.request()
+        // TODO: In Phase 6S1, inject Auth token here
+        // val token = sessionStore.getToken()
+        // val request = original.newBuilder().header("Authorization", "Bearer $token").build()
+        // chain.proceed(request)
+        chain.proceed(original)
+    }
 
     private val errorInterceptor = Interceptor { chain ->
         val request = chain.request()
         val response = chain.proceed(request)
-        if (response.code == 409) {
-            throw VersionConflictException()
+        if (!response.isSuccessful) {
+            val bodyString = response.peekBody(Long.MAX_VALUE).string()
+            var errorCode = "UNKNOWN_ERROR"
+            var errorMessage = "Error HTTP ${response.code}"
+            try {
+                val apiError = com.google.gson.Gson().fromJson(bodyString, com.restaurant.sushimei.frontend.data.model.ApiErrorDto::class.java)
+                if (apiError != null && apiError.code != null) {
+                    errorCode = apiError.code
+                    errorMessage = apiError.message ?: errorMessage
+                }
+            } catch (e: Exception) {
+                // Ignore parsing error
+            }
+            
+            when {
+                errorCode.endsWith("VERSION_CONFLICT") || response.code == 409 -> {
+                    throw VersionConflictException(errorMessage)
+                }
+                errorCode == "ITEM_UNAVAILABLE" -> throw MenuItemUnavailableException(errorMessage)
+                errorCode == "CONFIGURATION_CONFLICT" -> throw ConfigurationConflictException(errorMessage)
+                else -> throw ApiException(errorCode, errorMessage)
+            }
         }
         response
     }
@@ -27,13 +53,14 @@ object NetworkModule {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            .addInterceptor(authInterceptor)
             .addInterceptor(errorInterceptor)
             .build()
     }
 
     private val retrofit: Retrofit by lazy {
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
+            .baseUrl(BuildConfig.BASE_URL)
             .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

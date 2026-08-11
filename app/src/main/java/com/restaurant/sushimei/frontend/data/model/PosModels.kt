@@ -3,16 +3,15 @@ package com.restaurant.sushimei.frontend.data.model
 import java.math.BigDecimal
 
 data class MenuItem(
-    val id: String,
+    val id: Long,
     val nombre: String,
     val categoria: String,
     val precio: BigDecimal,
     val descripcion: String = "",
     val emoji: String = "🍣",
     val activo: Boolean = true,
-    // Nuevos campos de configuración Phase 6A2
     val standaloneOrderable: Boolean = true,
-    val tags: List<String> = emptyList()
+    val tags: List<CatalogTagSummary> = emptyList()
 )
 
 /**
@@ -21,7 +20,7 @@ data class MenuItem(
  */
 data class ConfiguredProduct(
     val id: String = java.util.UUID.randomUUID().toString(), // ID único de instancia (para UI)
-    val menuItemId: String,
+    val menuItemId: Long,
     val name: String,
     val quantity: Int,
     val baseUnitPrice: BigDecimal,
@@ -36,7 +35,7 @@ data class ConfiguredProduct(
  * Un grupo de configuración seleccionado dentro de un producto.
  */
 data class ConfiguredGroup(
-    val groupId: Int,
+    val groupId: Long,
     val name: String,
     val selections: List<ConfiguredSelection>
 )
@@ -45,7 +44,7 @@ data class ConfiguredGroup(
  * Una opción seleccionada dentro de un grupo (que recursivamente puede tener más grupos).
  */
 data class ConfiguredSelection(
-    val menuItemId: String,
+    val menuItemId: Long,
     val name: String,
     val quantity: Int,
     val catalogUnitPrice: BigDecimal,
@@ -72,5 +71,5 @@ data class PricingAdjustment(
     val label: String,
     val amount: BigDecimal, // Negativo para descuentos
     val sourceType: String = "PROMOTION",
-    val promotionId: String? = null
+    val promotionId: Long? = null
 )

@@ -26,6 +26,20 @@ import com.restaurant.sushimei.frontend.data.repository.IPromotionRepository
  * Al cobrar, delega en [IOrderRepository] para publicar la orden al módulo
  * al módulo de Cocina a través del singleton compartido [MockOrderRepository].
  */
+sealed interface QuoteState {
+    object Idle : QuoteState
+    object Loading : QuoteState
+    data class Valid(val preview: OrderPricingPreview) : QuoteState
+    data class Error(val message: String) : QuoteState
+}
+
+sealed interface CheckoutState {
+    object Idle : CheckoutState
+    object Loading : CheckoutState
+    object Success : CheckoutState
+    data class Error(val message: String) : CheckoutState
+}
+
 sealed interface PosUiState {
     object Loading : PosUiState
     data class Success(
@@ -33,7 +47,8 @@ sealed interface PosUiState {
         val selectedCategory: String? = null,
         val filteredProducts: List<MenuItem> = emptyList(),
         val currentCart: List<ConfiguredProduct> = emptyList(),
-        val pricingPreview: OrderPricingPreview = OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO)
+        val quoteState: QuoteState = QuoteState.Idle,
+        val checkoutState: CheckoutState = CheckoutState.Idle
     ) : PosUiState
 }
 
@@ -48,16 +63,14 @@ class PosViewModel(
     private val _selectedCategory = MutableStateFlow<String?>(null)
     private val _currentCart = MutableStateFlow<List<ConfiguredProduct>>(emptyList())
     private val _isLoading = MutableStateFlow(true)
-    private val _pricingPreview = MutableStateFlow(OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO))
+    private val _quoteState = MutableStateFlow<QuoteState>(QuoteState.Idle)
+    private val _checkoutState = MutableStateFlow<CheckoutState>(CheckoutState.Idle)
 
     // --- Estado público expuesto a la UI ---
     val uiState: StateFlow<PosUiState> = combine(
-        _allProducts,
-        _selectedCategory,
-        _currentCart,
-        _isLoading,
-        _pricingPreview
-    ) { all, category, cart, loading, preview ->
+        combine(_allProducts, _selectedCategory, _currentCart, ::Triple),
+        combine(_isLoading, _quoteState, _checkoutState, ::Triple)
+    ) { (all, category, cart), (loading, quote, checkout) ->
         if (loading) {
             PosUiState.Loading
         } else {
@@ -75,7 +88,8 @@ class PosViewModel(
                 selectedCategory = category,
                 filteredProducts = filtered,
                 currentCart = cart,
-                pricingPreview = preview
+                quoteState = quote,
+                checkoutState = checkout
             )
         }
     }.stateIn(viewModelScope, SharingStarted.Eagerly, PosUiState.Loading)
@@ -85,6 +99,11 @@ class PosViewModel(
         // automáticamente cuando el dueño edita un producto en Gestión de Menú.
         viewModelScope.launch {
             _isLoading.value = true
+            try {
+                menuRepository.refreshCatalog(standaloneOnly = true)
+            } catch (e: Exception) {
+                // Si falla la red, quizás mostremos error; por ahora cargamos lo disponible
+            }
             menuRepository.observeActive().collect { products ->
                 _allProducts.value = products
                 _isLoading.value = false
@@ -93,8 +112,17 @@ class PosViewModel(
 
         viewModelScope.launch {
             _currentCart.collect { cart ->
-                val preview = promotionRepository.quoteCart(cart)
-                _pricingPreview.value = preview
+                if (cart.isEmpty()) {
+                    _quoteState.value = QuoteState.Idle
+                    return@collect
+                }
+                _quoteState.value = QuoteState.Loading
+                try {
+                    val preview = promotionRepository.quoteCart(cart)
+                    _quoteState.value = QuoteState.Valid(preview)
+                } catch (e: Exception) {
+                    _quoteState.value = QuoteState.Error("Error al cotizar orden: ${e.message}")
+                }
             }
         }
     }
@@ -111,7 +139,7 @@ class PosViewModel(
         viewModelScope.launch {
             try {
                 // FASE 6A2: Do not derive price locally. Quote it.
-                val quoteRequest = com.restaurant.sushimei.frontend.data.model.QuoteRequestDto(
+                val quoteRequest = com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestDto(
                     quantity = 1,
                     groups = emptyList()
                 )
@@ -204,16 +232,27 @@ class PosViewModel(
      */
     fun cobrarOrden() {
         val items = _currentCart.value
-        if (items.isEmpty()) return
-        val total = _pricingPreview.value.total
+        val quote = _quoteState.value
+        if (items.isEmpty() || quote !is QuoteState.Valid || _checkoutState.value == CheckoutState.Loading) return
+        
         viewModelScope.launch {
-            orderRepository.placeOrder(items, total)
-            clearCart()
+            _checkoutState.value = CheckoutState.Loading
+            try {
+                orderRepository.placeOrder(items, quote.preview.total)
+                clearCart()
+                _checkoutState.value = CheckoutState.Success
+            } catch (e: Exception) {
+                _checkoutState.value = CheckoutState.Error("Fallo al cobrar: ${e.message}")
+            }
         }
     }
 
+    fun resetCheckoutState() {
+        _checkoutState.value = CheckoutState.Idle
+    }
+
     fun getTotal(): java.math.BigDecimal {
-        return _pricingPreview.value.total
+        return (_quoteState.value as? QuoteState.Valid)?.preview?.total ?: java.math.BigDecimal.ZERO
     }
 
     // --- Factory para creación manual (sin Hilt) ---

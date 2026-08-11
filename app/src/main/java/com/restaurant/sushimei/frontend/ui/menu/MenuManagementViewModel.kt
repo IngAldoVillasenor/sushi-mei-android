@@ -119,7 +119,7 @@ class MenuManagementViewModel(
     /** Abre el formulario en blanco para crear un producto nuevo. */
     fun newProduct() {
         _selectedProduct.value = MenuItem(
-            id          = UUID.randomUUID().toString().take(8).uppercase(),
+            id          = 0L,
             nombre      = "",
             categoria   = "",
             precio      = java.math.BigDecimal.ZERO,
@@ -140,9 +140,36 @@ class MenuManagementViewModel(
             _isSaving.value = true
             _saveSuccess.value = false
             try {
-                repository.saveProduct(item)
+                if (item.id == 0L) {
+                    val req = com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto(
+                        name = item.nombre,
+                        description = item.descripcion,
+                        category = item.categoria,
+                        price = item.precio,
+                        available = item.activo,
+                        standaloneOrderable = true,
+                        displayOrder = 0
+                    )
+                    repository.createProduct(req)
+                } else {
+                    val req = com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto(
+                        name = item.nombre,
+                        description = item.descripcion,
+                        category = item.categoria,
+                        price = item.precio,
+                        active = item.activo,
+                        available = item.activo,
+                        standaloneOrderable = true,
+                        displayOrder = 0,
+                        version = 1L
+                    )
+                    repository.updateProduct(item.id, req)
+                }
+                
                 _saveSuccess.value = true
                 _selectedProduct.value = item // actualiza el form con datos guardados
+            } catch (e: Exception) {
+                // handle error
             } finally {
                 _isSaving.value = false
             }

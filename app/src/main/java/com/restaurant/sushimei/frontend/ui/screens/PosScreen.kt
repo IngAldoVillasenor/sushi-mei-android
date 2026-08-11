@@ -58,7 +58,9 @@ fun PosScreen() {
     
     val selectedCategory = stateSuccess?.selectedCategory
     val cart = stateSuccess?.currentCart ?: emptyList()
-    val pricingPreview = stateSuccess?.pricingPreview ?: com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO)
+    val quoteState = stateSuccess?.quoteState ?: com.restaurant.sushimei.frontend.ui.pos.QuoteState.Idle
+    val pricingPreview = if (quoteState is com.restaurant.sushimei.frontend.ui.pos.QuoteState.Valid) quoteState.preview else com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO)
+    val checkoutState = stateSuccess?.checkoutState ?: com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Idle
     val filteredMenuItems = stateSuccess?.filteredProducts ?: emptyList()
     val categories = stateSuccess?.categories ?: listOf("Todos")
 
@@ -100,7 +102,7 @@ fun PosScreen() {
         )
     }
 
-    var configuringItemId by remember { mutableStateOf<String?>(null) }
+    var configuringItemId by remember { mutableStateOf<Long?>(null) }
 
     Row(modifier = Modifier.fillMaxSize()) {
         // ==========================================
@@ -274,8 +276,7 @@ fun PosScreen() {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            // Resumen de Total y Botón Cobrar
-            val total = pricingPreview.total
+            val isCobrarEnabled = cart.isNotEmpty() && quoteState is com.restaurant.sushimei.frontend.ui.pos.QuoteState.Valid && checkoutState != com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
 
             Card(
                 modifier = Modifier
@@ -335,6 +336,40 @@ fun PosScreen() {
                             modifier = Modifier.padding(vertical = 8.dp),
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
                         )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        if (checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Error) {
+                            Text(
+                                text = checkoutState.message,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        } else if (quoteState is com.restaurant.sushimei.frontend.ui.pos.QuoteState.Error) {
+                            Text(
+                                text = quoteState.message,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+
+                        Button(
+                            onClick = { viewModel.cobrarOrden() },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(56.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            enabled = isCobrarEnabled
+                        ) {
+                            if (checkoutState == com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading || quoteState == com.restaurant.sushimei.frontend.ui.pos.QuoteState.Loading) {
+                                androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
+                            } else {
+                                Text(
+                                    text = "Cobrar",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     } else {
                         Spacer(modifier = Modifier.height(8.dp))
                     }
@@ -352,7 +387,7 @@ fun PosScreen() {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "$${String.format(Locale.US, "%.2f", total)}",
+                            text = "$${String.format(Locale.US, "%.2f", pricingPreview.total)}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary
@@ -364,7 +399,7 @@ fun PosScreen() {
             Button(
                 onClick = {
                     if (cart.isNotEmpty()) {
-                        lastChargedTotal = total
+                        lastChargedTotal = pricingPreview.total
                         viewModel.cobrarOrden()
                         showSuccessDialog = true
                     }

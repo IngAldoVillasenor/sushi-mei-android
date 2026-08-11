@@ -69,7 +69,7 @@ fun MenuManagementScreen(
     val saveSuccess = stateSuccess?.saveSuccess ?: false
 
     var activeScreen by remember { mutableStateOf("menu") } // "menu", "tags", "config_builder", "promotions_list", "promotion_editor"
-    var configTargetId by remember { mutableStateOf<String?>(null) }
+    var configTargetId by remember { mutableStateOf<Long?>(null) }
     var promotionTargetToEdit by remember { mutableStateOf<com.restaurant.sushimei.frontend.data.model.Promotion?>(null) }
 
     if (activeScreen == "tags") {
@@ -77,8 +77,8 @@ fun MenuManagementScreen(
         val tagsViewModel: com.restaurant.sushimei.frontend.ui.admin.tags.AdminTagsViewModel = viewModel(
             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                    val mockRepo = com.restaurant.sushimei.frontend.data.repository.MockMenuRepository(context)
-                    return com.restaurant.sushimei.frontend.ui.admin.tags.AdminTagsViewModel(mockRepo) as T
+                    val remoteRepo = com.restaurant.sushimei.frontend.data.repository.RemoteMenuRepository(com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi)
+                    return com.restaurant.sushimei.frontend.ui.admin.tags.AdminTagsViewModel(remoteRepo) as T
                 }
             }
         )
@@ -94,8 +94,8 @@ fun MenuManagementScreen(
         val configViewModel: com.restaurant.sushimei.frontend.ui.admin.configurator.ConfigurationBuilderViewModel = viewModel(
             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                    val mockRepo = com.restaurant.sushimei.frontend.data.repository.MockMenuRepository(context)
-                    return com.restaurant.sushimei.frontend.ui.admin.configurator.ConfigurationBuilderViewModel(mockRepo) as T
+                    val remoteRepo = com.restaurant.sushimei.frontend.data.repository.RemoteMenuRepository(com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi)
+                    return com.restaurant.sushimei.frontend.ui.admin.configurator.ConfigurationBuilderViewModel(remoteRepo) as T
                 }
             }
         )
@@ -112,8 +112,8 @@ fun MenuManagementScreen(
         val promosViewModel: com.restaurant.sushimei.frontend.ui.admin.promotions.PromotionsViewModel = viewModel(
             factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                 override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                    val mockPromoRepo = com.restaurant.sushimei.frontend.data.local.providePromotionRepository(context)
-                    return com.restaurant.sushimei.frontend.ui.admin.promotions.PromotionsViewModel(mockPromoRepo) as T
+                    val remotePromoRepo = com.restaurant.sushimei.frontend.data.repository.RemotePromotionRepository(com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi)
+                    return com.restaurant.sushimei.frontend.ui.admin.promotions.PromotionsViewModel(remotePromoRepo) as T
                 }
             }
         )

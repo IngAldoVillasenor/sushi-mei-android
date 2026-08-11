@@ -3,7 +3,6 @@ package com.restaurant.sushimei.frontend.data.local
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.restaurant.sushimei.frontend.data.model.CartItem
 import com.restaurant.sushimei.frontend.data.model.MenuItem
 import com.restaurant.sushimei.frontend.data.model.OrderStatus
 import kotlinx.coroutines.flow.first
@@ -32,20 +31,20 @@ class OrderDaoTest {
     private lateinit var dao: OrderDao
 
     // Datos de prueba
-    private val sampleItem = CartItem(
-        menuItem = MenuItem(
-            id       = "1815495",
-            nombre   = "California roll",
-            categoria = "Clásicos",
-            precio   = 79.0,
-            emoji    = "🍣"
-        ),
-        cantidad = 2
+    private val sampleItem = com.restaurant.sushimei.frontend.data.model.ConfiguredProduct(
+        id = java.util.UUID.randomUUID().toString(),
+        menuItemId = 1L,
+        name = "California roll",
+        quantity = 2,
+        baseUnitPrice = java.math.BigDecimal("79.0"),
+        unitTotal = java.math.BigDecimal("79.0"),
+        total = java.math.BigDecimal("158.0"),
+        groups = emptyList()
     )
     private val sampleEntity = OrderEntity(
-        id        = "TEST-001",
-        itemsJson = CartItemTypeConverter.fromList(listOf(sampleItem)),
-        total     = 158.0,
+        id        = 1L,
+        itemsJson = com.restaurant.sushimei.frontend.data.local.ConfiguredProductTypeConverter.fromList(listOf(sampleItem)),
+        total     = java.math.BigDecimal("158.0"),
         createdAt = System.currentTimeMillis(),
         status    = OrderStatus.PENDING.name
     )
@@ -72,34 +71,40 @@ class OrderDaoTest {
     fun insert_and_findById() = runTest {
         dao.insert(sampleEntity)
 
-        val found = dao.findById("TEST-001")
+        val found = dao.getOrderById(1L)
         assertNotNull(found)
-        assertEquals("TEST-001", found!!.id)
-        assertEquals(158.0, found.total, 0.001)
+        assertEquals(1L, found!!.id)
+        assertEquals(java.math.BigDecimal("158.0"), found.total)
         assertEquals(OrderStatus.PENDING.name, found.status)
     }
 
     @Test
-    fun observeActiveOrders_excludesDispatched() = runTest {
-        val dispatchedEntity = sampleEntity.copy(
-            id     = "TEST-002",
-            status = OrderStatus.DISPATCHED.name
-        )
-        dao.insert(sampleEntity)       // PENDING → debe aparecer
-        dao.insert(dispatchedEntity)   // DISPATCHED → NO debe aparecer
+    fun getActiveOrders_shouldReturnOnlyPendingAndPreparing() = runTest {
+        val pendingOrder = sampleEntity.copy(id = 1L, status = OrderStatus.PENDING.name)
+        val preparingOrder = sampleEntity.copy(id = 2L, status = OrderStatus.PREPARING.name)
+        val readyOrder = sampleEntity.copy(id = 3L, status = OrderStatus.READY.name)
+        val deliveredOrder = sampleEntity.copy(id = 4L, status = OrderStatus.DISPATCHED.name)
 
-        val active = dao.observeActiveOrders().first()
-        assertEquals(1, active.size)
-        assertEquals("TEST-001", active.first().id)
+        dao.insert(pendingOrder)
+        dao.insert(preparingOrder)
+        dao.insert(readyOrder)
+        dao.insert(deliveredOrder)
+
+        val activeOrders = dao.observeActiveOrders().first()
+
+        assertEquals(2, activeOrders.size)
+        // La consulta original ordena por DESC, así que ID 2 debería estar primero.
+        assertEquals(2L, activeOrders[0].id)
+        assertEquals(1L, activeOrders[1].id)
     }
 
     @Test
     fun updateStatus_pending_to_preparing() = runTest {
         dao.insert(sampleEntity)
 
-        dao.updateStatus("TEST-001", OrderStatus.PREPARING.name)
+        dao.updateStatus(1L, OrderStatus.PREPARING.name)
 
-        val updated = dao.findById("TEST-001")
+        val updated = dao.getOrderById(1L)
         assertEquals(OrderStatus.PREPARING.name, updated?.status)
     }
 
@@ -107,9 +112,9 @@ class OrderDaoTest {
     fun updateStatus_preparing_to_ready() = runTest {
         dao.insert(sampleEntity.copy(status = OrderStatus.PREPARING.name))
 
-        dao.updateStatus("TEST-001", OrderStatus.READY.name)
+        dao.updateStatus(1L, OrderStatus.READY.name)
 
-        val updated = dao.findById("TEST-001")
+        val updated = dao.getOrderById(1L)
         assertEquals(OrderStatus.READY.name, updated?.status)
     }
 
@@ -118,7 +123,7 @@ class OrderDaoTest {
         dao.insert(sampleEntity.copy(status = OrderStatus.READY.name))
         assertEquals(1, dao.countActive())
 
-        dao.updateStatus("TEST-001", OrderStatus.DISPATCHED.name)
+        dao.updateStatus(1L, OrderStatus.DISPATCHED.name)
 
         assertEquals(0, dao.countActive())
         val active = dao.observeActiveOrders().first()
@@ -129,24 +134,24 @@ class OrderDaoTest {
     fun cartItemTypeConverter_serializesAndDeserializesCorrectly() = runTest {
         dao.insert(sampleEntity)
 
-        val found = dao.findById("TEST-001")!!
-        val items = CartItemTypeConverter.toList(found.itemsJson)
+        val found = dao.getOrderById(1L)!!
+        val items = com.restaurant.sushimei.frontend.data.local.ConfiguredProductTypeConverter.toList(found.itemsJson)
 
         assertEquals(1, items.size)
-        assertEquals("California roll", items.first().menuItem.nombre)
-        assertEquals(2, items.first().cantidad)
-        assertEquals(158.0, items.first().subtotal, 0.001)
+        assertEquals("California roll", items.first().name)
+        assertEquals(2, items.first().quantity)
+        assertEquals(java.math.BigDecimal("158.0"), items.first().total)
     }
 
     @Test
     fun multipleOrders_orderedByCreatedAtAscending() = runTest {
-        val early = sampleEntity.copy(id = "EARLY", createdAt = 1000L)
-        val late  = sampleEntity.copy(id = "LATE",  createdAt = 9000L)
+        val early = sampleEntity.copy(id = 1L, createdAt = 1000L)
+        val late  = sampleEntity.copy(id = 2L,  createdAt = 9000L)
         dao.insert(late)
         dao.insert(early)
 
         val active = dao.observeActiveOrders().first()
-        assertEquals("EARLY", active[0].id)
-        assertEquals("LATE",  active[1].id)
+        assertEquals(1L, active[0].id)
+        assertEquals(2L,  active[1].id)
     }
 }

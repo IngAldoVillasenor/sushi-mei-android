@@ -27,10 +27,10 @@ fun PromotionEditorScreen(
     var name by remember { mutableStateOf(promotion?.name ?: "") }
     var active by remember { mutableStateOf(promotion?.active ?: true) }
     
-    // Target
-    var targetType by remember { mutableStateOf(promotion?.target?.type ?: PromotionTargetType.TAG) }
-    var targetId by remember { mutableStateOf(promotion?.target?.targetId ?: "") }
-    var targetDisplayName by remember { mutableStateOf(promotion?.target?.displayName ?: "") }
+    // Target (Simple single target for UI for now)
+    var targetType by remember { mutableStateOf(promotion?.targets?.firstOrNull()?.type ?: PromotionTargetType.TAG) }
+    var targetId by remember { mutableStateOf(promotion?.targets?.firstOrNull()?.targetId?.toString() ?: "") }
+    var targetDisplayName by remember { mutableStateOf(promotion?.targets?.firstOrNull()?.displayName ?: "") }
     
     // Schedule
     var daysOfWeek by remember { mutableStateOf(promotion?.schedule?.daysOfWeek ?: emptySet()) }
@@ -41,7 +41,7 @@ fun PromotionEditorScreen(
         mutableStateOf(
             when (promotion?.benefit) {
                 is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-                is PromotionBenefit.BuyXPayY -> "BUY_X_PAY_Y"
+                is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
                 null -> "FIXED_UNIT_PRICE"
             }
         ) 
@@ -54,21 +54,21 @@ fun PromotionEditorScreen(
         ) 
     }
     
-    // Buy X Pay Y fields
+    // Buy X Get Y Same Item fields
     var buyQuantity by remember { 
         mutableStateOf(
-            (promotion?.benefit as? PromotionBenefit.BuyXPayY)?.buyQuantity?.toString() ?: "2"
+            (promotion?.benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity?.toString() ?: "2"
         ) 
     }
-    var payQuantity by remember { 
+    var rewardQuantity by remember { 
         mutableStateOf(
-            (promotion?.benefit as? PromotionBenefit.BuyXPayY)?.payQuantity?.toString() ?: "1"
+            (promotion?.benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity?.toString() ?: "1"
         ) 
     }
     var repeat by remember { 
         mutableStateOf(
-            (promotion?.benefit as? PromotionBenefit.BuyXPayY)?.repeat ?: true
-        ) 
+            (promotion?.benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat ?: true
+        )
     }
 
     LaunchedEffect(uiState.saveSuccess) {
@@ -183,7 +183,7 @@ fun PromotionEditorScreen(
                             benefitType = "FIXED_UNIT_PRICE"
                             // Clear irrelevant fields
                             buyQuantity = ""
-                            payQuantity = ""
+                            rewardQuantity = ""
                             repeat = true
                         }
                     )
@@ -193,12 +193,12 @@ fun PromotionEditorScreen(
                     RadioButton(
                         selected = benefitType == "BUY_X_PAY_Y", 
                         onClick = { 
-                            benefitType = "BUY_X_PAY_Y" 
+                            benefitType = "BUY_X_GET_Y_SAME_ITEM" 
                             // Clear irrelevant fields
                             fixedPrice = ""
                         }
                     )
-                    Text("Compra X / Paga Y")
+                    Text("Compra X / Regala Y")
                 }
             }
             
@@ -220,9 +220,9 @@ fun PromotionEditorScreen(
                         modifier = Modifier.weight(1f)
                     )
                     OutlinedTextField(
-                        value = payQuantity,
-                        onValueChange = { payQuantity = it },
-                        label = { Text("Paga (Cant)") },
+                        value = rewardQuantity,
+                        onValueChange = { rewardQuantity = it },
+                        label = { Text("Regala (Cant)") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.weight(1f)
                     )
@@ -240,15 +240,15 @@ fun PromotionEditorScreen(
                     val benefit = if (benefitType == "FIXED_UNIT_PRICE") {
                         PromotionBenefit.FixedUnitPrice(fixedPrice.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO)
                     } else {
-                        PromotionBenefit.BuyXPayY(
+                        PromotionBenefit.BuyXGetYSameItem(
                             buyQuantity = buyQuantity.toIntOrNull() ?: 2,
-                            payQuantity = payQuantity.toIntOrNull() ?: 1,
+                            rewardQuantity = rewardQuantity.toIntOrNull() ?: 1,
                             repeat = repeat
                         )
                     }
                     
                     val updatedPromotion = Promotion(
-                        id = promotion?.id ?: java.util.UUID.randomUUID().toString(),
+                        id = promotion?.id ?: 0L,
                         name = name,
                         active = active,
                         priority = promotion?.priority ?: 100,
@@ -256,10 +256,12 @@ fun PromotionEditorScreen(
                             daysOfWeek = daysOfWeek,
                             allDay = allDay
                         ),
-                        target = PromotionTarget(
-                            type = targetType,
-                            targetId = targetId,
-                            displayName = targetDisplayName
+                        targets = listOf(
+                            PromotionTarget(
+                                type = targetType,
+                                targetId = targetId.toLongOrNull() ?: 0L,
+                                displayName = targetDisplayName
+                            )
                         ),
                         benefit = benefit,
                         version = promotion?.version ?: 1L

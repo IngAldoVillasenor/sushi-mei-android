@@ -70,7 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "sushimei_db"
                 )
                     .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigration(dropAllTables = true)
                     .build()
                     .also { INSTANCE = it }
             }
@@ -113,11 +113,12 @@ fun provideMenuRepository(context: Context): IMenuRepository {
 private var promotionRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.IPromotionRepository? = null
 
 /**
- * Devuelve siempre el mismo [MockPromotionRepository] singleton por ahora (Fase 6A3 MVP).
+ * Devuelve siempre el RemotePromotionRepository en tiempo de ejecución.
  */
 fun providePromotionRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.IPromotionRepository {
     return promotionRepositoryInstance ?: synchronized(AppDatabase::class.java) {
-        promotionRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.MockPromotionRepository()
-            .also { promotionRepositoryInstance = it }
+        promotionRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemotePromotionRepository(
+            api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
+        ).also { promotionRepositoryInstance = it }
     }
 }

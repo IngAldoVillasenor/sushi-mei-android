@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto
 import com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto
-import com.restaurant.sushimei.frontend.data.model.QuoteRequestDto
-import com.restaurant.sushimei.frontend.data.model.QuoteRequestGroupDto
-import com.restaurant.sushimei.frontend.data.model.QuoteRequestSelectionDto
-import com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
+import com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestDto
+import com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestGroupDto
+import com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestSelectionDto
+import com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto
 import com.restaurant.sushimei.frontend.data.repository.IMenuRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -27,9 +27,9 @@ enum class QuoteState {
 data class ConfiguratorUiState(
     val isLoadingConfig: Boolean = false,
     val configuration: ConfigurationResponseDto? = null,
-    val selections: Map<Int, List<ConfigurationOptionDto>> = emptyMap(), // GroupId -> List of Selections (allows duplicates if configured)
+    val selections: Map<Long, List<ConfigurationOptionDto>> = emptyMap(), // GroupId -> List of Selections (allows duplicates if configured)
     val quoteState: QuoteState = QuoteState.NOT_REQUESTED,
-    val latestQuote: QuoteResponseDto? = null,
+    val latestQuote: ItemQuoteResponseDto? = null,
     val errorMessage: String? = null
 )
 
@@ -42,7 +42,7 @@ class ConfiguratorViewModel(
 
     private var quoteJob: Job? = null
 
-    fun loadConfiguration(menuItemId: String) {
+    fun loadConfiguration(menuItemId: Long) {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoadingConfig = true)
             try {
@@ -63,7 +63,7 @@ class ConfiguratorViewModel(
         }
     }
 
-    fun addSelection(groupId: Int, option: ConfigurationOptionDto) {
+    fun addSelection(groupId: Long, option: ConfigurationOptionDto) {
         val currentSelections = _uiState.value.selections.toMutableMap()
         val groupSelections = currentSelections[groupId]?.toMutableList() ?: mutableListOf()
         
@@ -82,7 +82,7 @@ class ConfiguratorViewModel(
         validateAndQuote()
     }
 
-    fun removeSelection(groupId: Int, option: ConfigurationOptionDto) {
+    fun removeSelection(groupId: Long, option: ConfigurationOptionDto) {
         val currentSelections = _uiState.value.selections.toMutableMap()
         val groupSelections = currentSelections[groupId]?.toMutableList() ?: return
         
@@ -120,10 +120,10 @@ class ConfiguratorViewModel(
             try {
                 val requestGroups = state.selections.map { (groupId, options) ->
                     val groupedOptions = options.groupBy { it.menuItemId }
-                    QuoteRequestGroupDto(
+                    ItemQuoteRequestGroupDto(
                         groupId = groupId,
                         selections = groupedOptions.map { (itemId, list) ->
-                            QuoteRequestSelectionDto(
+                            ItemQuoteRequestSelectionDto(
                                 menuItemId = itemId,
                                 quantity = list.size,
                                 groups = emptyList() // Nested configs not fully implemented in state yet
@@ -132,7 +132,7 @@ class ConfiguratorViewModel(
                     )
                 }
                 
-                val request = QuoteRequestDto(
+                val request = ItemQuoteRequestDto(
                     quantity = 1,
                     groups = requestGroups
                 )

@@ -48,12 +48,23 @@ class AdminTagsViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
-                // If tag has empty ID or pseudo ID, it's create, else update
-                val isNew = tag.id.isEmpty()
+                // If tag has id 0L, it's create, else update
+                val isNew = tag.id == 0L
                 val savedTag = if (isNew) {
-                    repository.createTag(tag)
+                    val createReq = com.restaurant.sushimei.frontend.data.model.TagCreateRequestDto(
+                        code = tag.code,
+                        name = tag.name,
+                        displayOrder = tag.displayOrder
+                    )
+                    repository.createTag(createReq)
                 } else {
-                    repository.updateTag(tag.id, tag)
+                    val updateReq = com.restaurant.sushimei.frontend.data.model.TagUpdateRequestDto(
+                        name = tag.name,
+                        active = tag.active,
+                        displayOrder = tag.displayOrder,
+                        version = tag.version
+                    )
+                    repository.updateTag(tag.id, updateReq)
                 }
                 
                 val current = _uiState.value.tags.toMutableList()

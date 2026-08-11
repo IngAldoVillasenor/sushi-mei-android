@@ -14,11 +14,17 @@ class PrintService(private val context: Context) {
 
     @SuppressLint("MissingPermission")
     fun printTicket(order: OrderRecord): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (androidx.core.app.ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                println("⚠️ Permiso BLUETOOTH_CONNECT no concedido.")
+                return false
+            }
+        }
         val bluetoothManager = context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
         val bluetoothAdapter = bluetoothManager.adapter
 
         if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) {
-            println("⚠️ Bluetooth apagado o no soportado.")
+            println("❌ Bluetooth apagado o no soportado.")
             return false
         }
 
