@@ -260,3 +260,64 @@ data class ItemQuoteResponseSelectionDto(
     val priceAdjustment: BigDecimal,
     val groups: List<ItemQuoteResponseGroupDto> = emptyList()
 )
+
+// ============================================================================
+// O R D E R S   A P I   D T O s (Phase 6B)
+// ============================================================================
+
+enum class FulfillmentType { PICKUP, DELIVERY }
+enum class PaymentMethod { CASH, TRANSFER, CARD }
+enum class OrderResult { CREATED, ALREADY_CREATED }
+
+data class ManualPosOrderRequest(
+    val requestId: String,
+    val fulfillmentType: FulfillmentType,
+    val paymentMethod: PaymentMethod,
+    val deliveryAddress: String?,
+    val pickupName: String?,
+    val cashDenomination: BigDecimal?,
+    val lines: List<PosOrderRequestLineDto>
+)
+
+data class PosOrderRequestLineDto(
+    val lineKey: String,
+    val menuItemId: Long,
+    val quantity: Int,
+    val groups: List<QuoteRequestGroupDto> = emptyList(),
+    val rewardConfigurations: List<QuoteRequestRewardConfigDto> = emptyList()
+)
+
+data class ManualPosOrderResponse(
+    val id: Long,
+    val requestId: String,
+    val result: OrderResult,
+    val orderSource: String,
+    val createdByUserId: Long?,
+    val fulfillmentType: FulfillmentType,
+    val paymentMethod: PaymentMethod,
+    val deliveryAddress: String?,
+    val pickupName: String?,
+    val cashDenomination: BigDecimal?,
+    val status: String,
+    val createdAt: Instant,
+    val lines: List<PosOrderResponseLineDto>,
+    val total: BigDecimal
+)
+
+data class PosOrderResponseLineDto(
+    val id: Long,
+    val lineKind: String,
+    val lineKey: String,
+    val sourceMenuItemId: Long,
+    val name: String,
+    val quantity: Int,
+    val catalogBaseUnitPrice: BigDecimal,
+    val chargedBaseUnitPrice: BigDecimal,
+    val configurationAdjustmentAmount: BigDecimal,
+    val finalUnitAmount: BigDecimal,
+    val finalLineTotal: BigDecimal,
+    val promotion: PromotionSummaryDto?,
+    val rewardOrdinal: Int?,
+    val configuration: List<QuoteResponseGroupDto> = emptyList(),
+    val rewards: List<QuoteResponseRewardDto> = emptyList()
+)

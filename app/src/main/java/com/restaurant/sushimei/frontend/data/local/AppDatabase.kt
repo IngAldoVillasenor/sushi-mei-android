@@ -147,3 +147,16 @@ fun provideAuthRepository(context: Context): com.restaurant.sushimei.frontend.da
         }
     }
 }
+
+private var manualPosOrderRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.IManualPosOrderRepository? = null
+
+/**
+ * Devuelve siempre el RemoteManualPosOrderRepository singleton para el checkout de POS.
+ */
+fun provideManualPosOrderRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.IManualPosOrderRepository {
+    return manualPosOrderRepositoryInstance ?: synchronized(AppDatabase::class.java) {
+        manualPosOrderRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemoteManualPosOrderRepository(
+            api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
+        ).also { manualPosOrderRepositoryInstance = it }
+    }
+}
