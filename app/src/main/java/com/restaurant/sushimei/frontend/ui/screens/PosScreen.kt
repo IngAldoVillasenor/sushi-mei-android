@@ -10,6 +10,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -25,6 +26,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,10 +35,16 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.MenuItem
+import com.restaurant.sushimei.frontend.data.model.FulfillmentType
+import com.restaurant.sushimei.frontend.data.model.PaymentMethod
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
-import com.restaurant.sushimei.frontend.data.local.provideOrderRepository
+import com.restaurant.sushimei.frontend.data.local.provideManualPosOrderRepository
 import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
 import com.restaurant.sushimei.frontend.ui.pos.PosViewModel
+import com.restaurant.sushimei.frontend.ui.pos.PosUiState
+import com.restaurant.sushimei.frontend.ui.pos.CheckoutState
+import com.restaurant.sushimei.frontend.ui.pos.QuoteState
+import java.math.BigDecimal
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -45,31 +53,40 @@ fun PosScreen() {
     val context = LocalContext.current
     val viewModel: PosViewModel = viewModel(
         factory = PosViewModel.factory(
-            menuRepository  = provideMenuRepository(context),
-            orderRepository = provideOrderRepository(context),
+            menuRepository = provideMenuRepository(context),
+            manualPosOrderRepository = provideManualPosOrderRepository(context),
             promotionRepository = providePromotionRepository(context)
         )
     )
 
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val stateSuccess = uiState as? PosUiState.Success
 
-    val isLoading = uiState is com.restaurant.sushimei.frontend.ui.pos.PosUiState.Loading
-    val stateSuccess = uiState as? com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success
-    
     val selectedCategory = stateSuccess?.selectedCategory
     val cart = stateSuccess?.currentCart ?: emptyList()
-    val quoteState = stateSuccess?.quoteState ?: com.restaurant.sushimei.frontend.ui.pos.QuoteState.Idle
-    val pricingPreview = if (quoteState is com.restaurant.sushimei.frontend.ui.pos.QuoteState.Valid) quoteState.preview else com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(java.math.BigDecimal.ZERO, emptyList(), emptyList(), java.math.BigDecimal.ZERO)
-    val checkoutState = stateSuccess?.checkoutState ?: com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Idle
+    val quoteState = stateSuccess?.quoteState ?: QuoteState.Idle
+    val checkoutState = stateSuccess?.checkoutState ?: CheckoutState.Idle
+    val pricingPreview = if (quoteState is QuoteState.Valid) quoteState.preview else com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(BigDecimal.ZERO, emptyList(), emptyList(), BigDecimal.ZERO)
+
     val filteredMenuItems = stateSuccess?.filteredProducts ?: emptyList()
     val categories = stateSuccess?.categories ?: listOf("Todos")
 
     var showSuccessDialog by remember { mutableStateOf(false) }
-    var lastChargedTotal by remember { mutableStateOf(java.math.BigDecimal.ZERO) }
+    var showCheckoutDialog by remember { mutableStateOf(false) }
 
-    if (showSuccessDialog) {
+    LaunchedEffect(checkoutState) {
+        if (checkoutState is CheckoutState.Success) {
+            showCheckoutDialog = false
+            showSuccessDialog = true
+        }
+    }
+
+    if (showSuccessDialog && checkoutState is CheckoutState.Success) {
         AlertDialog(
-            onDismissRequest = { showSuccessDialog = false },
+            onDismissRequest = {
+                showSuccessDialog = false
+                viewModel.resetCheckoutState()
+            },
             icon = {
                 Icon(
                     imageVector = Icons.Default.CheckCircle,
@@ -80,25 +97,36 @@ fun PosScreen() {
             },
             title = {
                 Text(
-                    text = "¡Orden Cobrada con Éxito!",
+                    text = "¡Orden Confirmada!",
                     fontWeight = FontWeight.Bold,
                     textAlign = TextAlign.Center
                 )
             },
             text = {
                 Text(
-                    text = "Se ha procesado el pago de $${String.format(Locale.US, "%.2f", lastChargedTotal)} MXN correctamente.",
+                    text = "Orden #${checkoutState.response.id} procesada.\nTotal: $${String.format(Locale.US, "%.2f", checkoutState.response.total)} MXN",
                     textAlign = TextAlign.Center
                 )
             },
             confirmButton = {
                 Button(
-                    onClick = { showSuccessDialog = false },
+                    onClick = {
+                        showSuccessDialog = false
+                        viewModel.resetCheckoutState()
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                 ) {
                     Text("Aceptar")
                 }
             }
+        )
+    }
+
+    if (showCheckoutDialog && stateSuccess != null) {
+        CheckoutDialog(
+            viewModel = viewModel,
+            uiState = stateSuccess,
+            onDismiss = { showCheckoutDialog = false }
         )
     }
 
@@ -114,7 +142,6 @@ fun PosScreen() {
                 .fillMaxHeight()
                 .padding(16.dp)
         ) {
-            // Header del Catálogo
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -135,7 +162,6 @@ fun PosScreen() {
                 )
             }
 
-            // Barra de Categorías (FilterChips) — derivadas del JSON real
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier
@@ -161,7 +187,6 @@ fun PosScreen() {
                 }
             }
 
-            // Grid de Productos (Adaptativo para Tablets)
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(minSize = 180.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -179,7 +204,6 @@ fun PosScreen() {
             }
         }
 
-        // Divisor vertical entre Catálogo y Ticket
         VerticalDivider(
             modifier = Modifier.fillMaxHeight(),
             color = MaterialTheme.colorScheme.outlineVariant,
@@ -196,7 +220,6 @@ fun PosScreen() {
                 .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
                 .padding(16.dp)
         ) {
-            // Header Ticket
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -231,7 +254,6 @@ fun PosScreen() {
 
             HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp))
 
-            // Lista de ConfiguredProducts en Vivo
             if (cart.isEmpty()) {
                 Box(
                     modifier = Modifier
@@ -240,10 +262,7 @@ fun PosScreen() {
                     contentAlignment = Alignment.Center
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "🛒",
-                            fontSize = 48.sp
-                        )
+                        Text(text = "🛒", fontSize = 48.sp)
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = "El carrito está vacío",
@@ -266,7 +285,7 @@ fun PosScreen() {
                     items(cart, key = { it.id }) { configuredProduct ->
                         CartItemRow(
                             configuredProduct = configuredProduct,
-                            onIncrement = { configuringItemId = configuredProduct.menuItemId }, // Para incrementar, abrimos de nuevo el configurador por ahora
+                            onIncrement = { configuringItemId = configuredProduct.menuItemId },
                             onDecrement = { viewModel.removeFromCart(configuredProduct) },
                             onDelete = { viewModel.deleteFromCart(configuredProduct) }
                         )
@@ -276,7 +295,7 @@ fun PosScreen() {
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            val isCobrarEnabled = cart.isNotEmpty() && quoteState is com.restaurant.sushimei.frontend.ui.pos.QuoteState.Valid && checkoutState != com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
+            val isCobrarEnabled = cart.isNotEmpty() && quoteState is QuoteState.Valid && checkoutState !is CheckoutState.Loading
 
             Card(
                 modifier = Modifier
@@ -291,7 +310,6 @@ fun PosScreen() {
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    // Subtotal
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -309,7 +327,6 @@ fun PosScreen() {
                         )
                     }
 
-                    // Adjustments (Promociones)
                     pricingPreview.adjustments.forEach { adjustment ->
                         Row(
                             modifier = Modifier
@@ -320,7 +337,7 @@ fun PosScreen() {
                             Text(
                                 text = adjustment.label,
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFFC62828) // Red for discounts
+                                color = Color(0xFFC62828)
                             )
                             Text(
                                 text = "$${String.format(Locale.US, "%.2f", adjustment.amount)}",
@@ -336,52 +353,25 @@ fun PosScreen() {
                             modifier = Modifier.padding(vertical = 8.dp),
                             color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.2f)
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
-                        
-                        if (checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Error) {
-                            Text(
-                                text = checkoutState.message,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        } else if (quoteState is com.restaurant.sushimei.frontend.ui.pos.QuoteState.Error) {
-                            Text(
-                                text = quoteState.message,
-                                color = MaterialTheme.colorScheme.error,
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
-
-                        Button(
-                            onClick = { viewModel.cobrarOrden() },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(56.dp),
-                            shape = RoundedCornerShape(12.dp),
-                            enabled = isCobrarEnabled
-                        ) {
-                            if (checkoutState == com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading || quoteState == com.restaurant.sushimei.frontend.ui.pos.QuoteState.Loading) {
-                                androidx.compose.material3.CircularProgressIndicator(color = MaterialTheme.colorScheme.onPrimary)
-                            } else {
-                                Text(
-                                    text = "Cobrar",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
                     } else {
                         Spacer(modifier = Modifier.height(8.dp))
                     }
 
-                    // Total
+                    if (quoteState is QuoteState.Error) {
+                        Text(
+                            text = quoteState.message,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = "Total a Pagar:",
+                            text = "Cotización Total:",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -397,14 +387,8 @@ fun PosScreen() {
             }
 
             Button(
-                onClick = {
-                    if (cart.isNotEmpty()) {
-                        lastChargedTotal = pricingPreview.total
-                        viewModel.cobrarOrden()
-                        showSuccessDialog = true
-                    }
-                },
-                enabled = cart.isNotEmpty(),
+                onClick = { showCheckoutDialog = true },
+                enabled = isCobrarEnabled,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
@@ -419,15 +403,14 @@ fun PosScreen() {
                     modifier = Modifier.padding(end = 8.dp)
                 )
                 Text(
-                    text = "Cobrar Orden",
+                    text = "Cobrar",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
             }
-        } // Fin de Column Derecho
-    } // Fin de Row Principal
+        }
+    }
 
-    // Modal del Configurador
     configuringItemId?.let { itemId ->
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { configuringItemId = null },
@@ -440,17 +423,17 @@ fun PosScreen() {
                     .clip(MaterialTheme.shapes.large),
                 color = MaterialTheme.colorScheme.background
             ) {
-                val context = androidx.compose.ui.platform.LocalContext.current
-                val configViewModel: com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel = 
-                    androidx.lifecycle.viewmodel.compose.viewModel(
+                val ctx = LocalContext.current
+                val configViewModel: com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel =
+                    viewModel(
                         factory = object : androidx.lifecycle.ViewModelProvider.Factory {
                             override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                                val mockRepo = com.restaurant.sushimei.frontend.data.repository.MockMenuRepository(context)
+                                val mockRepo = com.restaurant.sushimei.frontend.data.repository.MockMenuRepository(ctx)
                                 return com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel(mockRepo) as T
                             }
                         }
                     )
-                
+
                 com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen(
                     menuItemId = itemId,
                     viewModel = configViewModel,
@@ -463,7 +446,155 @@ fun PosScreen() {
             }
         }
     }
-} // Fin de PosScreen
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckoutDialog(
+    viewModel: PosViewModel,
+    uiState: PosUiState.Success,
+    onDismiss: () -> Unit
+) {
+    val total = if (uiState.quoteState is QuoteState.Valid) uiState.quoteState.preview.total else BigDecimal.ZERO
+
+    // Derived values directly from UI state
+    val type = uiState.fulfillmentType
+    val method = uiState.paymentMethod
+    val pickup = uiState.pickupName ?: ""
+    val address = uiState.deliveryAddress ?: ""
+    val denom = uiState.cashDenomination?.toString() ?: ""
+    val isLoading = uiState.checkoutState is CheckoutState.Loading
+
+    // Client side validation matching ViewModel
+    val isPickupValid = type != FulfillmentType.PICKUP || (pickup.isNotBlank() && pickup.trim().length in 2..120)
+    val isDeliveryValid = type != FulfillmentType.DELIVERY || (address.isNotBlank() && address.trim().length in 5..500)
+    val isCashValid = method != PaymentMethod.CASH || (uiState.cashDenomination != null && uiState.cashDenomination > BigDecimal.ZERO)
+    val isCardValid = method != PaymentMethod.CARD || type == FulfillmentType.PICKUP
+    val isValid = isPickupValid && isDeliveryValid && isCashValid && isCardValid
+
+    AlertDialog(
+        onDismissRequest = { if (!isLoading) onDismiss() },
+        title = { Text("Confirmar Orden") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                if (uiState.checkoutState is CheckoutState.Error) {
+                    Text(
+                        text = uiState.checkoutState.message,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                }
+
+                Text("Método de Entrega", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = type == FulfillmentType.PICKUP,
+                        onClick = { viewModel.updateFulfillmentType(FulfillmentType.PICKUP) },
+                        label = { Text("Para Llevar") },
+                        enabled = !isLoading
+                    )
+                    FilterChip(
+                        selected = type == FulfillmentType.DELIVERY,
+                        onClick = { viewModel.updateFulfillmentType(FulfillmentType.DELIVERY) },
+                        label = { Text("A Domicilio") },
+                        enabled = !isLoading
+                    )
+                }
+
+                if (type == FulfillmentType.PICKUP) {
+                    OutlinedTextField(
+                        value = pickup,
+                        onValueChange = { viewModel.updatePickupName(it) },
+                        label = { Text("Nombre de quien recoge") },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        enabled = !isLoading
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = address,
+                        onValueChange = { viewModel.updateDeliveryAddress(it) },
+                        label = { Text("Dirección de entrega") },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        enabled = !isLoading
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Text("Método de Pago", fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = method == PaymentMethod.CASH,
+                        onClick = { viewModel.updatePaymentMethod(PaymentMethod.CASH) },
+                        label = { Text("Efectivo") },
+                        enabled = !isLoading
+                    )
+                    if (type == FulfillmentType.PICKUP) {
+                        FilterChip(
+                            selected = method == PaymentMethod.CARD,
+                            onClick = { viewModel.updatePaymentMethod(PaymentMethod.CARD) },
+                            label = { Text("Tarjeta") },
+                            enabled = !isLoading
+                        )
+                    }
+                    FilterChip(
+                        selected = method == PaymentMethod.TRANSFER,
+                        onClick = { viewModel.updatePaymentMethod(PaymentMethod.TRANSFER) },
+                        label = { Text("Transferencia") },
+                        enabled = !isLoading
+                    )
+                }
+
+                if (method == PaymentMethod.CASH) {
+                    OutlinedTextField(
+                        value = denom,
+                        onValueChange = {
+                            val bd = it.toBigDecimalOrNull()
+                            viewModel.updateCashDenomination(bd)
+                        },
+                        label = { Text("Denominación (Efectivo a pagar)") },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                        enabled = !isLoading
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    text = "Total Estimado: $${String.format(Locale.US, "%.2f", total)}",
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { viewModel.cobrarOrden() },
+                enabled = isValid && !isLoading
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = MaterialTheme.colorScheme.onPrimary)
+                } else {
+                    Text("Confirmar")
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isLoading
+            ) {
+                Text("Cancelar")
+            }
+        }
+    )
+}
 
 @Composable
 fun MenuItemCard(
@@ -525,7 +656,6 @@ fun MenuItemCard(
                 )
             }
 
-            // Badge si ya está en el carrito
             if (cartQuantity > 0) {
                 Box(
                     modifier = Modifier

@@ -15,6 +15,8 @@ jobs:
       # 1. Descarga el código del repositorio
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # 2. Configura Java 17 (Estándar para Android moderno)
       - name: Set up JDK 17
@@ -23,7 +25,17 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      # 3. Configura el caché de Gradle para que las ejecuciones sean mucho más rápidas
+      # 3. Check for trailing whitespace
+      - name: Check whitespace
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            git diff --check "${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
+          else
+            git diff --check "${{ github.event.before }}...${{ github.sha }}"
+          fi
+
+      # 4. Configura el caché de Gradle para que las ejecuciones sean mucho más rápidas
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
 

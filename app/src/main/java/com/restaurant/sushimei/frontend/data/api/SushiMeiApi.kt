@@ -76,6 +76,15 @@ interface SushiMeiApi {
     suspend fun validatePayment(@Path("id") orderId: Long): Response<Unit>
 
     // ============================================================================
+    // ORDERS (POS / Phase 6B)
+    // ============================================================================
+
+    @POST("/api/v1/orders")
+    suspend fun createOrder(
+        @Body request: ManualPosOrderRequest
+    ): Response<ManualPosOrderResponse>
+
+    // ============================================================================
     // FASE 6A2: Operational Catalog & Configuration
     // ============================================================================
 
