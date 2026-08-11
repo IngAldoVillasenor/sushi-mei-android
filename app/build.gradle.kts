@@ -25,6 +25,18 @@ android {
             buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080\"")
         }
         release {
+            val releaseUrl = providers.gradleProperty("SUSHIMEI_BASE_URL").orNull
+            val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+            if (isReleaseBuild && releaseUrl == null) {
+                throw GradleException("SUSHIMEI_BASE_URL property is required for release builds.")
+            }
+            if (releaseUrl != null && !releaseUrl.startsWith("https://")) {
+                throw GradleException("SUSHIMEI_BASE_URL must use https:// for release builds.")
+            }
+            if (releaseUrl != null && (releaseUrl.contains("localhost") || releaseUrl.contains("10.0.2.2") || releaseUrl.contains("127.0.0.1"))) {
+                throw GradleException("SUSHIMEI_BASE_URL cannot use local development addresses in release builds.")
+            }
+            buildConfigField("String", "BASE_URL", "\"${releaseUrl ?: "https://api.invalid"}\"")
             optimization {
                 enable = false
             }

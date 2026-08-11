@@ -8,6 +8,52 @@ import retrofit2.http.*
 interface SushiMeiApi {
 
     // ============================================================================
+    // FASE 6S2: Authenticated Self & Security
+    // ============================================================================
+
+    @POST("/api/v1/auth/logout")
+    suspend fun logout(): Response<Unit>
+
+    @GET("/api/v1/auth/me")
+    suspend fun getMe(): Response<AuthenticatedUserDto>
+
+    @POST("/api/v1/auth/change-password")
+    suspend fun changePassword(@Body request: ChangePasswordRequestDto): Response<Unit>
+
+    @GET("/api/v1/auth/sessions")
+    suspend fun getSessions(): Response<List<SessionDto>>
+
+    @DELETE("/api/v1/auth/sessions/{id}")
+    suspend fun revokeSession(@Path("id") id: String): Response<Unit>
+
+    @GET("/api/v1/security/users")
+    suspend fun getUsers(): Response<List<AuthenticatedUserDto>>
+
+    @GET("/api/v1/security/users/{id}")
+    suspend fun getUser(@Path("id") id: Long): Response<AuthenticatedUserDto>
+
+    @POST("/api/v1/security/users")
+    suspend fun createUser(@Body request: UserCreateRequestDto): Response<AuthenticatedUserDto>
+
+    @PUT("/api/v1/security/users/{id}")
+    suspend fun updateUser(
+        @Path("id") id: Long,
+        @Body request: UserUpdateRequestDto
+    ): Response<AuthenticatedUserDto>
+
+    @POST("/api/v1/security/users/{id}/reset-password")
+    suspend fun resetUserPassword(
+        @Path("id") id: Long,
+        @Body request: UserResetPasswordRequestDto
+    ): Response<Unit>
+
+    @GET("/api/v1/security/users/{id}/sessions")
+    suspend fun getUserSessions(@Path("id") id: Long): Response<List<SessionDto>>
+
+    @DELETE("/api/v1/security/sessions/{id}")
+    suspend fun revokeUserSession(@Path("id") id: String): Response<Unit>
+
+    // ============================================================================
     // ORDERS (Kitchen)
     // ============================================================================
 
@@ -15,19 +61,19 @@ interface SushiMeiApi {
     suspend fun getActiveOrders(): Response<List<OrderRecord>>
 
     @PUT("/api/orders/{id}/prepare")
-    suspend fun acceptAndPrepareOrder(@Path("id") orderId: Long): Response<ResponseBody>
+    suspend fun acceptAndPrepareOrder(@Path("id") orderId: Long): Response<Unit>
 
     @POST("/api/orders/{id}/reject")
     suspend fun rejectOrder(
         @Path("id") orderId: Long,
         @Body request: RejectRequest
-    ): Response<ResponseBody>
+    ): Response<Unit>
 
     @PUT("/api/orders/{id}/complete")
-    suspend fun completeOrder(@Path("id") orderId: Long): Response<ResponseBody>
+    suspend fun completeOrder(@Path("id") orderId: Long): Response<Unit>
 
     @PUT("/api/orders/{id}/validate-payment")
-    suspend fun validatePayment(@Path("id") orderId: Long): Response<ResponseBody>
+    suspend fun validatePayment(@Path("id") orderId: Long): Response<Unit>
 
     // ============================================================================
     // FASE 6A2: Operational Catalog & Configuration
@@ -51,7 +97,7 @@ interface SushiMeiApi {
     ): Response<MenuItemResponse>
 
     @DELETE("/api/v1/menu/items/{id}")
-    suspend fun deleteMenuItem(@Path("id") id: Long): Response<ResponseBody>
+    suspend fun deleteMenuItem(@Path("id") id: Long): Response<Unit>
 
     @GET("/api/v1/menu/items/{id}/configuration")
     suspend fun getMenuItemConfiguration(@Path("id") id: Long): Response<ConfigurationResponseDto>
@@ -81,13 +127,13 @@ interface SushiMeiApi {
     ): Response<CatalogTagDto>
 
     @DELETE("/api/v1/menu/tags/{id}")
-    suspend fun deleteTag(@Path("id") id: Long): Response<ResponseBody>
+    suspend fun deleteTag(@Path("id") id: Long): Response<Unit>
 
     @PUT("/api/v1/menu/items/{id}/tags")
     suspend fun updateItemTags(
         @Path("id") id: Long,
         @Body request: ItemTagsUpdateRequestDto
-    ): Response<ResponseBody>
+    ): Response<Unit>
 
     // ============================================================================
     // FASE 6A2: Configuration Definition (Admin)
@@ -118,7 +164,7 @@ interface SushiMeiApi {
     ): Response<PromotionResponseDto>
 
     @DELETE("/api/v1/promotions/{id}")
-    suspend fun deletePromotion(@Path("id") id: Long): Response<ResponseBody>
+    suspend fun deletePromotion(@Path("id") id: Long): Response<Unit>
 
     // Note: The /promotions/quote is global, quoting a whole cart
     @POST("/api/v1/promotions/quote")

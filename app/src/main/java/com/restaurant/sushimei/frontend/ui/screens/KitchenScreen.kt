@@ -177,7 +177,8 @@ fun LocalOrderCard(
     onPrimary: (context: android.content.Context) -> Unit
 ) {
     val context = LocalContext.current
-    val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val currentLocale = androidx.compose.ui.platform.LocalConfiguration.current.locales.get(0)
+    val timeFormat = remember(currentLocale) { SimpleDateFormat("HH:mm", currentLocale) }
     val horaCreacion = timeFormat.format(Date(order.createdAt))
 
     Card(

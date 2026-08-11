@@ -72,6 +72,7 @@ class RoomMenuRepository(
 
     // ── Escritura ────────────────────────────────────────────────────────────
 
+    @android.annotation.SuppressLint("NewApi")
     override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
         return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
             id = System.currentTimeMillis(),
@@ -90,6 +91,7 @@ class RoomMenuRepository(
         )
     }
 
+    @android.annotation.SuppressLint("NewApi")
     override suspend fun updateProduct(id: Long, request: com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
         return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
             id = id,
