@@ -136,9 +136,11 @@ class AuthRepositoryTest {
     @Test
     fun `test startup initialization with no session`() = runBlocking {
         val store = FakeSessionStore()
-        val authRepository = AuthRepository(FakePublicApi(AuthResponseDto("", "", "", "", fakeUser)), store, FakeDeviceIdentityManager())
+        val api = FakePublicApi(AuthResponseDto("", "", "", "", fakeUser))
+        val authRepository = AuthRepository(api, store, FakeDeviceIdentityManager())
         authRepository.initialize()
         assertEquals(AuthState.Unauthenticated, authRepository.authState.value)
+        assertEquals(0, api.refreshCallCount)
     }
 
     @Test
@@ -146,11 +148,15 @@ class AuthRepositoryTest {
         val store = FakeSessionStore().apply {
             storedSession = AuthResponseDto("access", "2030-01-01T00:00:00Z", "refresh", "2030-01-15T00:00:00Z", fakeUser)
         }
+        val api = FakePublicApi(store.storedSession!!)
         val timeProvider = FakeTimeProvider(java.time.Instant.parse("2021-01-01T00:00:00Z"))
-        val authRepository = AuthRepository(FakePublicApi(store.storedSession!!), store, FakeDeviceIdentityManager(), timeProvider)
+        val authRepository = AuthRepository(api, store, FakeDeviceIdentityManager(), timeProvider)
         authRepository.initialize()
         assert(authRepository.authState.value is AuthState.Authenticated)
+        assertEquals(0, api.refreshCallCount)
     }
+
+    @Test
     fun `test startup gate expired session clears auth state`() = runBlocking {
         val store = FakeSessionStore().apply {
             storedSession = AuthResponseDto("access", "2020-01-01T00:00:00Z", "refresh", "2020-01-01T00:00:00Z", fakeUser)

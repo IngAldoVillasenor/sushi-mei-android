@@ -39,7 +39,11 @@ fun LoginScreen(authRepository: AuthRepository) {
         errorMessage = null
         coroutineScope.launch {
             try {
-                authRepository.login(username.trim(), password)
+                val success = authRepository.login(username.trim(), password)
+                if (!success) {
+                    errorMessage = "Error al iniciar sesión."
+                    isLoading = false
+                }
                 // On success, AuthRepository updates state and AuthGate automatically navigates away
             } catch (e: com.restaurant.sushimei.frontend.data.api.ApiException) {
                 if (e.code == "AUTH_INVALID_CREDENTIALS") {

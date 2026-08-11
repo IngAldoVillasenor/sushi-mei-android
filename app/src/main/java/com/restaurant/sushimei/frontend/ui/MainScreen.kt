@@ -75,11 +75,16 @@ fun MainScreen(authRepository: AuthRepository, user: AuthenticatedUserDto) {
             }
         }
 
-        // El contenido principal ocupa el resto de la pantalla (a la derecha)
+        // Determine logical start destination based on role
+        val initialRoute = when (user.role) {
+            ApplicationRole.CASHIER -> Screen.Pos.route
+            else -> Screen.Kitchen.route
+        }
+
         Box(modifier = Modifier.weight(1f)) {
             NavHost(
                 navController = navController,
-                startDestination = Screen.Kitchen.route
+                startDestination = initialRoute
             ) {
                 composable(Screen.Pos.route) {
                     PosScreen()
