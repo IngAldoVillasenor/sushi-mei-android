@@ -12,18 +12,20 @@ import com.restaurant.sushimei.frontend.data.repository.RoomMenuRepository
 import com.restaurant.sushimei.frontend.data.repository.RoomOrderRepository
 
 /**
- * Base de datos Room de la aplicación Sushi Mei.
+ * Base de datos Room de la aplicacion Sushi Mei.
  *
- * Versión 2:
+ * Versiones:
  *   - v1: tabla `orders`
- *   - v2: + tabla `menu_items` (migración MIGRATION_1_2)
+ *   - v2: + tabla `menu_items` (migracion MIGRATION_1_2)
+ *   - v3: (desarrollo) cambio de IDs a String
+ *   - v4: (desarrollo) migracion destructiva forzada de IDs a Long (Phase 6A2/6A3)
  *
  * Al agregar nuevas entidades: incrementar [version] y proveer la [Migration]
- * correspondiente para no perder datos existentes.
+ * correspondiente para no perder datos existentes (excepto en dev si es destructiva).
  */
 @androidx.room.Database(
     entities = [OrderEntity::class, MenuItemEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -70,7 +72,11 @@ abstract class AppDatabase : RoomDatabase() {
                     "sushimei_db"
                 )
                     .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration(dropAllTables = true)
+                    .apply {
+                        if (com.restaurant.sushimei.frontend.BuildConfig.DEBUG) {
+                            fallbackToDestructiveMigration(dropAllTables = true)
+                        }
+                    }
                     .build()
                     .also { INSTANCE = it }
             }
@@ -120,5 +126,24 @@ fun providePromotionRepository(context: Context): com.restaurant.sushimei.fronte
         promotionRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemotePromotionRepository(
             api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
         ).also { promotionRepositoryInstance = it }
+    }
+}
+
+private var authRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.AuthRepository? = null
+
+/**
+ * Devuelve siempre el AuthRepository singleton.
+ */
+fun provideAuthRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.AuthRepository {
+    return authRepositoryInstance ?: synchronized(AppDatabase::class.java) {
+        authRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.AuthRepository(
+            publicApi = com.restaurant.sushimei.frontend.data.api.NetworkModule.publicSushiMeiApi,
+            sessionStore = com.restaurant.sushimei.frontend.data.local.SecureSessionStore(context.applicationContext),
+            deviceIdentityManager = com.restaurant.sushimei.frontend.data.local.DeviceIdentityManager(context.applicationContext)
+        ).also {
+            authRepositoryInstance = it
+            // Inicializar el NetworkModule con el AuthRepository
+            com.restaurant.sushimei.frontend.data.api.NetworkModule.initAuthRepository(it)
+        }
     }
 }

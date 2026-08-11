@@ -55,6 +55,7 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
 
     // ── Escritura (no-op — JSON es de solo lectura) ──────────────────────────
 
+    @android.annotation.SuppressLint("NewApi")
     override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
         return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
             id = 1L, name = request.name, description = request.description, category = request.category,
@@ -64,6 +65,7 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
         )
     }
 
+    @android.annotation.SuppressLint("NewApi")
     override suspend fun updateProduct(id: Long, request: com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
         return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
             id = id, name = request.name, description = request.description, category = request.category,

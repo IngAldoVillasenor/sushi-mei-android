@@ -16,21 +16,38 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.restaurant.sushimei.frontend.navigation.Screen
+import com.restaurant.sushimei.frontend.ui.screens.AccountScreen
 import com.restaurant.sushimei.frontend.ui.screens.DashboardScreen
 import com.restaurant.sushimei.frontend.ui.screens.KitchenScreen
 import com.restaurant.sushimei.frontend.ui.screens.MenuManagementScreen
 import com.restaurant.sushimei.frontend.ui.screens.PosScreen
+import com.restaurant.sushimei.frontend.data.repository.AuthRepository
+import com.restaurant.sushimei.frontend.data.model.AuthenticatedUserDto
+import com.restaurant.sushimei.frontend.data.model.ApplicationRole
 
 @Composable
-fun MainScreen() {
+fun MainScreen(authRepository: AuthRepository, user: AuthenticatedUserDto) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
 
+    // ROLE-AWARE UI FILTERING
+    val allowedScreens = Screen.items.filter { screen ->
+        when (screen) {
+            Screen.MenuManagement -> user.role == ApplicationRole.OWNER || user.role == ApplicationRole.MANAGER
+            Screen.Kitchen -> user.role != ApplicationRole.CASHIER
+            Screen.Pos -> user.role != ApplicationRole.KITCHEN
+            Screen.Dashboard -> user.role == ApplicationRole.OWNER || user.role == ApplicationRole.MANAGER
+            Screen.Account -> true
+            Screen.ChangePassword -> false
+            Screen.Sessions -> false
+        }
+    }
+
     Row(modifier = Modifier.fillMaxSize()) {
         // NavigationRail permanente en el lado izquierdo
         NavigationRail {
-            Screen.items.forEach { screen ->
+            allowedScreens.forEach { screen ->
                 val selected = currentRoute == screen.route
                 NavigationRailItem(
                     selected = selected,
@@ -58,11 +75,16 @@ fun MainScreen() {
             }
         }
 
-        // El contenido principal ocupa el resto de la pantalla (a la derecha)
+        // Determine logical start destination based on role
+        val initialRoute = when (user.role) {
+            ApplicationRole.CASHIER -> Screen.Pos.route
+            else -> Screen.Kitchen.route
+        }
+
         Box(modifier = Modifier.weight(1f)) {
             NavHost(
                 navController = navController,
-                startDestination = Screen.Kitchen.route
+                startDestination = initialRoute
             ) {
                 composable(Screen.Pos.route) {
                     PosScreen()
@@ -75,6 +97,25 @@ fun MainScreen() {
                 }
                 composable(Screen.Dashboard.route) {
                     DashboardScreen()
+                }
+                composable(Screen.Account.route) {
+                    AccountScreen(
+                        authRepository = authRepository,
+                        user = user,
+                        onNavigateToChangePassword = { navController.navigate(Screen.ChangePassword.route) },
+                        onNavigateToSessions = { navController.navigate(Screen.Sessions.route) }
+                    )
+                }
+                composable(Screen.ChangePassword.route) {
+                    com.restaurant.sushimei.frontend.ui.screens.ChangePasswordScreen(
+                        authRepository = authRepository,
+                        onBack = { navController.popBackStack() }
+                    )
+                }
+                composable(Screen.Sessions.route) {
+                    com.restaurant.sushimei.frontend.ui.screens.SessionsScreen(
+                        onBack = { navController.popBackStack() }
+                    )
                 }
             }
         }

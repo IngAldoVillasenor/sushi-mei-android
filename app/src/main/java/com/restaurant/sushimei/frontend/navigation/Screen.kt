@@ -5,6 +5,7 @@ import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.RestaurantMenu
 import androidx.compose.material.icons.filled.SoupKitchen
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.ui.graphics.vector.ImageVector
 
 sealed class Screen(val route: String, val title: String, val icon: ImageVector) {
@@ -22,7 +23,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 
     object MenuManagement : Screen(
         route = "menu_management",
-        title = "GestiÃ³n de MenÃº",
+        title = "Gestión de Menú",
         icon = Icons.Default.RestaurantMenu
     )
 
@@ -32,7 +33,25 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
         icon = Icons.Default.Dashboard
     )
 
+    object Account : Screen(
+        route = "account",
+        title = "Mi Cuenta",
+        icon = Icons.Default.Person
+    )
+
+    object ChangePassword : Screen(
+        route = "change_password",
+        title = "Cambiar ContraseÃ±a",
+        icon = Icons.Default.Person
+    )
+
+    object Sessions : Screen(
+        route = "sessions",
+        title = "Mis Sesiones",
+        icon = Icons.Default.Person
+    )
+
     companion object {
-        val items = listOf(Pos, Kitchen, MenuManagement, Dashboard)
+        val items = listOf(Pos, Kitchen, MenuManagement, Dashboard, Account)
     }
 }
