@@ -174,7 +174,7 @@ data class QuoteResponseLineDto(
     val quantity: Int,
     val catalogBaseUnitPrice: BigDecimal,
     val chargedBaseUnitPrice: BigDecimal,
-    val configuration: List<QuoteResponseGroupDto> = emptyList(),
+    val configuration: ItemQuoteResponseDto,
     val appliedPromotion: PromotionSummaryDto?,
     val promotionAdjustmentTotal: BigDecimal,
     val rewards: List<QuoteResponseRewardDto> = emptyList(),
@@ -204,7 +204,7 @@ data class QuoteResponseRewardDto(
     val name: String,
     val catalogBaseUnitPrice: BigDecimal,
     val chargedBaseUnitPrice: BigDecimal,
-    val configuration: List<QuoteResponseGroupDto> = emptyList(),
+    val configuration: ItemQuoteResponseDto,
     val configurationAdjustmentTotal: BigDecimal,
     val total: BigDecimal
 )

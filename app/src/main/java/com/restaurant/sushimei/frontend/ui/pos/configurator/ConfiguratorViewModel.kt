@@ -43,15 +43,23 @@ class ConfiguratorViewModel(
     private var quoteJob: Job? = null
 
     fun loadConfiguration(menuItemId: Long) {
+        quoteJob?.cancel()
+        quoteJob = null
+
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoadingConfig = true)
+            _uiState.value = _uiState.value.copy(
+                isLoadingConfig = true,
+                errorMessage = null,
+                configuration = null,
+                latestQuote = null,
+                selections = emptyMap(),
+                quoteState = QuoteState.NOT_REQUESTED
+            )
             try {
                 val config = menuRepository.getConfiguration(menuItemId)
                 _uiState.value = _uiState.value.copy(
                     isLoadingConfig = false,
-                    configuration = config,
-                    selections = emptyMap(),
-                    quoteState = QuoteState.NOT_REQUESTED
+                    configuration = config
                 )
                 validateAndQuote()
             } catch (e: Exception) {
@@ -149,5 +157,15 @@ class ConfiguratorViewModel(
                 )
             }
         }
+    }
+
+    companion object {
+        fun factory(menuRepository: IMenuRepository): androidx.lifecycle.ViewModelProvider.Factory =
+            object : androidx.lifecycle.ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return ConfiguratorViewModel(menuRepository) as T
+                }
+            }
     }
 }
