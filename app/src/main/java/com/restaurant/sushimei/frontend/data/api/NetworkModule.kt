@@ -12,6 +12,13 @@ import okhttp3.Route
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.TypeAdapter
+import com.google.gson.stream.JsonReader
+import com.google.gson.stream.JsonToken
+import com.google.gson.stream.JsonWriter
+import java.time.Instant
 
 object NetworkModule {
 
@@ -19,6 +26,30 @@ object NetworkModule {
 
     fun initAuthRepository(repository: AuthRepository) {
         authRepository = repository
+    }
+
+    private object InstantAdapter : TypeAdapter<Instant>() {
+        override fun write(out: JsonWriter, value: Instant?) {
+            if (value == null) {
+                out.nullValue()
+            } else {
+                out.value(value.toString())
+            }
+        }
+
+        override fun read(reader: JsonReader): Instant? {
+            if (reader.peek() == JsonToken.NULL) {
+                reader.nextNull()
+                return null
+            }
+            return Instant.parse(reader.nextString())
+        }
+    }
+
+    internal val configuredGson: Gson by lazy {
+        GsonBuilder()
+            .registerTypeAdapter(Instant::class.java, InstantAdapter)
+            .create()
     }
 
     // ============================================================================
@@ -75,7 +106,7 @@ object NetworkModule {
         Retrofit.Builder()
             .baseUrl(BuildConfig.BASE_URL)
             .client(publicOkHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(configuredGson))
             .build()
             .create(PublicSushiMeiApi::class.java)
     }
@@ -132,7 +163,7 @@ object NetworkModule {
         Retrofit.Builder()
             .baseUrl(BuildConfig.BASE_URL)
             .client(protectedOkHttpClient)
-            .addConverterFactory(GsonConverterFactory.create())
+            .addConverterFactory(GsonConverterFactory.create(configuredGson))
             .build()
             .create(SushiMeiApi::class.java)
     }
