@@ -51,9 +51,10 @@ import java.util.Locale
 @Composable
 fun PosScreen() {
     val context = LocalContext.current
+    val menuRepository = remember { provideMenuRepository(context) }
     val viewModel: PosViewModel = viewModel(
         factory = PosViewModel.factory(
-            menuRepository = provideMenuRepository(context),
+            menuRepository = menuRepository,
             manualPosOrderRepository = provideManualPosOrderRepository(context),
             promotionRepository = providePromotionRepository(context)
         )
@@ -423,15 +424,10 @@ fun PosScreen() {
                     .clip(MaterialTheme.shapes.large),
                 color = MaterialTheme.colorScheme.background
             ) {
-                val ctx = LocalContext.current
                 val configViewModel: com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel =
                     viewModel(
-                        factory = object : androidx.lifecycle.ViewModelProvider.Factory {
-                            override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                                val mockRepo = com.restaurant.sushimei.frontend.data.repository.MockMenuRepository(ctx)
-                                return com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel(mockRepo) as T
-                            }
-                        }
+                        key = "pos-configurator-$itemId",
+                        factory = com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel.factory(menuRepository)
                     )
 
                 com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen(
