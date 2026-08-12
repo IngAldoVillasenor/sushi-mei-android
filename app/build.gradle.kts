@@ -22,7 +22,11 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField("String", "BASE_URL", "\"http://10.0.2.2:8080\"")
+            var debugUrl = providers.gradleProperty("SUSHIMEI_DEBUG_BASE_URL").orNull ?: "http://10.0.2.2:8080/"
+            if (!debugUrl.endsWith("/")) {
+                debugUrl += "/"
+            }
+            buildConfigField("String", "BASE_URL", "\"${debugUrl}\"")
         }
         release {
             val releaseUrl = providers.gradleProperty("SUSHIMEI_BASE_URL").orNull
