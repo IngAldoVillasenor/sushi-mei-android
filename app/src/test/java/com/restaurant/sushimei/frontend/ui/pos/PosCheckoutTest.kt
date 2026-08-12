@@ -25,7 +25,6 @@ import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PosCheckoutTest {
-
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var viewModel: PosViewModel
@@ -242,33 +241,46 @@ class PosCheckoutTest {
         // --- CASH ---
         fillCart() // cart was cleared on previous success
         viewModel.updatePaymentMethod(PaymentMethod.CASH)
+        viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Aldo")
+
+        // PICKUP + CASH requires NO denomination
+        viewModel.updateCashDenomination(null)
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+        assertEquals(2, fakeManualRepo.submitCount) // Success!
+
+        // --- DELIVERY + CASH ---
+        fillCart()
+        viewModel.updateFulfillmentType(FulfillmentType.DELIVERY)
+        viewModel.updateDeliveryAddress("123 Fake St")
 
         // null denomination rejected
         viewModel.updateCashDenomination(null)
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(1, fakeManualRepo.submitCount) // still 1
+        assertEquals(2, fakeManualRepo.submitCount) // still 2
 
         // zero rejected
         viewModel.resetCheckoutState()
         viewModel.updateCashDenomination(BigDecimal.ZERO)
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(1, fakeManualRepo.submitCount)
+        assertEquals(2, fakeManualRepo.submitCount)
 
         // negative rejected
         viewModel.resetCheckoutState()
         viewModel.updateCashDenomination(BigDecimal("-10.00"))
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(1, fakeManualRepo.submitCount)
+        assertEquals(2, fakeManualRepo.submitCount)
 
         // positive accepted
         viewModel.resetCheckoutState()
         viewModel.updateCashDenomination(BigDecimal("10.00"))
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
-        assertEquals(2, fakeManualRepo.submitCount)
+        assertEquals(3, fakeManualRepo.submitCount)
     }
 
     @Test
@@ -375,15 +387,27 @@ class PosCheckoutTest {
             assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isNotEmpty())
         }
 
-        // Generic Exception
+        // Generic Exception -> Network Error
         viewModel.resetCheckoutState()
         fakeManualRepo.shouldFailWithApiError = null
         fakeManualRepo.shouldFailWithNetworkError = true
+        fakeManualRepo.shouldFailWithUnexpectedError = false
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        val error = (viewModel.uiState.value as PosUiState.Success).checkoutState as CheckoutState.Error
+        var error = (viewModel.uiState.value as PosUiState.Success).checkoutState as CheckoutState.Error
         assertEquals("Error de red: La orden no pudo confirmarse. Intenta de nuevo.", error.message)
+        assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isNotEmpty())
+
+        // Unexpected Exception -> Generic Error
+        viewModel.resetCheckoutState()
+        fakeManualRepo.shouldFailWithNetworkError = false
+        fakeManualRepo.shouldFailWithUnexpectedError = true
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        error = (viewModel.uiState.value as PosUiState.Success).checkoutState as CheckoutState.Error
+        assertEquals("Error inesperado al procesar la orden. Intenta de nuevo.", error.message)
         assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isNotEmpty())
     }
 
@@ -415,6 +439,7 @@ class PosCheckoutTest {
 class FakeManualPosOrderRepository : IManualPosOrderRepository {
     var lastRequest: ManualPosOrderRequest? = null
     var shouldFailWithNetworkError = false
+    var shouldFailWithUnexpectedError = false
     var shouldFailWithApiError: ApiException? = null
     var submitCount = 0
     var delaySubmit = false
@@ -429,7 +454,8 @@ class FakeManualPosOrderRepository : IManualPosOrderRepository {
             delay(1000)
         }
 
-        if (shouldFailWithNetworkError) throw Exception("Network fail")
+        if (shouldFailWithNetworkError) throw java.io.IOException("Network fail")
+        if (shouldFailWithUnexpectedError) throw Exception("Unexpected fail")
         if (shouldFailWithApiError != null) throw shouldFailWithApiError!!
 
         return ManualPosOrderResponse(
@@ -468,8 +494,8 @@ class FakeMenuRepository : IMenuRepository {
     override suspend fun updateTag(id: Long, tag: TagUpdateRequestDto): CatalogTagDto = TODO()
     override suspend fun deleteTag(id: Long) {}
 
-    override suspend fun quoteItem(id: Long, request: ItemQuoteRequestDto): ItemQuoteResponseDto {
-        return ItemQuoteResponseDto(id, "Mock", request.quantity, BigDecimal.ZERO, BigDecimal.ZERO, emptyList(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
+    override suspend fun quoteItem(menuItemId: Long, request: ItemQuoteRequestDto): ItemQuoteResponseDto {
+        return ItemQuoteResponseDto(menuItemId, "Mock", request.quantity, BigDecimal.ZERO, BigDecimal.ZERO, emptyList(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
     }
 }
 

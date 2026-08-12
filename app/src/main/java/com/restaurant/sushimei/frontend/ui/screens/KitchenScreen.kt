@@ -25,6 +25,13 @@ import com.restaurant.sushimei.frontend.data.model.OrderStatus
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto
+import com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto
+import com.restaurant.sushimei.frontend.data.model.FulfillmentType
+import com.restaurant.sushimei.frontend.data.model.PaymentMethod
+import java.math.BigDecimal
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 data class OrderUI(
     val id: String,
@@ -34,51 +41,67 @@ data class OrderUI(
 )
 
 @Composable
+
 fun KitchenScreen(viewModel: KitchenViewModel = run {
     val context = LocalContext.current
+
     viewModel(factory = KitchenViewModel.factory(context))
 }) {
+    val backendSummaries by viewModel.operationalSummaries.collectAsState()
 
-    // Órdenes del backend (Retrofit — actualmente vacías hasta que el backend exista)
-    val backendOrders by viewModel.backendOrders.collectAsState()
+    val detailCache by viewModel.orderDetailCache.collectAsState()
 
-    // Órdenes locales del POS
     val localOrders by viewModel.localOrders.collectAsState()
 
-    // Separar por status
-    val pendingBackend  = backendOrders.filter { it.status == "PENDING" }
-    val preparingBackend = backendOrders.filter { it.status == "PREPARING" }
+    val pendingBackend = backendSummaries.filter { it.status == "PENDING_VALIDATION" || it.status == "PENDING" }
 
-    val pendingLocal   = localOrders.filter { it.status == OrderStatus.PENDING }
+    val preparingBackend = backendSummaries.filter { it.status == "PREPARING" }
+
+    val readyBackend = backendSummaries.filter { it.status == "READY" }
+
+    val pendingLocal = localOrders.filter { it.status == OrderStatus.PENDING }
+
     val preparingLocal = localOrders.filter { it.status == OrderStatus.PREPARING }
-    val readyLocal     = localOrders.filter { it.status == OrderStatus.READY }
+
+    val readyLocal = localOrders.filter { it.status == OrderStatus.READY }
+
+    val errorMsg by viewModel.kitchenError.collectAsState()
+
+    if (errorMsg != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissError() },
+            title = { Text("Error") },
+            text = { Text(errorMsg!!) },
+            confirmButton = {
+                Button(onClick = { viewModel.dismissError() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
 
     Row(
         modifier = Modifier
+
             .fillMaxSize()
+
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-
         // ── Columna 1: Nuevos Pedidos (PENDING) ──────────────────────────────
+
         Column(modifier = Modifier.weight(1f)) {
-            KitchenColumnHeader(
-                emoji = "🔴",
-                title = "Nuevos Pedidos",
-                count = pendingLocal.size + pendingBackend.size
-            )
+            KitchenColumnHeader("🔴", "Nuevos Pedidos", pendingLocal.size + pendingBackend.size)
+
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(pendingLocal) { order ->
-                    LocalOrderCard(
-                        order = order,
-                        primaryAction = "🖨️ Aceptar e Imprimir",
-                        primaryColor = MaterialTheme.colorScheme.primary,
-                        containerColor = Color(0xFFFFF9C4),
-                        onPrimary = { viewModel.acceptLocalOrder(order, it) }
-                    )
+
+                    LocalOrderCard(order, "🖨️ Aceptar e Imprimir", MaterialTheme.colorScheme.primary, Color(0xFFFFF9C4)) { viewModel.acceptLocalOrder(order, it) }
                 }
-                items(pendingBackend) { order ->
-                    OrderCardReal(order = order, viewModel = viewModel)
+
+                items(pendingBackend) { summary ->
+
+                    OperationalOrderCard(summary, detailCache[summary.id], viewModel)
                 }
             }
         }
@@ -86,24 +109,19 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
         VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color.LightGray, thickness = 2.dp)
 
         // ── Columna 2: Cocinando (PREPARING) ─────────────────────────────────
+
         Column(modifier = Modifier.weight(1f)) {
-            KitchenColumnHeader(
-                emoji = "🔥",
-                title = "Cocinando",
-                count = preparingLocal.size + preparingBackend.size
-            )
+            KitchenColumnHeader("🔥", "Cocinando", preparingLocal.size + preparingBackend.size)
+
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(preparingLocal) { order ->
-                    LocalOrderCard(
-                        order = order,
-                        primaryAction = "✅ Marcar como Listo",
-                        primaryColor = Color(0xFF388E3C),
-                        containerColor = Color(0xFFE8F5E9),
-                        onPrimary = { viewModel.markLocalOrderReady(order.id) }
-                    )
+
+                    LocalOrderCard(order, "✅ Marcar como Listo", Color(0xFF388E3C), Color(0xFFE8F5E9)) { viewModel.markLocalOrderReady(order.id) }
                 }
-                items(preparingBackend) { order ->
-                    OrderCardReal(order = order, viewModel = viewModel)
+
+                items(preparingBackend) { summary ->
+
+                    OperationalOrderCard(summary, detailCache[summary.id], viewModel)
                 }
             }
         }
@@ -111,38 +129,30 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
         VerticalDivider(modifier = Modifier.fillMaxHeight(), color = Color.LightGray, thickness = 2.dp)
 
         // ── Columna 3: Listos para Entrega (READY) ───────────────────────────
+
         Column(modifier = Modifier.weight(1f)) {
-            KitchenColumnHeader(
-                emoji = "🟢",
-                title = "Listos para Entrega",
-                count = readyLocal.size
-            )
+            KitchenColumnHeader("🟢", "Listos para Entrega", readyLocal.size + readyBackend.size)
+
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 items(readyLocal) { order ->
-                    LocalOrderCard(
-                        order = order,
-                        primaryAction = "🏍️ Despachar",
-                        primaryColor = Color(0xFF1565C0),
-                        containerColor = Color(0xFFE3F2FD),
-                        onPrimary = { viewModel.dispatchLocalOrder(order.id) }
-                    )
+
+                    LocalOrderCard(order, "🏍️ Despachar", Color(0xFF1565C0), Color(0xFFE3F2FD)) { viewModel.dispatchLocalOrder(order.id) }
+                }
+
+                items(readyBackend) { summary ->
+
+                    OperationalOrderCard(summary, detailCache[summary.id], viewModel)
                 }
             }
 
-            // Estado vacío: nadie esperando
-            if (readyLocal.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
+            if (readyLocal.isEmpty() && readyBackend.isEmpty()) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                         Text("📦", fontSize = 40.sp)
+
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = "Sin pedidos listos",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                        Text("Sin pedidos listos", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
@@ -151,10 +161,13 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
 // Composables auxiliares
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
+
 private fun KitchenColumnHeader(emoji: String, title: String, count: Int) {
     Text(
         text = "$emoji $title ($count)",
@@ -165,10 +178,15 @@ private fun KitchenColumnHeader(emoji: String, title: String, count: Int) {
 }
 
 /**
+
  * Tarjeta para órdenes locales generadas desde el POS.
+
  * El botón de acción y colores se configuran según el status.
+
  */
+
 @Composable
+
 fun LocalOrderCard(
     order: Order,
     primaryAction: String,
@@ -177,8 +195,11 @@ fun LocalOrderCard(
     onPrimary: (context: android.content.Context) -> Unit
 ) {
     val context = LocalContext.current
+
     val currentLocale = androidx.compose.ui.platform.LocalConfiguration.current.locales.get(0)
+
     val timeFormat = remember(currentLocale) { SimpleDateFormat("HH:mm", currentLocale) }
+
     val horaCreacion = timeFormat.format(Date(order.createdAt))
 
     Card(
@@ -187,8 +208,8 @@ fun LocalOrderCard(
         colors = CardDefaults.cardColors(containerColor = containerColor)
     ) {
         Column(modifier = Modifier.padding(14.dp)) {
-
             // Header: Ticket # y hora
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -199,6 +220,7 @@ fun LocalOrderCard(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
+
                 Text(
                     text = horaCreacion,
                     style = MaterialTheme.typography.bodySmall,
@@ -217,7 +239,9 @@ fun LocalOrderCard(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // Lista de productos
+
             order.items.forEach { configuredProduct ->
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween
@@ -229,6 +253,7 @@ fun LocalOrderCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+
                     Text(
                         text = "$${String.format(java.util.Locale.US, "%.2f", configuredProduct.total)}",
                         style = MaterialTheme.typography.bodyMedium,
@@ -241,13 +266,17 @@ fun LocalOrderCard(
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
             // Total
+
             Row(
                 modifier = Modifier
+
                     .fillMaxWidth()
+
                     .padding(top = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text("Total:", fontWeight = FontWeight.Bold)
+
                 Text(
                     text = "$${String.format(java.util.Locale.US, "%.2f", order.total)}",
                     fontWeight = FontWeight.ExtraBold,
@@ -258,6 +287,7 @@ fun LocalOrderCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             // Botón de acción principal
+
             Button(
                 onClick = { onPrimary(context) },
                 modifier = Modifier.fillMaxWidth(),
@@ -271,115 +301,13 @@ fun LocalOrderCard(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
 // Composables existentes para órdenes del backend (Retrofit) — sin cambios
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 @Composable
-fun OrderCardReal(order: OrderRecord, viewModel: KitchenViewModel) {
-    val isPending = order.status == "PENDING" || order.status == "PENDING_VALIDATION"
 
-    val context = LocalContext.current
-
-    var showReceiptDialog by remember { mutableStateOf(false) }
-
-    if (showReceiptDialog && order.transferReceiptPath != null) {
-        val imageUrl = "http://10.0.2.2:8080/uploads/${order.transferReceiptPath}"
-
-        ReceiptImageDialog(
-            imageUrl = imageUrl,
-            onDismiss = { showReceiptDialog = false }
-        )
-    }
-
-    var showAuditDialog by remember { mutableStateOf(false) }
-
-    if (showAuditDialog) {
-        AuditOrderDialog(
-            order = order,
-            onConfirm = {
-                showAuditDialog = false
-                viewModel.acceptOrder(order, context)
-            },
-            onDismiss = {
-                showAuditDialog = false
-            }
-        )
-    }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (isPending) Color(0xFFFFF9C4) else Color(0xFFE8F5E9)
-        )
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Text(
-                    text = "Ticket: #${order.id}",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = order.deliveryType,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (order.deliveryType == "DOMICILIO") Color.Blue else Color(0xFFE65100),
-                    fontWeight = FontWeight.ExtraBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(text = order.orderDetails, style = MaterialTheme.typography.bodyLarge)
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                when (order.status) {
-                    "PENDING_VALIDATION" -> {
-                        OutlinedButton(
-                            onClick = { showReceiptDialog = true },
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text("🔍 Ver Comprobante")
-                        }
-
-                        Button(
-                            onClick = { viewModel.validatePayment(order.id) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))
-                        ) {
-                            Text("✅ Validar Pago")
-                        }
-                    }
-                    "PENDING" -> {
-                        OutlinedButton(
-                            onClick = { /* Lógica de rechazo */ },
-                            modifier = Modifier.padding(end = 8.dp)
-                        ) {
-                            Text("Rechazar")
-                        }
-                        Button(onClick = { showAuditDialog = true }) {
-                            Text("🖨️ Aceptar e Imprimir")
-                        }
-                    }
-                    "PREPARING" -> {
-                        Button(
-                            onClick = { viewModel.completeOrder(order.id) },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                        ) {
-                            Text("✅ Despachar (Listo)")
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun ReceiptImageDialog(imageUrl: String, onDismiss: () -> Unit) {
     Dialog(onDismissRequest = onDismiss) {
         Surface(
@@ -403,7 +331,9 @@ fun ReceiptImageDialog(imageUrl: String, onDismiss: () -> Unit) {
                     contentDescription = "Foto del comprobante",
                     contentScale = ContentScale.Fit,
                     modifier = Modifier
+
                         .fillMaxWidth()
+
                         .height(400.dp)
                 )
 
@@ -418,45 +348,122 @@ fun ReceiptImageDialog(imageUrl: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-fun AuditOrderDialog(
-    order: OrderRecord,
-    onConfirm: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(text = "Auditar Orden #${order.id}", fontWeight = FontWeight.Bold)
-        },
-        text = {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("Tipo: ${order.deliveryType}", color = Color(0xFF1565C0), fontWeight = FontWeight.Bold)
 
-                Spacer(modifier = Modifier.height(8.dp))
+fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: OperationalOrderDetailDto?, viewModel: KitchenViewModel) {
+    val isPending = summary.status == "PENDING" || summary.status == "PENDING_VALIDATION"
 
-                Text("Dirección / Nombre:", fontWeight = FontWeight.Bold)
-                Text(order.deliveryAddress ?: "No especificado", color = Color.Red)
+    val context = LocalContext.current
 
-                Spacer(modifier = Modifier.height(8.dp))
+    var showReceiptDialog by remember { mutableStateOf(false) }
 
-                Text("Detalle del Pedido:", fontWeight = FontWeight.Bold)
-                Text(order.orderDetails)
+    if (showReceiptDialog && detail?.transferReceiptPath != null) {
+        ReceiptImageDialog(
+            imageUrl = "${com.restaurant.sushimei.frontend.BuildConfig.BASE_URL}uploads/${detail.transferReceiptPath}",
+            onDismiss = { showReceiptDialog = false }
+        )
+    }
 
-                Spacer(modifier = Modifier.height(8.dp))
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = if (isPending) Color(0xFFFFF9C4) else Color(0xFFE8F5E9))
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(text = "Ticket: #${summary.id}", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
 
-                Text("Método de Pago:", fontWeight = FontWeight.Bold)
-                Text(order.paymentNotes ?: "No especificado", color = Color(0xFF2E7D32))
+                Text(
+                    text = when (summary.fulfillmentType) {
+                        FulfillmentType.DELIVERY -> "DOMICILIO"
+
+                        FulfillmentType.PICKUP -> "MOSTRADOR"
+
+                        else -> "LEGACY/DESCONOCIDO"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = when (summary.fulfillmentType) {
+                        FulfillmentType.DELIVERY -> Color.Blue
+
+                        FulfillmentType.PICKUP -> Color(0xFFE65100)
+
+                        else -> Color.Gray
+                    },
+                    fontWeight = FontWeight.ExtraBold
+                )
             }
-        },
-        confirmButton = {
-            Button(onClick = onConfirm) {
-                Text("🖨️ Imprimir y Aceptar")
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (summary.fulfillmentType == FulfillmentType.DELIVERY) {
+                Text("Dirección: ${summary.deliveryAddress ?: "No especificada"}", fontWeight = FontWeight.Bold)
+
+                if (summary.paymentMethod == PaymentMethod.CASH && summary.cashDenomination != null) {
+                    Text("Paga con: $${summary.cashDenomination}", color = Color.DarkGray)
+
+                    if (summary.total != null) {
+                        val change = summary.cashDenomination - summary.total
+                        Text("Cambio: $$change", color = Color.Red, fontWeight = FontWeight.Bold)
+                    } else {
+                        Text("Cambio: NO DISPONIBLE", color = Color.Red, fontWeight = FontWeight.Bold)
+                    }
+                }
+            } else if (summary.fulfillmentType == FulfillmentType.PICKUP) {
+                Text("Nombre: ${summary.pickupName ?: "No especificado"}", fontWeight = FontWeight.Bold)
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Volver")
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (detail != null) {
+                if (detail.lines.isNotEmpty()) {
+                    detail.lines.forEach { line ->
+
+                        Text("${line.quantity}x ${line.name} ($${line.finalLineTotal})")
+
+                        line.configuration.forEach { config ->
+
+                            Text("   + ${config.itemName}", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                        }
+                    }
+                } else if (!detail.legacyOrderDetails.isNullOrBlank()) {
+                    Text(text = detail.legacyOrderDetails, style = MaterialTheme.typography.bodyLarge)
+                }
+            } else {
+                Text("Cargando detalles...", style = MaterialTheme.typography.bodyMedium, color = Color.Gray)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                when (summary.status) {
+                    "PENDING_VALIDATION" -> {
+                        OutlinedButton(onClick = { showReceiptDialog = true }, modifier = Modifier.padding(end = 8.dp)) {
+                            Text("🔍 Ver Comprobante")
+                        }
+
+                        Button(onClick = { viewModel.validatePaymentOperational(summary.id) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE65100))) {
+                            Text("✅ Validar Pago")
+                        }
+                    }
+
+                    "PENDING" -> {
+                        Button(onClick = { viewModel.acceptOperationalOrder(summary.id, context) }) {
+                            Text("🖨️ Aceptar e Imprimir")
+                        }
+                    }
+
+                    "PREPARING" -> {
+                        Button(onClick = { viewModel.markOperationalOrderReady(summary.id) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))) {
+                            Text("✅ Marcar como Listo")
+                        }
+                    }
+
+                    "READY" -> {
+                        Button(onClick = { viewModel.completeOperationalOrder(summary.id) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))) {
+                            Text("🏍️ Entregado / Despachar")
+                        }
+                    }
+                }
             }
         }
-    )
+    }
 }
