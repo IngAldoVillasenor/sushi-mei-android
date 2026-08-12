@@ -6,7 +6,6 @@ import retrofit2.Response
 import retrofit2.http.*
 
 interface SushiMeiApi {
-
     // ============================================================================
     // FASE 6S2: Authenticated Self & Security
     // ============================================================================
@@ -59,6 +58,15 @@ interface SushiMeiApi {
 
     @GET("/api/orders/active")
     suspend fun getActiveOrders(): Response<List<OrderRecord>>
+
+    @GET("/api/v1/orders/active")
+    suspend fun getOperationalActiveOrders(): Response<List<OperationalOrderSummaryDto>>
+
+    @GET("/api/v1/orders/{id}")
+    suspend fun getOperationalOrderDetail(@Path("id") id: Long): Response<OperationalOrderDetailDto>
+
+    @PUT("/api/orders/{id}/ready")
+    suspend fun markOrderReady(@Path("id") orderId: Long): Response<Unit>
 
     @PUT("/api/orders/{id}/prepare")
     suspend fun acceptAndPrepareOrder(@Path("id") orderId: Long): Response<Unit>

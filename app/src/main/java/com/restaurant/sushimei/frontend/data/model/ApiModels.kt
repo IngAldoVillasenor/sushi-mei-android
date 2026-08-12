@@ -4,7 +4,9 @@ import java.math.BigDecimal
 import java.time.Instant
 
 // ============================================================================
+
 // E R R O R   D T O s
+
 // ============================================================================
 
 data class ApiErrorDto(
@@ -13,7 +15,9 @@ data class ApiErrorDto(
 )
 
 // ============================================================================
+
 // C A T A L O G   D T O s
+
 // ============================================================================
 
 data class CatalogTagSummary(
@@ -63,7 +67,9 @@ data class MenuItemUpdateRequestDto(
 )
 
 // ----------------------------------------------------------------------------
+
 // Tags API
+
 // ----------------------------------------------------------------------------
 
 data class CatalogTagDto(
@@ -94,7 +100,9 @@ data class ItemTagsUpdateRequestDto(
 )
 
 // ----------------------------------------------------------------------------
+
 // Configuration Operational APIs
+
 // ----------------------------------------------------------------------------
 
 data class ConfigurationResponseDto(
@@ -126,7 +134,9 @@ data class ConfigurationOptionDto(
 )
 
 // ----------------------------------------------------------------------------
+
 // Quote APIs (Phase 6A2 - Phase 6A3)
+
 // ----------------------------------------------------------------------------
 
 data class QuoteRequestDto(
@@ -215,7 +225,9 @@ data class PromotionSummaryDto(
 )
 
 // ----------------------------------------------------------------------------
+
 // Item Quote APIs (Phase 6A2)
+
 // ----------------------------------------------------------------------------
 
 data class ItemQuoteRequestDto(
@@ -262,11 +274,15 @@ data class ItemQuoteResponseSelectionDto(
 )
 
 // ============================================================================
+
 // O R D E R S   A P I   D T O s (Phase 6B)
+
 // ============================================================================
 
 enum class FulfillmentType { PICKUP, DELIVERY }
+
 enum class PaymentMethod { CASH, TRANSFER, CARD }
+
 enum class OrderResult { CREATED, ALREADY_CREATED }
 
 data class ManualPosOrderRequest(
@@ -307,7 +323,7 @@ data class ManualPosOrderResponse(
 data class PosOrderResponseLineDto(
     val id: Long,
     val lineKind: String,
-    val lineKey: String,
+    val lineKey: String?,
     val sourceMenuItemId: Long,
     val name: String,
     val quantity: Int,
@@ -316,8 +332,81 @@ data class PosOrderResponseLineDto(
     val configurationAdjustmentAmount: BigDecimal,
     val finalUnitAmount: BigDecimal,
     val finalLineTotal: BigDecimal,
-    val promotion: PromotionSummaryDto?,
+    val promotion: OrderPromotionSnapshotDto?,
     val rewardOrdinal: Int?,
-    val configuration: List<QuoteResponseGroupDto> = emptyList(),
-    val rewards: List<QuoteResponseRewardDto> = emptyList()
+    val configuration: List<OrderConfigurationSnapshotDto> = emptyList(),
+    val rewards: List<PosOrderResponseLineDto> = emptyList()
+)
+
+data class OrderConfigurationSnapshotDto(
+    val id: Long,
+    val parentSelectionSnapshotId: Long?,
+    val groupId: Long,
+    val groupName: String,
+    val selectionPosition: Int,
+    val menuItemId: Long,
+    val itemName: String,
+    val quantity: Int,
+    val catalogUnitPrice: BigDecimal,
+    val priceAdjustment: BigDecimal
+)
+
+data class OrderPromotionSnapshotDto(
+    val id: Long,
+    val name: String,
+    val benefitType: String
+)
+
+data class OperationalOrderSummaryDto(
+    val id: Long,
+    val orderSource: String?,
+    val status: String,
+    val fulfillmentType: FulfillmentType?,
+    val paymentMethod: PaymentMethod?,
+    val deliveryAddress: String?,
+    val pickupName: String?,
+    val cashDenomination: BigDecimal?,
+    val phoneNumber: String?,
+    val total: BigDecimal?,
+    val createdAt: Instant?,
+    val requiresPaymentValidation: Boolean,
+    val structuredLinesAvailable: Boolean
+)
+
+data class OperationalOrderDetailDto(
+    val id: Long,
+    val requestId: String?,
+    val orderSource: String?,
+    val createdByUserId: Long?,
+    val fulfillmentType: FulfillmentType?,
+    val paymentMethod: PaymentMethod?,
+    val deliveryAddress: String?,
+    val pickupName: String?,
+    val cashDenomination: BigDecimal?,
+    val phoneNumber: String?,
+    val transferReceiptPath: String?,
+    val paymentNotes: String?,
+    val status: String,
+    val createdAt: Instant?,
+    val total: BigDecimal?,
+    val legacyOrderDetails: String?,
+    val lines: List<OperationalOrderLineDto>
+)
+
+data class OperationalOrderLineDto(
+    val id: Long,
+    val lineKind: String,
+    val lineKey: String?,
+    val sourceMenuItemId: Long?,
+    val name: String,
+    val quantity: Int,
+    val catalogBaseUnitPrice: BigDecimal?,
+    val chargedBaseUnitPrice: BigDecimal?,
+    val configurationAdjustmentAmount: BigDecimal?,
+    val finalUnitAmount: BigDecimal,
+    val finalLineTotal: BigDecimal,
+    val promotion: OrderPromotionSnapshotDto?,
+    val rewardOrdinal: Int?,
+    val sourcePaidLineId: Long?,
+    val configuration: List<OrderConfigurationSnapshotDto> = emptyList()
 )
