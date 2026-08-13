@@ -12,7 +12,7 @@ class RemoteMenuRepository(
 ) : IMenuRepository {
 
     private val allProductsFlow = MutableStateFlow<List<MenuItem>>(emptyList())
-    
+
     // Convert DTO to Domain
     private fun MenuItemResponse.toDomain() = MenuItem(
         id = id,
@@ -23,6 +23,8 @@ class RemoteMenuRepository(
         emoji = "🍣", // Fallback emoji for remote items without specific emoji field
         activo = active,
         standaloneOrderable = standaloneOrderable,
+        requiresConfiguration = requireNotNull(requiresConfiguration) { "requiresConfiguration must not be omitted by the server" },
+        pricingMode = requireNotNull(pricingMode) { "pricingMode must not be omitted by the server" },
         tags = tags
     )
 

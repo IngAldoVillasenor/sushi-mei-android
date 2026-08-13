@@ -18,6 +18,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.restaurant.sushimei.frontend.data.model.ConfigurationGroupDto
 import com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto
+import com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseGroupDto
+
+fun ItemQuoteResponseGroupDto.toDomain(): com.restaurant.sushimei.frontend.data.model.ConfiguredGroup {
+    return com.restaurant.sushimei.frontend.data.model.ConfiguredGroup(
+        groupId = this.groupId,
+        name = this.name,
+        selections = this.selections.map { selDto ->
+            com.restaurant.sushimei.frontend.data.model.ConfiguredSelection(
+                menuItemId = selDto.menuItemId,
+                name = selDto.name,
+                quantity = selDto.quantity,
+                catalogUnitPrice = selDto.catalogUnitPrice,
+                priceAdjustment = selDto.priceAdjustment,
+                groups = selDto.groups.map { it.toDomain() }
+            )
+        }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,11 +96,10 @@ fun ConfiguratorScreen(
                             Text("Total: $$total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
-                    
+
                     Button(
                         onClick = {
                             uiState.latestQuote?.let { quote ->
-                                // Mapping QuoteResponseDto to ConfiguredProduct domain model
                                 val product = com.restaurant.sushimei.frontend.data.model.ConfiguredProduct(
                                     menuItemId = quote.menuItemId,
                                     name = quote.name,
@@ -90,21 +107,7 @@ fun ConfiguratorScreen(
                                     baseUnitPrice = quote.baseUnitPrice,
                                     unitTotal = quote.unitTotal,
                                     total = quote.total,
-                                    groups = quote.groups.map { groupDto ->
-                                        com.restaurant.sushimei.frontend.data.model.ConfiguredGroup(
-                                            groupId = groupDto.groupId,
-                                            name = groupDto.name,
-                                            selections = groupDto.selections.map { selDto ->
-                                                com.restaurant.sushimei.frontend.data.model.ConfiguredSelection(
-                                                    menuItemId = selDto.menuItemId,
-                                                    name = selDto.name,
-                                                    quantity = selDto.quantity,
-                                                    catalogUnitPrice = selDto.catalogUnitPrice,
-                                                    priceAdjustment = selDto.priceAdjustment
-                                                )
-                                            }
-                                        )
-                                    }
+                                    groups = quote.groups.map { it.toDomain() }
                                 )
                                 onAddToCart(product)
                             }
@@ -122,12 +125,16 @@ fun ConfiguratorScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             items(config.groups, key = { it.id }) { group ->
-                val selections = uiState.selections[group.id] ?: emptyList()
+                val selections = uiState.rootSelections[group.id] ?: emptyList()
                 ConfigurationGroupView(
                     group = group,
                     currentSelections = selections,
-                    onAdd = { option -> viewModel.addSelection(group.id, option) },
-                    onRemove = { option -> viewModel.removeSelection(group.id, option) }
+                    onAdd = { childGroupId, option, parentOccurrenceId ->
+                        viewModel.addSelection(childGroupId, option, parentOccurrenceId)
+                    },
+                    onRemove = { occurrenceId ->
+                        viewModel.removeSelection(occurrenceId)
+                    }
                 )
             }
         }
@@ -137,12 +144,13 @@ fun ConfiguratorScreen(
 @Composable
 fun ConfigurationGroupView(
     group: ConfigurationGroupDto,
-    currentSelections: List<ConfigurationOptionDto>,
-    onAdd: (ConfigurationOptionDto) -> Unit,
-    onRemove: (ConfigurationOptionDto) -> Unit
+    currentSelections: List<SelectionNode>,
+    onAdd: (groupId: Long, option: ConfigurationOptionDto, parentOccurrenceId: String?) -> Unit,
+    onRemove: (occurrenceId: String) -> Unit,
+    parentOccurrenceId: String? = null
 ) {
     val totalSelected = currentSelections.size
-    
+
     Card(
         modifier = Modifier.fillMaxWidth().padding(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
@@ -158,7 +166,7 @@ fun ConfigurationGroupView(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                
+
                 val reqText = if (group.minSelections == group.maxSelections) {
                     "$totalSelected / ${group.maxSelections}"
                 } else if (group.minSelections == 0) {
@@ -166,29 +174,62 @@ fun ConfigurationGroupView(
                 } else {
                     "$totalSelected / ${group.minSelections}-${group.maxSelections}"
                 }
-                
+
                 Text(
                     text = reqText,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (totalSelected in group.minSelections..group.maxSelections) 
-                                MaterialTheme.colorScheme.primary 
-                            else 
+                    color = if (totalSelected in group.minSelections..group.maxSelections)
+                                MaterialTheme.colorScheme.primary
+                            else
                                 MaterialTheme.colorScheme.error
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             group.options.forEach { option ->
-                val optionCount = currentSelections.count { it.menuItemId == option.menuItemId }
+                val optionNodes = currentSelections.filter { it.option.menuItemId == option.menuItemId }
+                val quantity = optionNodes.size
+
                 ConfigurationOptionRow(
                     option = option,
-                    quantity = optionCount,
+                    quantity = quantity,
                     allowDuplicates = group.allowDuplicates,
                     canAddMore = totalSelected < group.maxSelections,
-                    onAdd = { onAdd(option) },
-                    onRemove = { onRemove(option) }
+                    onAdd = { onAdd(group.id, option, parentOccurrenceId) },
+                    onRemove = {
+                        if (optionNodes.isNotEmpty()) {
+                            onRemove(optionNodes.last().occurrenceId)
+                        }
+                    }
                 )
+
+                optionNodes.forEachIndexed { index, node ->
+                    if (node.option.requiresConfiguration) {
+                        Column(modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) {
+                            if (group.allowDuplicates && quantity > 1) {
+                                Text("Ocurrencia ${index + 1}", style = MaterialTheme.typography.labelSmall)
+                            }
+
+                            if (node.isLoadingNested) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            } else if (node.nestedError != null) {
+                                Text(node.nestedError, color = MaterialTheme.colorScheme.error)
+                            } else if (node.nestedConfiguration != null) {
+                                node.nestedConfiguration.groups.forEach { childGroup ->
+                                    val childSelections = node.nestedSelections[childGroup.id] ?: emptyList()
+                                    ConfigurationGroupView(
+                                        group = childGroup,
+                                        currentSelections = childSelections,
+                                        onAdd = onAdd,
+                                        onRemove = onRemove,
+                                        parentOccurrenceId = node.occurrenceId
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
     }
@@ -214,44 +255,39 @@ fun ConfigurationOptionRow(
                 style = MaterialTheme.typography.bodyLarge,
                 color = if (option.available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
             )
-            val priceStr = if (option.priceAdjustment.compareTo(java.math.BigDecimal.ZERO) == 0) "Incluido" else "+$${option.priceAdjustment}"
-            Text(
-                text = priceStr,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (!option.available) {
+            if (option.priceAdjustment.compareTo(java.math.BigDecimal.ZERO) > 0) {
                 Text(
-                    text = "Agotado",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error
+                    text = "+$${option.priceAdjustment}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }
-        
+
+        if (!option.available) {
+            Text("No disponible", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+            return@Row
+        }
+
         if (allowDuplicates) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 IconButton(onClick = onRemove, enabled = quantity > 0) {
-                    Icon(Icons.Default.Remove, contentDescription = "Menos")
+                    Icon(Icons.Default.Remove, contentDescription = "Remove")
                 }
-                Text("$quantity", modifier = Modifier.padding(horizontal = 8.dp))
-                IconButton(onClick = onAdd, enabled = canAddMore && option.available) {
-                    Icon(Icons.Default.Add, contentDescription = "Más")
+                Text(text = quantity.toString(), style = MaterialTheme.typography.bodyLarge)
+                IconButton(onClick = onAdd, enabled = canAddMore) {
+                    Icon(Icons.Default.Add, contentDescription = "Add")
                 }
             }
         } else {
             val isSelected = quantity > 0
-            FilledTonalIconToggleButton(
-                checked = isSelected,
-                onCheckedChange = { checked ->
-                    if (checked) onAdd() else onRemove()
-                },
-                enabled = option.available && (isSelected || canAddMore)
-            ) {
-                if (isSelected) {
-                    Icon(Icons.Default.Check, contentDescription = "Seleccionado")
-                } else {
-                    Icon(Icons.Default.Add, contentDescription = "Seleccionar")
+            if (isSelected) {
+                FilledTonalIconButton(onClick = onRemove) {
+                    Icon(Icons.Default.Check, contentDescription = "Selected")
+                }
+            } else {
+                IconButton(onClick = onAdd, enabled = canAddMore) {
+                    Icon(Icons.Default.Add, contentDescription = "Select")
                 }
             }
         }

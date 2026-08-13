@@ -28,6 +28,11 @@ data class CatalogTagSummary(
     val displayOrder: Int
 )
 
+enum class ItemPricingMode {
+    BASE_PLUS_ADJUSTMENTS,
+    SELECTION_SUM
+}
+
 data class MenuItemResponse(
     val id: Long,
     val name: String,
@@ -37,6 +42,8 @@ data class MenuItemResponse(
     val active: Boolean,
     val available: Boolean,
     val standaloneOrderable: Boolean,
+    val requiresConfiguration: Boolean?,
+    val pricingMode: ItemPricingMode?,
     val displayOrder: Int,
     val tags: List<CatalogTagSummary>,
     val version: Long,
