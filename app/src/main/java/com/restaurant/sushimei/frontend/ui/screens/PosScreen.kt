@@ -46,6 +46,8 @@ import com.restaurant.sushimei.frontend.ui.pos.CheckoutState
 import com.restaurant.sushimei.frontend.ui.pos.QuoteState
 import java.math.BigDecimal
 import java.util.Locale
+import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen
+import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -199,7 +201,13 @@ fun PosScreen() {
                     MenuItemCard(
                         menuItem = item,
                         cartQuantity = cartQuantity,
-                        onAddToCart = { configuringItemId = item.id }
+                        onAddToCart = {
+                            if (item.requiresConfiguration) {
+                                configuringItemId = item.id
+                            } else {
+                                viewModel.addToCart(item)
+                            }
+                        }
                     )
                 }
             }
@@ -286,7 +294,11 @@ fun PosScreen() {
                     items(cart, key = { it.id }) { configuredProduct ->
                         CartItemRow(
                             configuredProduct = configuredProduct,
-                            onIncrement = { configuringItemId = configuredProduct.menuItemId },
+                            onIncrement = {
+                                viewModel.incrementCartItem(configuredProduct) {
+                                    configuringItemId = configuredProduct.menuItemId
+                                }
+                            },
                             onDecrement = { viewModel.removeFromCart(configuredProduct) },
                             onDelete = { viewModel.deleteFromCart(configuredProduct) }
                         )
@@ -622,8 +634,13 @@ fun MenuItemCard(
                         color = MaterialTheme.colorScheme.secondaryContainer,
                         shape = RoundedCornerShape(8.dp)
                     ) {
+                        val priceText = if (menuItem.requiresConfiguration && menuItem.pricingMode == com.restaurant.sushimei.frontend.data.model.ItemPricingMode.SELECTION_SUM) {
+                            "Según selección"
+                        } else {
+                            "$${String.format(Locale.US, "%.2f", menuItem.precio)}"
+                        }
                         Text(
-                            text = "$${String.format(Locale.US, "%.2f", menuItem.precio)}",
+                            text = priceText,
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -719,7 +736,7 @@ fun CartItemRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", configuredProduct.baseUnitPrice)} c/u",
+                    text = "$${String.format(Locale.US, "%.2f", configuredProduct.unitTotal)} c/u",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

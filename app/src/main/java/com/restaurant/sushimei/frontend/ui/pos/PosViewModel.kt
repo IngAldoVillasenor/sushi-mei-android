@@ -307,6 +307,16 @@ class PosViewModel(
         invalidateRequestId()
     }
 
+    fun incrementCartItem(product: ConfiguredProduct, onRequiresConfiguration: () -> Unit) {
+        val menuItem = _allProducts.value.find { it.id == product.menuItemId } ?: return
+
+        if (menuItem.requiresConfiguration) {
+            onRequiresConfiguration()
+        } else {
+            addToCart(menuItem)
+        }
+    }
+
     fun removeFromCart(configuredProduct: ConfiguredProduct) {
         val currentList = _currentCart.value.toMutableList()
 

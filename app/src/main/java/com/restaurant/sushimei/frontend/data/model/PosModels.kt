@@ -11,6 +11,8 @@ data class MenuItem(
     val emoji: String = "🍣",
     val activo: Boolean = true,
     val standaloneOrderable: Boolean = true,
+    val requiresConfiguration: Boolean = false,
+    val pricingMode: ItemPricingMode = ItemPricingMode.BASE_PLUS_ADJUSTMENTS,
     val tags: List<CatalogTagSummary> = emptyList()
 )
 
@@ -25,9 +27,9 @@ data class ConfiguredProduct(
     val quantity: Int,
     val baseUnitPrice: BigDecimal,
     val groups: List<ConfiguredGroup> = emptyList(),
-    
+
     // El precio total ajustado devuelto por la cotización del backend
-    val unitTotal: BigDecimal = baseUnitPrice, 
+    val unitTotal: BigDecimal = baseUnitPrice,
     val total: BigDecimal = baseUnitPrice * BigDecimal(quantity)
 )
 
@@ -53,7 +55,7 @@ data class ConfiguredSelection(
 )
 
 /**
- * Representa la pre-visualización de precios del carrito entero, 
+ * Representa la pre-visualización de precios del carrito entero,
  * devuelta por el backend al aplicar promociones.
  */
 data class OrderPricingPreview(

@@ -59,8 +59,9 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
     override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
         return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
             id = 1L, name = request.name, description = request.description, category = request.category,
-            price = request.price, active = true, available = request.available,
-            standaloneOrderable = request.standaloneOrderable, displayOrder = request.displayOrder,
+            price = request.price,            active = true, available = request.available, standaloneOrderable = request.standaloneOrderable,
+            requiresConfiguration = false, pricingMode = com.restaurant.sushimei.frontend.data.model.ItemPricingMode.BASE_PLUS_ADJUSTMENTS,
+            displayOrder = request.displayOrder,
             tags = emptyList(), version = 1L, createdAt = java.time.Instant.now(), updatedAt = java.time.Instant.now()
         )
     }
@@ -69,8 +70,9 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
     override suspend fun updateProduct(id: Long, request: com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse {
         return com.restaurant.sushimei.frontend.data.model.MenuItemResponse(
             id = id, name = request.name, description = request.description, category = request.category,
-            price = request.price, active = request.active, available = request.available,
-            standaloneOrderable = request.standaloneOrderable, displayOrder = request.displayOrder,
+            price = request.price,            active = request.active, available = request.available, standaloneOrderable = request.standaloneOrderable,
+            requiresConfiguration = false, pricingMode = com.restaurant.sushimei.frontend.data.model.ItemPricingMode.BASE_PLUS_ADJUSTMENTS,
+            displayOrder = request.displayOrder,
             tags = emptyList(), version = request.version, createdAt = java.time.Instant.now(), updatedAt = java.time.Instant.now()
         )
     }
