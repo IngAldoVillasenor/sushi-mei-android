@@ -7,9 +7,14 @@ import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.ConfiguredRewardConfiguration
 import com.restaurant.sushimei.frontend.data.model.ConfiguredSelection
 import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
+import com.restaurant.sushimei.frontend.data.model.Promotion
 import com.restaurant.sushimei.frontend.data.model.PromotionLineSelection
 import com.restaurant.sushimei.frontend.data.model.PromotionResponse
+import com.restaurant.sushimei.frontend.data.model.PromotionSchedule
+import com.restaurant.sushimei.frontend.data.model.PromotionTarget
 import com.restaurant.sushimei.frontend.data.model.PromotionTargetResponse
+import com.restaurant.sushimei.frontend.data.model.PromotionTargetType
+import com.restaurant.sushimei.frontend.data.model.PromotionUpdateRequest
 import com.restaurant.sushimei.frontend.data.model.QuoteRequestDto
 import com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
 import com.restaurant.sushimei.frontend.data.model.QuoteResponseLineDto
@@ -66,6 +71,52 @@ class RemotePromotionRepositoryTest {
         assertTrue(promotion.benefit is PromotionBenefit.BuyXGetYSameItem)
         assertNull(promotion.validFrom)
         coVerify(exactly = 1) { api.getActivePromotions() }
+    }
+
+    @Test
+    fun `promotion update preserves every configured target`() = runTest {
+        val requestSlot = slot<PromotionUpdateRequest>()
+        val targetIds = listOf(18L, 24L, 49L, 80L, 107L)
+        val response = PromotionResponse(
+            id = 7L,
+            name = "Lunes $69",
+            active = true,
+            priority = 100,
+            benefitType = "FIXED_UNIT_PRICE",
+            fixedUnitPrice = BigDecimal("69.00"),
+            buyQuantity = null,
+            rewardQuantity = null,
+            repeat = null,
+            validFrom = null,
+            validUntil = null,
+            daysOfWeek = setOf(1, 5),
+            targets = targetIds.map { PromotionTargetResponse("ITEM", it) },
+            createdAt = Instant.parse("2026-08-14T01:00:00Z"),
+            updatedAt = Instant.parse("2026-08-14T02:00:00Z"),
+            version = 1L
+        )
+        coEvery { api.updatePromotion(7L, capture(requestSlot)) } returns Response.success(response)
+        coEvery { api.getPromotions(includeInactive = true) } returns Response.success(listOf(response))
+
+        repository.updatePromotion(
+            Promotion(
+                id = 7L,
+                name = "Lunes $69",
+                active = true,
+                priority = 100,
+                schedule = PromotionSchedule(setOf(1, 5), allDay = true),
+                targets = targetIds.map { PromotionTarget(PromotionTargetType.ITEM, it, it.toString()) },
+                benefit = PromotionBenefit.FixedUnitPrice(BigDecimal("69.00")),
+                version = 0L
+            )
+        )
+
+        assertEquals(
+            targetIds,
+            requestSlot.captured.targets.map { it.targetId }
+        )
+        assertTrue(requestSlot.captured.targets.all { it.targetType == "ITEM" })
+        coVerify(exactly = 1) { api.updatePromotion(7L, any()) }
     }
 
     @Test

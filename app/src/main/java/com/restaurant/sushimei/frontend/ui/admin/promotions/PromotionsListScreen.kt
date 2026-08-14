@@ -161,7 +161,11 @@ fun PromotionCard(
                 }
             }
             Text(text = "Días: $daysStr", style = MaterialTheme.typography.bodySmall)
-            Text(text = "Objetivo: ${promotion.targets.firstOrNull()?.displayName} (${promotion.targets.firstOrNull()?.type})", style = MaterialTheme.typography.bodySmall)
+            val targetsText = promotion.targets.joinToString(", ") { target ->
+                if (target.type == PromotionTargetType.TAG) "Etiqueta #${target.targetId}"
+                else "Producto #${target.targetId}"
+            }
+            Text(text = "Objetivos: $targetsText", style = MaterialTheme.typography.bodySmall)
             
             Spacer(modifier = Modifier.height(8.dp))
             HorizontalDivider()
