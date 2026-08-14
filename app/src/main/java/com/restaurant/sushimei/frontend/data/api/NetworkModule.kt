@@ -2,24 +2,25 @@ package com.restaurant.sushimei.frontend.data.api
 
 import com.restaurant.sushimei.frontend.BuildConfig
 import com.restaurant.sushimei.frontend.data.repository.AuthRepository
-import kotlinx.coroutines.runBlocking
-import okhttp3.Authenticator
-import okhttp3.Interceptor
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.Response
-import okhttp3.Route
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import java.util.concurrent.TimeUnit
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.TypeAdapter
 import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
+import kotlinx.coroutines.runBlocking
+import okhttp3.Authenticator
+import okhttp3.Interceptor
+import okhttp3.OkHttpClient
+import okhttp3.Response
+import okhttp3.Route
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
 import java.time.Instant
 import java.time.LocalDate
+import java.util.UUID
+import java.util.concurrent.TimeUnit
 
 object NetworkModule {
 
@@ -76,37 +77,14 @@ object NetworkModule {
     // COMMON ERROR INTERCEPTOR
     // ============================================================================
 
-    private val errorInterceptor = Interceptor { chain ->
-        val request = chain.request()
-        val response = chain.proceed(request)
-        if (!response.isSuccessful) {
-            // Note: 401 is handled by Authenticator, but we can still parse errors here
-            val bodyString = response.peekBody(Long.MAX_VALUE).string()
-            var errorCode = "UNKNOWN_ERROR"
-            var errorMessage = "Error HTTP ${response.code}"
-            try {
-                val apiError = com.google.gson.Gson().fromJson(
-                    bodyString,
-                    com.restaurant.sushimei.frontend.data.model.ApiErrorDto::class.java
-                )
-                errorCode = apiError.code
-                errorMessage = apiError.message ?: errorMessage
-            } catch (e: Exception) {
-                // Ignore parsing error
-            }
+    private val diagnosticsLogger: DiagnosticsLogger = AndroidDiagnosticsLogger
 
-            when {
-                // Ensure we don't blanket 409 as VersionConflict unless it's genuinely VERSION_CONFLICT
-                errorCode.endsWith("VERSION_CONFLICT") -> throw VersionConflictException(errorMessage)
-                errorCode == "ITEM_UNAVAILABLE" -> throw MenuItemUnavailableException(errorMessage)
-                errorCode == "CONFIGURATION_CONFLICT" -> throw ConfigurationConflictException(errorMessage)
-                // If it's a 409 but not known, just throw generic ApiException
-                response.code == 409 -> throw ApiException(errorCode, errorMessage)
-                else -> throw ApiException(errorCode, errorMessage)
-            }
-        }
-        response
-    }
+    private val requestDiagnosticsInterceptor = RequestDiagnosticsInterceptor(
+        logger = diagnosticsLogger,
+        debugEnabled = BuildConfig.DEBUG
+    )
+
+    private val errorInterceptor = ApiErrorInterceptor(configuredGson, diagnosticsLogger)
 
     // ============================================================================
     // PUBLIC CLIENT (No Auth)
@@ -118,6 +96,7 @@ object NetworkModule {
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false) // Strict transport safety for refresh endpoint
+            .addInterceptor(requestDiagnosticsInterceptor)
             .addInterceptor(errorInterceptor)
             .build()
     }
@@ -173,6 +152,7 @@ object NetworkModule {
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
+            .addInterceptor(requestDiagnosticsInterceptor)
             .addInterceptor(authInterceptor)
             .authenticator(tokenAuthenticator)
             .addInterceptor(errorInterceptor)
@@ -186,6 +166,108 @@ object NetworkModule {
             .addConverterFactory(GsonConverterFactory.create(configuredGson))
             .build()
             .create(SushiMeiApi::class.java)
+    }
+}
+
+internal class RequestDiagnosticsInterceptor(
+    private val logger: DiagnosticsLogger,
+    private val debugEnabled: Boolean,
+    private val requestIdFactory: () -> String = { UUID.randomUUID().toString() }
+) : Interceptor {
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val original = chain.request()
+        val requestId = original.header(REQUEST_ID_HEADER) ?: requestIdFactory()
+        val request = original.newBuilder().header(REQUEST_ID_HEADER, requestId).build()
+        val fields = mapOf(
+            "requestId" to requestId,
+            "method" to request.method,
+            "path" to request.url.encodedPath
+        )
+        if (debugEnabled) {
+            logger.debug("api_request", fields)
+        }
+        return try {
+            chain.proceed(request).also { response ->
+                if (debugEnabled) {
+                    logger.debug(
+                        "api_response",
+                        fields + mapOf(
+                            "requestId" to (response.header(REQUEST_ID_HEADER) ?: requestId),
+                            "status" to response.code
+                        )
+                    )
+                }
+            }
+        } catch (exception: ApiException) {
+            throw exception
+        } catch (exception: IOException) {
+            logger.error(
+                "api_transport_error",
+                fields + mapOf("cause" to exception.javaClass.simpleName)
+            )
+            throw exception
+        }
+    }
+
+    private companion object {
+        const val REQUEST_ID_HEADER = "X-Request-Id"
+    }
+}
+
+internal class ApiErrorInterceptor(
+    private val gson: Gson,
+    private val logger: DiagnosticsLogger
+) : Interceptor {
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        val response = chain.proceed(request)
+        if (response.isSuccessful) {
+            return response
+        }
+
+        val requestId = response.header(REQUEST_ID_HEADER) ?: request.header(REQUEST_ID_HEADER)
+        var errorCode = "UNKNOWN_ERROR"
+        var errorMessage = "Error HTTP ${response.code}"
+        try {
+            val apiError = gson.fromJson(
+                response.peekBody(MAX_ERROR_BODY_BYTES).string(),
+                com.restaurant.sushimei.frontend.data.model.ApiErrorDto::class.java
+            )
+            errorCode = apiError.code
+            errorMessage = apiError.message
+        } catch (_: Exception) {
+            // The status, endpoint and requestId still make an unparseable response diagnosable.
+        }
+
+        logger.error(
+            "api_error",
+            mapOf(
+                "requestId" to requestId,
+                "method" to request.method,
+                "path" to request.url.encodedPath,
+                "status" to response.code,
+                "code" to errorCode
+            )
+        )
+
+        val exception = when {
+            errorCode.endsWith("VERSION_CONFLICT") ->
+                VersionConflictException(errorMessage, response.code, requestId)
+            errorCode == "ITEM_UNAVAILABLE" ->
+                MenuItemUnavailableException(errorMessage, response.code, requestId)
+            errorCode == "CONFIGURATION_CONFLICT" ->
+                ConfigurationConflictException(errorMessage, response.code, requestId)
+            else -> ApiException(errorCode, errorMessage, response.code, requestId)
+        }
+        response.close()
+        throw exception
+    }
+
+    private companion object {
+        const val REQUEST_ID_HEADER = "X-Request-Id"
+        const val MAX_ERROR_BODY_BYTES = 64L * 1024L
     }
 }
 

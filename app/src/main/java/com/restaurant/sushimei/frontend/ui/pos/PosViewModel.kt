@@ -199,7 +199,9 @@ class PosViewModel(
                     if (e.code == "PROMOTION_REWARD_INVALID" && recoverUnavailablePromotionLines()) {
                         return@collect
                     }
-                    _quoteState.value = QuoteState.Error("Error al cotizar orden: ${e.message}")
+                    _quoteState.value = QuoteState.Error(
+                        "Error al cotizar orden: ${e.message}${e.referenceSuffix()}"
+                    )
                 } catch (e: Exception) {
                     _quoteState.value = QuoteState.Error("Error al cotizar orden: ${e.message}")
                 }
@@ -213,6 +215,10 @@ class PosViewModel(
             try {
                 _activePromotions.value = promotionRepository.getActivePromotions()
                     .sortedWith(compareByDescending<Promotion> { it.priority }.thenBy { it.id })
+            } catch (e: ApiException) {
+                _activePromotions.value = emptyList()
+                _promotionLoadError.value =
+                    "No se pudieron cargar las promociones activas.${e.referenceSuffix()}"
             } catch (_: Exception) {
                 _activePromotions.value = emptyList()
                 _promotionLoadError.value = "No se pudieron cargar las promociones activas."
@@ -643,7 +649,7 @@ class PosViewModel(
     }
 
     private fun mapApiError(e: ApiException): String {
-        return when (e.code) {
+        val message = when (e.code) {
             "ORDER_INVALID" -> "Datos de orden inválidos. Revisa la información."
 
             "ORDER_CASH_DENOMINATION_INSUFFICIENT" -> "La denominación es menor al total del pedido."
@@ -663,6 +669,7 @@ class PosViewModel(
 
             else -> "Error del servidor. La orden no pudo confirmarse. Intenta de nuevo."
         }
+        return message + e.referenceSuffix()
     }
 
     private fun buildRequestLine(product: ConfiguredProduct): PosOrderRequestLineDto {

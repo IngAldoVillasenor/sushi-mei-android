@@ -1,5 +1,6 @@
 package com.restaurant.sushimei.frontend.ui.admin.promotions
 
+import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.model.Promotion
 import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
 import com.restaurant.sushimei.frontend.data.model.PromotionSchedule
@@ -105,6 +106,30 @@ class PromotionsViewModelTest {
         )
         assertFalse(viewModel.uiState.value.isLoading)
         assertTrue(viewModel.uiState.value.promotions.isEmpty())
+    }
+
+    @Test
+    fun `schedule conflict keeps server explanation and diagnostic reference`() = runTest {
+        val monday = fixedPricePromotion(id = 1L, name = "Lunes \$69")
+        coEvery { repository.getPromotions() } returns listOf(monday)
+        coEvery { repository.updatePromotion(monday) } throws ApiException(
+            code = "PROMOTION_SCHEDULE_CONFLICT",
+            message = "Otra promoción activa coincide en días y productos.",
+            httpStatus = 409,
+            requestId = "abcd1234-1111-2222-3333-444444444444"
+        )
+        val viewModel = PromotionsViewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.savePromotion(monday)
+        advanceUntilIdle()
+
+        assertEquals(
+            "Otra promoción activa coincide en días y productos. (Ref. abcd1234)",
+            viewModel.uiState.value.errorMessage
+        )
+        assertFalse(viewModel.uiState.value.saveSuccess)
+        assertFalse(viewModel.uiState.value.isSaving)
     }
 
     private fun fixedPricePromotion(id: Long, name: String) = Promotion(
