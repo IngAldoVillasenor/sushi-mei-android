@@ -106,6 +106,10 @@ fun PosScreen() {
     var printState by remember { mutableStateOf<PosPrintState>(PosPrintState.Idle) }
     var printRetry by remember { mutableIntStateOf(0) }
 
+    LaunchedEffect(Unit) {
+        viewModel.refreshActivePromotions()
+    }
+
     LaunchedEffect(checkoutState) {
         if (checkoutState is CheckoutState.Success) {
             showCheckoutDialog = false

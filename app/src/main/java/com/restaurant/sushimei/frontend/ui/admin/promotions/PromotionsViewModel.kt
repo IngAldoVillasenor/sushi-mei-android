@@ -32,13 +32,12 @@ class PromotionsViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true, errorMessage = null)
             try {
-                // In a real flow, we could observe `repository.observePromotions()` instead of single fetch.
-                repository.observePromotions().collect { list ->
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        promotions = list
-                    )
-                }
+                val promotions = repository.getPromotions()
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    promotions = promotions,
+                    errorMessage = null
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -52,17 +51,26 @@ class PromotionsViewModel(
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSaving = true, errorMessage = null, saveSuccess = false)
             try {
-                // If it's a new promotion, we rely on checking if the ID was just locally generated or really exists
-                // In real app, might separate create vs update
-                if (uiState.value.promotions.any { it.id == promotion.id }) {
+                val saved = if (promotion.id > 0L) {
                     repository.updatePromotion(promotion)
                 } else {
                     repository.createPromotion(promotion)
                 }
-                
-                _uiState.value = _uiState.value.copy(isSaving = false, saveSuccess = true)
+
+                val current = _uiState.value.promotions
+                val updated = if (current.any { it.id == saved.id }) {
+                    current.map { existing -> if (existing.id == saved.id) saved else existing }
+                } else {
+                    current + saved
+                }.sortedWith(compareByDescending<Promotion> { it.priority }.thenBy { it.id })
+
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    promotions = updated,
+                    errorMessage = null,
+                    saveSuccess = true
+                )
             } catch (e: Exception) {
-                // Aquí simulamos atrapar el HTTP 409 Conflict o similar
                 _uiState.value = _uiState.value.copy(
                     isSaving = false,
                     errorMessage = e.message ?: "Error desconocido al guardar la promoción"

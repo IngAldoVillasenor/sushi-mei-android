@@ -5,6 +5,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -27,10 +29,14 @@ fun PromotionEditorScreen(
     var name by remember { mutableStateOf(promotion?.name ?: "") }
     var active by remember { mutableStateOf(promotion?.active ?: true) }
     
-    // Target (Simple single target for UI for now)
-    var targetType by remember { mutableStateOf(promotion?.targets?.firstOrNull()?.type ?: PromotionTargetType.TAG) }
-    var targetId by remember { mutableStateOf(promotion?.targets?.firstOrNull()?.targetId?.toString() ?: "") }
-    var targetDisplayName by remember { mutableStateOf(promotion?.targets?.firstOrNull()?.displayName ?: "") }
+    val targets = remember(promotion?.id, promotion?.version) {
+        mutableStateListOf<PromotionTarget>().apply {
+            addAll(promotion?.targets.orEmpty())
+        }
+    }
+    var targetType by remember { mutableStateOf(PromotionTargetType.TAG) }
+    var targetId by remember { mutableStateOf("") }
+    var targetDisplayName by remember { mutableStateOf("") }
     
     // Schedule
     var daysOfWeek by remember { mutableStateOf(promotion?.schedule?.daysOfWeek ?: emptySet()) }
@@ -70,6 +76,7 @@ fun PromotionEditorScreen(
             (promotion?.benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat ?: true
         )
     }
+    var formError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -98,7 +105,8 @@ fun PromotionEditorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (uiState.errorMessage != null) {
+            val displayedError = formError ?: uiState.errorMessage
+            if (displayedError != null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
@@ -106,7 +114,7 @@ fun PromotionEditorScreen(
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(Modifier.width(8.dp))
-                        Text(uiState.errorMessage!!, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(displayedError, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
@@ -126,7 +134,39 @@ fun PromotionEditorScreen(
             
             HorizontalDivider()
             
-            Text("Objetivo (Target)", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            Text("Objetivos de la promoción", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+            if (targets.isEmpty()) {
+                Text(
+                    "Agrega al menos una etiqueta o producto.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            } else {
+                targets.forEachIndexed { index, target ->
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    if (target.type == PromotionTargetType.TAG) "Etiqueta #${target.targetId}"
+                                    else "Producto #${target.targetId}",
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                if (target.displayName.isNotBlank() && target.displayName != target.targetId.toString()) {
+                                    Text(target.displayName, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                            IconButton(onClick = { targets.removeAt(index) }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Quitar objetivo")
+                            }
+                        }
+                    }
+                }
+            }
+
+            Text("Agregar objetivo", fontWeight = FontWeight.SemiBold)
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(selected = targetType == PromotionTargetType.TAG, onClick = { targetType = PromotionTargetType.TAG })
@@ -140,7 +180,8 @@ fun PromotionEditorScreen(
             OutlinedTextField(
                 value = targetId,
                 onValueChange = { targetId = it },
-                label = { Text("ID del Target (ej. ROLL_CLASSIC)") },
+                label = { Text("ID numérico del nuevo objetivo") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
@@ -149,6 +190,34 @@ fun PromotionEditorScreen(
                 label = { Text("Nombre a Mostrar (ej. Rollos Clásicos)") },
                 modifier = Modifier.fillMaxWidth()
             )
+            OutlinedButton(
+                onClick = {
+                    val parsedTargetId = targetId.toLongOrNull()
+                    formError = when {
+                        parsedTargetId == null || parsedTargetId <= 0L ->
+                            "Escribe un ID válido para el nuevo objetivo."
+                        targets.any { it.type == targetType && it.targetId == parsedTargetId } ->
+                            "Ese objetivo ya está agregado."
+                        else -> null
+                    }
+                    if (formError == null) {
+                        targets.add(
+                            PromotionTarget(
+                                type = targetType,
+                                targetId = requireNotNull(parsedTargetId),
+                                displayName = targetDisplayName.trim().ifBlank { parsedTargetId.toString() }
+                            )
+                        )
+                        targetId = ""
+                        targetDisplayName = ""
+                    }
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Agregar objetivo")
+            }
 
             HorizontalDivider()
             
@@ -191,7 +260,7 @@ fun PromotionEditorScreen(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
-                        selected = benefitType == "BUY_X_PAY_Y", 
+                        selected = benefitType == "BUY_X_GET_Y_SAME_ITEM",
                         onClick = { 
                             benefitType = "BUY_X_GET_Y_SAME_ITEM" 
                             // Clear irrelevant fields
@@ -237,34 +306,45 @@ fun PromotionEditorScreen(
             
             Button(
                 onClick = {
+                    val normalizedName = name.trim()
+                    val parsedFixedPrice = fixedPrice.toBigDecimalOrNull()
+                    val parsedBuyQuantity = buyQuantity.toIntOrNull()
+                    val parsedRewardQuantity = rewardQuantity.toIntOrNull()
+                    formError = when {
+                        normalizedName.isEmpty() -> "Escribe un nombre para la promoción."
+                        daysOfWeek.isEmpty() -> "Selecciona al menos un día de la semana."
+                        targets.isEmpty() -> "Agrega al menos una etiqueta o producto."
+                        benefitType == "FIXED_UNIT_PRICE" &&
+                            (parsedFixedPrice == null || parsedFixedPrice <= java.math.BigDecimal.ZERO) ->
+                            "El precio promocional debe ser mayor a cero."
+                        benefitType == "BUY_X_GET_Y_SAME_ITEM" &&
+                            (parsedBuyQuantity == null || parsedBuyQuantity <= 0 ||
+                                parsedRewardQuantity == null || parsedRewardQuantity <= 0) ->
+                            "Las cantidades de compra y regalo deben ser mayores a cero."
+                        else -> null
+                    }
+                    if (formError != null) {
+                        return@Button
+                    }
+
                     val benefit = if (benefitType == "FIXED_UNIT_PRICE") {
-                        PromotionBenefit.FixedUnitPrice(fixedPrice.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO)
+                        PromotionBenefit.FixedUnitPrice(requireNotNull(parsedFixedPrice))
                     } else {
                         PromotionBenefit.BuyXGetYSameItem(
-                            buyQuantity = buyQuantity.toIntOrNull() ?: 2,
-                            rewardQuantity = rewardQuantity.toIntOrNull() ?: 1,
+                            buyQuantity = requireNotNull(parsedBuyQuantity),
+                            rewardQuantity = requireNotNull(parsedRewardQuantity),
                             repeat = repeat
                         )
                     }
                     
-                    val updatedPromotion = Promotion(
-                        id = promotion?.id ?: 0L,
-                        name = name,
+                    val updatedPromotion = buildPromotionFromEditor(
+                        originalPromotion = promotion,
+                        name = normalizedName,
                         active = active,
-                        priority = promotion?.priority ?: 100,
-                        schedule = PromotionSchedule(
-                            daysOfWeek = daysOfWeek,
-                            allDay = allDay
-                        ),
-                        targets = listOf(
-                            PromotionTarget(
-                                type = targetType,
-                                targetId = targetId.toLongOrNull() ?: 0L,
-                                displayName = targetDisplayName
-                            )
-                        ),
-                        benefit = benefit,
-                        version = promotion?.version ?: 1L
+                        daysOfWeek = daysOfWeek,
+                        allDay = allDay,
+                        targets = targets.toList(),
+                        benefit = benefit
                     )
                     viewModel.savePromotion(updatedPromotion)
                 },
@@ -280,3 +360,24 @@ fun PromotionEditorScreen(
         }
     }
 }
+
+internal fun buildPromotionFromEditor(
+    originalPromotion: Promotion?,
+    name: String,
+    active: Boolean,
+    daysOfWeek: Set<Int>,
+    allDay: Boolean,
+    targets: List<PromotionTarget>,
+    benefit: PromotionBenefit
+) = Promotion(
+    id = originalPromotion?.id ?: 0L,
+    name = name,
+    active = active,
+    priority = originalPromotion?.priority ?: 100,
+    validFrom = originalPromotion?.validFrom,
+    validUntil = originalPromotion?.validUntil,
+    schedule = PromotionSchedule(daysOfWeek = daysOfWeek, allDay = allDay),
+    targets = targets,
+    benefit = benefit,
+    version = originalPromotion?.version ?: 1L
+)
