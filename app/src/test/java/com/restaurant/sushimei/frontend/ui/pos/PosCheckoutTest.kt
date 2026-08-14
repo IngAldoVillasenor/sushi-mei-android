@@ -446,7 +446,8 @@ class PosCheckoutTest {
             "ORDER_MENU_ITEM_NOT_FOUND" to "Un producto ya no existe en el catálogo.",
             "ORDER_MENU_ITEM_UNAVAILABLE" to "Un producto seleccionado no está disponible.",
             "ORDER_CONFIGURATION_INVALID" to "Configuración de producto inválida.",
-            "ORDER_PROMOTION_CONFLICT" to "Conflicto de promoción. Los precios pudieron haber cambiado.",
+            "ORDER_PROMOTION_CONFLICT" to "La promoción cambió o dejó de estar disponible. Revisa la orden e intenta de nuevo.",
+            "PROMOTION_REWARD_INVALID" to "La promoción cambió o dejó de estar disponible. Revisa la orden e intenta de nuevo.",
             "ORDER_FORBIDDEN_OPERATION" to "No tienes permisos para realizar esta operación.",
             "AUTH_FORBIDDEN" to "No tienes permisos para realizar esta operación.",
             "UNKNOWN_CODE_ABC" to "Error del servidor. La orden no pudo confirmarse. Intenta de nuevo."
@@ -547,7 +548,7 @@ class FakeManualPosOrderRepository : IManualPosOrderRepository {
             deliveryAddress = request.deliveryAddress,
             pickupName = request.pickupName,
             cashDenomination = request.cashDenomination,
-            status = "PENDING",
+            status = "PREPARING",
             createdAt = Instant.now(),
             lines = emptyList(),
             total = mockedResponseTotal

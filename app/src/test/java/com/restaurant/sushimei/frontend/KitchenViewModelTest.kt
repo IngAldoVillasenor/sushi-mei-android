@@ -6,6 +6,7 @@ import com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto
 import com.restaurant.sushimei.frontend.data.repository.IOrderRepository
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -92,7 +93,7 @@ class KitchenViewModelTest {
     }
 
     @Test
-    fun `acceptOperationalOrder fetches detail if not cached and calls prepare`() = runTest {
+    fun `acceptOperationalOrder prepares before fetching detail for printing`() = runTest {
         val mockContext = mockk<android.content.Context>(relaxed = true)
         val dummyUsbManager = mockk<android.hardware.usb.UsbManager>(relaxed = true)
         val dummyBluetoothManager = mockk<android.bluetooth.BluetoothManager>(relaxed = true)
@@ -106,12 +107,14 @@ class KitchenViewModelTest {
         viewModel.acceptOperationalOrder(777L, mockContext)
         advanceUntilIdle()
 
-        coVerify(exactly = 1, timeout = 2000) { mockApi.getOperationalOrderDetail(777L) }
-        coVerify(exactly = 1, timeout = 2000) { mockApi.acceptAndPrepareOrder(777L) }
+        coVerifyOrder {
+            mockApi.acceptAndPrepareOrder(777L)
+            mockApi.getOperationalOrderDetail(777L)
+        }
     }
 
     @Test
-    fun `acceptOperationalOrder exposes error and skips prepare if detail fetch fails`() = runTest {
+    fun `acceptOperationalOrder keeps preparing transition when ticket detail fetch fails`() = runTest {
         val mockContext = mockk<android.content.Context>(relaxed = true)
         val dummyUsbManager = mockk<android.hardware.usb.UsbManager>(relaxed = true)
         val dummyBluetoothManager = mockk<android.bluetooth.BluetoothManager>(relaxed = true)
@@ -119,12 +122,38 @@ class KitchenViewModelTest {
         io.mockk.every { mockContext.getSystemService(android.content.Context.BLUETOOTH_SERVICE) } returns dummyBluetoothManager
 
         coEvery { mockApi.getOperationalOrderDetail(888L) } returns Response.error(404, okhttp3.ResponseBody.create(null, ""))
+        coEvery { mockApi.acceptAndPrepareOrder(888L) } returns Response.success(Unit)
+        coEvery { mockApi.getOperationalActiveOrders() } returns Response.success(emptyList())
 
         viewModel.acceptOperationalOrder(888L, mockContext)
         advanceUntilIdle()
 
-        coVerify(exactly = 1, timeout = 2000) { mockApi.getOperationalOrderDetail(888L) }
-        coVerify(exactly = 0, timeout = 2000) { mockApi.acceptAndPrepareOrder(888L) }
-        assertEquals("Error: No se pudo cargar el detalle del pedido para imprimir.", viewModel.kitchenError.value)
+        coVerifyOrder {
+            mockApi.acceptAndPrepareOrder(888L)
+            mockApi.getOperationalOrderDetail(888L)
+        }
+        assertEquals(
+            "La orden se aceptó, pero no se pudo cargar el ticket para imprimir.",
+            viewModel.kitchenError.value
+        )
+    }
+
+    @Test
+    fun `acceptOperationalOrder does not fetch or print a ticket when prepare is rejected`() = runTest {
+        val mockContext = mockk<android.content.Context>(relaxed = true)
+        coEvery { mockApi.acceptAndPrepareOrder(999L) } returns Response.error(
+            409,
+            okhttp3.ResponseBody.create(null, "")
+        )
+
+        viewModel.acceptOperationalOrder(999L, mockContext)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { mockApi.acceptAndPrepareOrder(999L) }
+        coVerify(exactly = 0) { mockApi.getOperationalOrderDetail(999L) }
+        assertEquals(
+            "Error del servidor: Rechazo en operación (HTTP 409)",
+            viewModel.kitchenError.value
+        )
     }
 }

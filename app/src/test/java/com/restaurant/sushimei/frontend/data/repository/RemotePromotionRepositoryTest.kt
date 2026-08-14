@@ -1,5 +1,6 @@
 package com.restaurant.sushimei.frontend.data.repository
 
+import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.api.SushiMeiApi
 import com.restaurant.sushimei.frontend.data.model.ConfiguredGroup
 import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
@@ -10,6 +11,9 @@ import com.restaurant.sushimei.frontend.data.model.PromotionLineSelection
 import com.restaurant.sushimei.frontend.data.model.PromotionResponse
 import com.restaurant.sushimei.frontend.data.model.PromotionTargetResponse
 import com.restaurant.sushimei.frontend.data.model.QuoteRequestDto
+import com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
+import com.restaurant.sushimei.frontend.data.model.QuoteResponseLineDto
+import com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -18,6 +22,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 import retrofit2.Response
 import java.math.BigDecimal
@@ -100,6 +105,60 @@ class RemotePromotionRepositoryTest {
             202L,
             line.rewardConfigurations.single().groups.single().selections.single().menuItemId
         )
+    }
+
+    @Test
+    fun `quote mismatch reports a stale selected promotion`() = runTest {
+        coEvery { api.quotePromotions(any()) } returns Response.success(
+            QuoteResponseDto(
+                quotedAt = Instant.parse("2026-08-14T18:00:00Z"),
+                businessTimeZone = "America/Mexico_City",
+                lines = listOf(
+                    QuoteResponseLineDto(
+                        lineKey = "line-1",
+                        menuItemId = 24L,
+                        name = "California roll",
+                        quantity = 1,
+                        catalogBaseUnitPrice = BigDecimal("79.00"),
+                        chargedBaseUnitPrice = BigDecimal("79.00"),
+                        configuration = ItemQuoteResponseDto(
+                            menuItemId = 24L,
+                            name = "California roll",
+                            quantity = 1,
+                            baseUnitPrice = BigDecimal("79.00"),
+                            baseTotal = BigDecimal("79.00"),
+                            unitAdjustmentTotal = BigDecimal.ZERO,
+                            unitTotal = BigDecimal("79.00"),
+                            total = BigDecimal("79.00")
+                        ),
+                        appliedPromotion = null,
+                        promotionAdjustmentTotal = BigDecimal.ZERO,
+                        lineTotal = BigDecimal("79.00")
+                    )
+                ),
+                catalogBaseSubtotal = BigDecimal("79.00"),
+                configurationAdjustmentTotal = BigDecimal.ZERO,
+                promotionAdjustmentTotal = BigDecimal.ZERO,
+                total = BigDecimal("79.00")
+            )
+        )
+        val product = ConfiguredProduct(
+            id = "line-1",
+            menuItemId = 24L,
+            name = "California roll",
+            quantity = 1,
+            baseUnitPrice = BigDecimal("79.00"),
+            promotionSelection = PromotionLineSelection(
+                promotionId = 8L,
+                promotionName = "Jueves 2x1"
+            )
+        )
+
+        val exception = assertThrows(ApiException::class.java) {
+            kotlinx.coroutines.runBlocking { repository.quoteCart(listOf(product)) }
+        }
+
+        assertEquals("PROMOTION_REWARD_INVALID", exception.code)
     }
 
     private fun configuredGroup(groupId: Long, selectionId: Long) = ConfiguredGroup(

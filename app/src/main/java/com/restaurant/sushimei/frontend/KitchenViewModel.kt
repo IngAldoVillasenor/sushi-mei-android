@@ -151,27 +151,27 @@ class KitchenViewModel(
     fun acceptOperationalOrder(orderId: Long, context: Context) {
         viewModelScope.launch {
             try {
-                var detail = _orderDetailCache.value[orderId]
-                if (detail == null) {
-                    forceRefreshDetail(orderId)
-                    detail = _orderDetailCache.value[orderId]
-                }
-
-                if (detail == null) {
-                    _kitchenError.value = "Error: No se pudo cargar el detalle del pedido para imprimir."
-                    return@launch
-                }
-
-                withContext(Dispatchers.IO) {
-                    val printService = PrintService(context)
-                    printService.printOperationalTicket(detail)
-                }
-
                 val response = api.acceptAndPrepareOrder(orderId)
 
                 if (response.isSuccessful) {
                     forceRefreshDetail(orderId)
+                    val detail = _orderDetailCache.value[orderId]
+                    if (detail == null) {
+                        fetchBackendOrders()
+                        _kitchenError.value = "La orden se aceptó, pero no se pudo cargar el ticket para imprimir."
+                        return@launch
+                    }
 
+                    val printed = try {
+                        withContext(Dispatchers.IO) {
+                            PrintService(context).printOperationalTicket(detail)
+                        }
+                    } catch (_: Exception) {
+                        false
+                    }
+                    if (!printed) {
+                        _kitchenError.value = "La orden se aceptó y pasó a Cocinando, pero el ticket no se pudo imprimir."
+                    }
                     fetchBackendOrders()
                 } else {
                     _kitchenError.value = "Error del servidor: Rechazo en operación (HTTP ${response.code()})"

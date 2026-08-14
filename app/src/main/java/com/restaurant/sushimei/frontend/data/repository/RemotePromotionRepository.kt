@@ -1,5 +1,6 @@
 package com.restaurant.sushimei.frontend.data.repository
 
+import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.api.SushiMeiApi
 import com.restaurant.sushimei.frontend.data.model.*
 import kotlinx.coroutines.flow.Flow
@@ -201,7 +202,10 @@ class RemotePromotionRepository(
             body.lines.forEach { line ->
                 val selectedPromotion = selectedPromotionByLine[line.lineKey]
                 if (selectedPromotion != null && line.appliedPromotion?.id != selectedPromotion.promotionId) {
-                    throw Exception("La promoción ${selectedPromotion.promotionName} no está disponible para esta orden.")
+                    throw ApiException(
+                        "PROMOTION_REWARD_INVALID",
+                        "La promoción ${selectedPromotion.promotionName} no está disponible para esta orden."
+                    )
                 }
             }
             

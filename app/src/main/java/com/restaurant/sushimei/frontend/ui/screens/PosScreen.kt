@@ -42,6 +42,9 @@ import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
 import com.restaurant.sushimei.frontend.data.local.provideManualPosOrderRepository
 import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
+import com.restaurant.sushimei.frontend.data.local.PosTicketPrintTracker
+import com.restaurant.sushimei.frontend.data.api.NetworkModule
+import com.restaurant.sushimei.frontend.PrintService
 import com.restaurant.sushimei.frontend.ui.pos.PosViewModel
 import com.restaurant.sushimei.frontend.ui.pos.PosUiState
 import com.restaurant.sushimei.frontend.ui.pos.CheckoutState
@@ -50,6 +53,8 @@ import java.math.BigDecimal
 import java.util.Locale
 import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen
 import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private data class PromotionConfigurationFlow(
     val promotion: Promotion,
@@ -58,10 +63,18 @@ private data class PromotionConfigurationFlow(
     val rewardProducts: List<ConfiguredProduct> = emptyList()
 )
 
+private sealed interface PosPrintState {
+    data object Idle : PosPrintState
+    data object Printing : PosPrintState
+    data object Printed : PosPrintState
+    data class Failed(val message: String) : PosPrintState
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PosScreen() {
     val context = LocalContext.current
+    val printTracker = remember { PosTicketPrintTracker(context) }
     val menuRepository = remember { provideMenuRepository(context) }
     val viewModel: PosViewModel = viewModel(
         factory = PosViewModel.factory(
@@ -90,6 +103,8 @@ fun PosScreen() {
     var selectedPromotion by remember { mutableStateOf<Promotion?>(null) }
     var promotionConfigurationFlow by remember { mutableStateOf<PromotionConfigurationFlow?>(null) }
     var configuringItemId by remember { mutableStateOf<Long?>(null) }
+    var printState by remember { mutableStateOf<PosPrintState>(PosPrintState.Idle) }
+    var printRetry by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(checkoutState) {
         if (checkoutState is CheckoutState.Success) {
@@ -98,11 +113,44 @@ fun PosScreen() {
         }
     }
 
+    LaunchedEffect(checkoutState, printRetry) {
+        val success = checkoutState as? CheckoutState.Success ?: return@LaunchedEffect
+        val order = success.response
+        if (printTracker.wasPrinted(order.requestId)) {
+            printState = PosPrintState.Printed
+            return@LaunchedEffect
+        }
+
+        printState = PosPrintState.Printing
+        try {
+            val detailResponse = NetworkModule.sushiMeiApi.getOperationalOrderDetail(order.id)
+            val detail = detailResponse.body()
+            if (!detailResponse.isSuccessful || detail == null) {
+                printState = PosPrintState.Failed("No se pudo cargar el ticket confirmado.")
+                return@LaunchedEffect
+            }
+
+            val printed = withContext(Dispatchers.IO) {
+                PrintService(context).printOperationalTicket(detail)
+            }
+            if (printed) {
+                printTracker.markPrinted(order.requestId)
+                printState = PosPrintState.Printed
+            } else {
+                printState = PosPrintState.Failed("Revisa Bluetooth, el permiso y la impresora emparejada.")
+            }
+        } catch (_: Exception) {
+            printState = PosPrintState.Failed("No se pudo imprimir el ticket. Revisa la conexión e intenta de nuevo.")
+        }
+    }
+
     if (showSuccessDialog && checkoutState is CheckoutState.Success) {
         AlertDialog(
             onDismissRequest = {
-                showSuccessDialog = false
-                viewModel.resetCheckoutState()
+                if (printState != PosPrintState.Printing) {
+                    showSuccessDialog = false
+                    viewModel.resetCheckoutState()
+                }
             },
             icon = {
                 Icon(
@@ -121,19 +169,44 @@ fun PosScreen() {
             },
             text = {
                 Text(
-                    text = "Orden #${checkoutState.response.id} procesada.\nTotal: $${String.format(Locale.US, "%.2f", checkoutState.response.total)} MXN",
+                    text = buildString {
+                        append("Orden #${checkoutState.response.id} procesada y enviada a Cocinando.\n")
+                        append("Total: $${String.format(Locale.US, "%.2f", checkoutState.response.total)} MXN\n\n")
+                        append(
+                            when (val currentPrintState = printState) {
+                                PosPrintState.Idle, PosPrintState.Printing -> "Imprimiendo ticket…"
+                                PosPrintState.Printed -> "Ticket impreso."
+                                is PosPrintState.Failed -> currentPrintState.message
+                            }
+                        )
+                    },
                     textAlign = TextAlign.Center
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        showSuccessDialog = false
-                        viewModel.resetCheckoutState()
+                        if (printState is PosPrintState.Failed) {
+                            printRetry += 1
+                        } else {
+                            showSuccessDialog = false
+                            viewModel.resetCheckoutState()
+                        }
                     },
+                    enabled = printState != PosPrintState.Printing,
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
                 ) {
-                    Text("Aceptar")
+                    Text(if (printState is PosPrintState.Failed) "Reintentar impresión" else "Aceptar")
+                }
+            },
+            dismissButton = {
+                if (printState is PosPrintState.Failed) {
+                    TextButton(onClick = {
+                        showSuccessDialog = false
+                        viewModel.resetCheckoutState()
+                    }) {
+                        Text("Cerrar")
+                    }
                 }
             }
         )
