@@ -19,6 +19,7 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.google.gson.stream.JsonWriter
 import java.time.Instant
+import java.time.LocalDate
 
 object NetworkModule {
 
@@ -46,9 +47,28 @@ object NetworkModule {
         }
     }
 
+    private object LocalDateAdapter : TypeAdapter<LocalDate>() {
+        override fun write(out: JsonWriter, value: LocalDate?) {
+            if (value == null) {
+                out.nullValue()
+            } else {
+                out.value(value.toString())
+            }
+        }
+
+        override fun read(reader: JsonReader): LocalDate? {
+            if (reader.peek() == JsonToken.NULL) {
+                reader.nextNull()
+                return null
+            }
+            return LocalDate.parse(reader.nextString())
+        }
+    }
+
     internal val configuredGson: Gson by lazy {
         GsonBuilder()
             .registerTypeAdapter(Instant::class.java, InstantAdapter)
+            .registerTypeAdapter(LocalDate::class.java, LocalDateAdapter)
             .create()
     }
 

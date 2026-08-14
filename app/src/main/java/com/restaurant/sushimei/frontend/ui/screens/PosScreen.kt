@@ -37,6 +37,8 @@ import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.MenuItem
 import com.restaurant.sushimei.frontend.data.model.FulfillmentType
 import com.restaurant.sushimei.frontend.data.model.PaymentMethod
+import com.restaurant.sushimei.frontend.data.model.Promotion
+import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
 import com.restaurant.sushimei.frontend.data.local.provideManualPosOrderRepository
 import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
@@ -48,6 +50,13 @@ import java.math.BigDecimal
 import java.util.Locale
 import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen
 import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel
+
+private data class PromotionConfigurationFlow(
+    val promotion: Promotion,
+    val menuItem: MenuItem,
+    val purchasedProduct: ConfiguredProduct? = null,
+    val rewardProducts: List<ConfiguredProduct> = emptyList()
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -73,9 +82,14 @@ fun PosScreen() {
 
     val filteredMenuItems = stateSuccess?.filteredProducts ?: emptyList()
     val categories = stateSuccess?.categories ?: listOf("Todos")
+    val activePromotions = stateSuccess?.activePromotions ?: emptyList()
+    val promotionLoadError = stateSuccess?.promotionLoadError
 
     var showSuccessDialog by remember { mutableStateOf(false) }
     var showCheckoutDialog by remember { mutableStateOf(false) }
+    var selectedPromotion by remember { mutableStateOf<Promotion?>(null) }
+    var promotionConfigurationFlow by remember { mutableStateOf<PromotionConfigurationFlow?>(null) }
+    var configuringItemId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(checkoutState) {
         if (checkoutState is CheckoutState.Success) {
@@ -133,8 +147,6 @@ fun PosScreen() {
         )
     }
 
-    var configuringItemId by remember { mutableStateOf<Long?>(null) }
-
     Row(modifier = Modifier.fillMaxSize()) {
         // ==========================================
         // LADO IZQUIERDO: 70% Catálogo de Productos
@@ -164,6 +176,13 @@ fun PosScreen() {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            ActivePromotionsSection(
+                promotions = activePromotions,
+                errorMessage = promotionLoadError,
+                onPromotionClick = { selectedPromotion = it },
+                onRetry = viewModel::refreshActivePromotions
+            )
 
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -424,6 +443,97 @@ fun PosScreen() {
         }
     }
 
+    selectedPromotion?.let { promotion ->
+        PromotionItemPickerDialog(
+            promotion = promotion,
+            eligibleProducts = viewModel.eligibleProducts(promotion),
+            onDismiss = { selectedPromotion = null },
+            onSelect = { item ->
+                selectedPromotion = null
+                if (item.requiresConfiguration) {
+                    promotionConfigurationFlow = PromotionConfigurationFlow(
+                        promotion = promotion,
+                        menuItem = item
+                    )
+                } else {
+                    viewModel.addPromotionBundle(promotion, item)
+                }
+            }
+        )
+    }
+
+    promotionConfigurationFlow?.let { flow ->
+        val bogo = flow.promotion.benefit as? PromotionBenefit.BuyXGetYSameItem
+        val configuringReward = flow.purchasedProduct != null && bogo != null
+        val rewardOrdinal = flow.rewardProducts.size + 1
+        val contextLabel = if (configuringReward) {
+            "${flow.promotion.name}: configura el roll gratis $rewardOrdinal/${bogo?.rewardQuantity}"
+        } else if (bogo != null) {
+            "${flow.promotion.name}: configura el roll comprado"
+        } else {
+            "${flow.promotion.name}: configura el roll de la promoción"
+        }
+        val actionLabel = when {
+            configuringReward -> "Guardar roll gratis"
+            bogo != null -> "Continuar al roll gratis"
+            else -> "Agregar promoción"
+        }
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { promotionConfigurationFlow = null },
+            properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.85f)
+                    .fillMaxHeight(0.9f)
+                    .clip(MaterialTheme.shapes.large),
+                color = MaterialTheme.colorScheme.background
+            ) {
+                val stageKey = if (configuringReward) "reward-$rewardOrdinal" else "purchase"
+                val configViewModel: ConfiguratorViewModel = viewModel(
+                    key = "promotion-${flow.promotion.id}-${flow.menuItem.id}-$stageKey",
+                    factory = ConfiguratorViewModel.factory(menuRepository)
+                )
+
+                ConfiguratorScreen(
+                    menuItemId = flow.menuItem.id,
+                    viewModel = configViewModel,
+                    onDismiss = { promotionConfigurationFlow = null },
+                    contextLabel = contextLabel,
+                    actionLabel = actionLabel,
+                    onAddToCart = { configuredProduct ->
+                        if (flow.purchasedProduct == null) {
+                            if (bogo == null || bogo.rewardQuantity == 0) {
+                                viewModel.addPromotionBundle(
+                                    promotion = flow.promotion,
+                                    menuItem = flow.menuItem,
+                                    purchasedProduct = configuredProduct
+                                )
+                                promotionConfigurationFlow = null
+                            } else {
+                                promotionConfigurationFlow = flow.copy(purchasedProduct = configuredProduct)
+                            }
+                        } else {
+                            val rewards = flow.rewardProducts + configuredProduct
+                            if (rewards.size >= bogo!!.rewardQuantity) {
+                                viewModel.addPromotionBundle(
+                                    promotion = flow.promotion,
+                                    menuItem = flow.menuItem,
+                                    purchasedProduct = flow.purchasedProduct,
+                                    rewardProducts = rewards
+                                )
+                                promotionConfigurationFlow = null
+                            } else {
+                                promotionConfigurationFlow = flow.copy(rewardProducts = rewards)
+                            }
+                        }
+                    }
+                )
+            }
+        }
+    }
+
     configuringItemId?.let { itemId ->
         androidx.compose.ui.window.Dialog(
             onDismissRequest = { configuringItemId = null },
@@ -454,6 +564,155 @@ fun PosScreen() {
             }
         }
     }
+}
+
+@Composable
+private fun ActivePromotionsSection(
+    promotions: List<Promotion>,
+    errorMessage: String?,
+    onPromotionClick: (Promotion) -> Unit,
+    onRetry: () -> Unit
+) {
+    if (promotions.isEmpty() && errorMessage == null) return
+
+    Column(modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)) {
+        Text(
+            text = "Promociones",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+
+        if (errorMessage != null) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = errorMessage,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+                TextButton(onClick = onRetry) { Text("Reintentar") }
+            }
+        } else {
+            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                items(promotions, key = { it.id }) { promotion ->
+                    Card(
+                        onClick = { onPromotionClick(promotion) },
+                        modifier = Modifier.width(230.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Text(
+                                text = promotion.name,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                text = promotionBenefitLabel(promotion),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer
+                            )
+                            Text(
+                                text = promotionDayLabel(promotion),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.75f)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PromotionItemPickerDialog(
+    promotion: Promotion,
+    eligibleProducts: List<MenuItem>,
+    onDismiss: () -> Unit,
+    onSelect: (MenuItem) -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(promotion.name) },
+        text = {
+            Column {
+                Text(
+                    text = "Selecciona el roll real para esta promoción. El backend confirmará la regla y el precio.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(bottom = 12.dp)
+                )
+                if (eligibleProducts.isEmpty()) {
+                    Text(
+                        text = "No hay productos elegibles disponibles en el catálogo.",
+                        color = MaterialTheme.colorScheme.error
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 420.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(eligibleProducts, key = { it.id }) { item ->
+                            Card(
+                                onClick = { onSelect(item) },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(item.nombre, fontWeight = FontWeight.Bold)
+                                        if (item.requiresConfiguration) {
+                                            Text(
+                                                "Requiere configuración",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                    Text("$${String.format(Locale.US, "%.2f", item.precio)}")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancelar") }
+        }
+    )
+}
+
+private fun promotionBenefitLabel(promotion: Promotion): String {
+    return when (val benefit = promotion.benefit) {
+        is PromotionBenefit.FixedUnitPrice -> "$${benefit.amount} por roll"
+        is PromotionBenefit.BuyXGetYSameItem ->
+            "Compra ${benefit.buyQuantity}, recibe ${benefit.rewardQuantity} gratis"
+    }
+}
+
+private fun promotionDayLabel(promotion: Promotion): String {
+    val names = mapOf(
+        1 to "Lunes",
+        2 to "Martes",
+        3 to "Miércoles",
+        4 to "Jueves",
+        5 to "Viernes",
+        6 to "Sábado",
+        7 to "Domingo"
+    )
+    return promotion.schedule.daysOfWeek.sorted().joinToString(", ") { names[it] ?: "Día $it" }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -720,11 +979,27 @@ fun CartItemRow(
                     overflow = TextOverflow.Ellipsis
                 )
 
+                if (configuredProduct.promotionSelection == null) {
+                    Text(
+                        text = "$${String.format(Locale.US, "%.2f", configuredProduct.total)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                } else {
+                    Text(
+                        text = "Total cotizado abajo",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
+            }
+
+            configuredProduct.promotionSelection?.let { selection ->
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", configuredProduct.total)}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.primary
+                    text = selection.promotionName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary
                 )
             }
 
@@ -735,38 +1010,57 @@ fun CartItemRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                val promotionSelection = configuredProduct.promotionSelection
                 Text(
-                    text = "$${String.format(Locale.US, "%.2f", configuredProduct.unitTotal)} c/u",
+                    text = if (promotionSelection == null) {
+                        "$${String.format(Locale.US, "%.2f", configuredProduct.unitTotal)} c/u"
+                    } else {
+                        "Compra ${configuredProduct.quantity} · ${promotionSelection.rewardConfigurations.size} gratis"
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    IconButton(
-                        onClick = onDecrement,
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Remove,
-                            contentDescription = "Disminuir",
-                            modifier = Modifier.size(16.dp)
+                    if (promotionSelection == null) {
+                        IconButton(
+                            onClick = onDecrement,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Remove,
+                                contentDescription = "Disminuir",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+
+                        Text(
+                            text = "${configuredProduct.quantity}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp)
                         )
+
+                        IconButton(
+                            onClick = onIncrement,
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "Aumentar",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
                     }
 
-                    Text(
-                        text = "${configuredProduct.quantity}",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp)
-                    )
-
                     IconButton(
-                        onClick = onIncrement,
+                        onClick = onDelete,
                         modifier = Modifier.size(28.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Aumentar",
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Eliminar",
+                            tint = MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(16.dp)
                         )
                     }

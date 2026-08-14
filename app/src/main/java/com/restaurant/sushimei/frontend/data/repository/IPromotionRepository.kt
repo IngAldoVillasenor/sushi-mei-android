@@ -9,6 +9,8 @@ interface IPromotionRepository {
     fun observePromotions(): Flow<List<Promotion>>
     
     suspend fun getPromotions(): List<Promotion>
+
+    suspend fun getActivePromotions(): List<Promotion>
     
     suspend fun getPromotion(id: Long): Promotion?
     

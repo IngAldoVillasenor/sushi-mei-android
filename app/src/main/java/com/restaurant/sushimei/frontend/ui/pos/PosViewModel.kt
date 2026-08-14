@@ -39,7 +39,10 @@ sealed interface PosUiState {
     data class Success(
         val categories: List<String> = listOf("Todos"),
         val selectedCategory: String? = null,
+        val allProducts: List<MenuItem> = emptyList(),
         val filteredProducts: List<MenuItem> = emptyList(),
+        val activePromotions: List<Promotion> = emptyList(),
+        val promotionLoadError: String? = null,
         val currentCart: List<ConfiguredProduct> = emptyList(),
         val quoteState: QuoteState = QuoteState.Idle,
         val checkoutState: CheckoutState = CheckoutState.Idle,
@@ -64,6 +67,10 @@ class PosViewModel(
 
     private val _currentCart = MutableStateFlow<List<ConfiguredProduct>>(emptyList())
 
+    private val _activePromotions = MutableStateFlow<List<Promotion>>(emptyList())
+
+    private val _promotionLoadError = MutableStateFlow<String?>(null)
+
     private val _isLoading = MutableStateFlow(true)
 
     private val _quoteState = MutableStateFlow<QuoteState>(QuoteState.Idle)
@@ -87,13 +94,21 @@ class PosViewModel(
     // --- Estado público expuesto a la UI ---
 
     val uiState: StateFlow<PosUiState> = combine(
-        combine(_allProducts, _selectedCategory, _currentCart, ::Triple),
+        combine(
+            _allProducts,
+            _selectedCategory,
+            _currentCart,
+            _activePromotions,
+            _promotionLoadError
+        ) { all, category, cart, promotions, promotionError ->
+            CatalogState(all, category, cart, promotions, promotionError)
+        },
         combine(_isLoading, _quoteState, _checkoutState, ::Triple),
         combine(_fulfillmentType, _paymentMethod, _pickupName, _deliveryAddress, _cashDenomination) { f, p, pn, da, cd ->
 
             MetadataState(f, p, pn, da, cd)
         }
-    ) { (all, category, cart), (loading, quote, checkout), metadata ->
+    ) { catalog, (loading, quote, checkout), metadata ->
 
         if (loading) {
             PosUiState.Loading
@@ -101,20 +116,23 @@ class PosViewModel(
             val categories = buildList {
                 add("Todos")
 
-                addAll(all.map { it.categoria }.distinct().sorted())
+                addAll(catalog.allProducts.map { it.categoria }.distinct().sorted())
             }
 
-            val filtered = if (category == null || category == "Todos") {
-                all
+            val filtered = if (catalog.selectedCategory == null || catalog.selectedCategory == "Todos") {
+                catalog.allProducts
             } else {
-                all.filter { it.categoria == category }
+                catalog.allProducts.filter { it.categoria == catalog.selectedCategory }
             }
 
             PosUiState.Success(
                 categories = categories,
-                selectedCategory = category,
+                selectedCategory = catalog.selectedCategory,
+                allProducts = catalog.allProducts,
                 filteredProducts = filtered,
-                currentCart = cart,
+                activePromotions = catalog.activePromotions,
+                promotionLoadError = catalog.promotionLoadError,
+                currentCart = catalog.cart,
                 quoteState = quote,
                 checkoutState = checkout,
                 fulfillmentType = metadata.fulfillmentType,
@@ -132,6 +150,14 @@ class PosViewModel(
         val pickupName: String?,
         val deliveryAddress: String?,
         val cashDenomination: BigDecimal?
+    )
+
+    private data class CatalogState(
+        val allProducts: List<MenuItem>,
+        val selectedCategory: String?,
+        val cart: List<ConfiguredProduct>,
+        val activePromotions: List<Promotion>,
+        val promotionLoadError: String?
     )
 
     init {
@@ -152,6 +178,8 @@ class PosViewModel(
             }
         }
 
+        refreshActivePromotions()
+
         viewModelScope.launch {
             _currentCart.collect { cart ->
 
@@ -170,6 +198,19 @@ class PosViewModel(
                 } catch (e: Exception) {
                     _quoteState.value = QuoteState.Error("Error al cotizar orden: ${e.message}")
                 }
+            }
+        }
+    }
+
+    fun refreshActivePromotions() {
+        viewModelScope.launch {
+            _promotionLoadError.value = null
+            try {
+                _activePromotions.value = promotionRepository.getActivePromotions()
+                    .sortedWith(compareByDescending<Promotion> { it.priority }.thenBy { it.id })
+            } catch (_: Exception) {
+                _activePromotions.value = emptyList()
+                _promotionLoadError.value = "No se pudieron cargar las promociones activas."
             }
         }
     }
@@ -262,7 +303,11 @@ class PosViewModel(
 
                 val currentList = _currentCart.value.toMutableList()
 
-                val index = currentList.indexOfFirst { it.menuItemId == product.menuItemId && it.groups.isEmpty() }
+                val index = currentList.indexOfFirst {
+                    it.promotionSelection == null &&
+                        it.menuItemId == product.menuItemId &&
+                        it.groups.isEmpty()
+                }
 
                 if (index >= 0) {
                     val existing = currentList[index]
@@ -288,7 +333,10 @@ class PosViewModel(
         val currentList = _currentCart.value.toMutableList()
 
         val index = currentList.indexOfFirst {
-            it.menuItemId == configuredProduct.menuItemId && it.groups == configuredProduct.groups
+            it.promotionSelection == null &&
+                configuredProduct.promotionSelection == null &&
+                it.menuItemId == configuredProduct.menuItemId &&
+                it.groups == configuredProduct.groups
         }
 
         if (index >= 0) {
@@ -307,7 +355,100 @@ class PosViewModel(
         invalidateRequestId()
     }
 
+    fun eligibleProducts(promotion: Promotion): List<MenuItem> {
+        val itemTargets = promotion.targets
+            .filter { it.type == PromotionTargetType.ITEM }
+            .mapTo(mutableSetOf()) { it.targetId }
+        val tagTargets = promotion.targets
+            .filter { it.type == PromotionTargetType.TAG }
+            .mapTo(mutableSetOf()) { it.targetId }
+
+        return _allProducts.value.filter { item ->
+            item.id in itemTargets || item.tags.any { it.active && it.id in tagTargets }
+        }
+    }
+
+    fun addPromotionBundle(
+        promotion: Promotion,
+        menuItem: MenuItem,
+        purchasedProduct: ConfiguredProduct? = null,
+        rewardProducts: List<ConfiguredProduct> = emptyList()
+    ) {
+        if (eligibleProducts(promotion).none { it.id == menuItem.id }) return
+
+        val purchasedQuantity: Int
+        val rewardQuantity: Int
+        when (val benefit = promotion.benefit) {
+            is PromotionBenefit.FixedUnitPrice -> {
+                purchasedQuantity = 1
+                rewardQuantity = 0
+            }
+            is PromotionBenefit.BuyXGetYSameItem -> {
+                purchasedQuantity = benefit.buyQuantity
+                rewardQuantity = benefit.rewardQuantity
+            }
+        }
+
+        if (purchasedProduct != null && purchasedProduct.menuItemId != menuItem.id) return
+        if (menuItem.requiresConfiguration && purchasedProduct == null) return
+        if (menuItem.requiresConfiguration &&
+            (rewardProducts.size != rewardQuantity || rewardProducts.any { it.menuItemId != menuItem.id })
+        ) return
+
+        viewModelScope.launch {
+            try {
+                val purchased = purchasedProduct ?: quoteUnconfiguredProduct(menuItem, purchasedQuantity)
+                val rewards = if (menuItem.requiresConfiguration) {
+                    rewardProducts.mapIndexed { index, reward ->
+                        ConfiguredRewardConfiguration(
+                            rewardOrdinal = index + 1,
+                            groups = reward.groups
+                        )
+                    }
+                } else {
+                    (1..rewardQuantity).map { ordinal ->
+                        ConfiguredRewardConfiguration(rewardOrdinal = ordinal)
+                    }
+                }
+
+                val line = purchased.copy(
+                    id = UUID.randomUUID().toString(),
+                    quantity = purchasedQuantity,
+                    total = purchased.unitTotal * BigDecimal(purchasedQuantity),
+                    promotionSelection = PromotionLineSelection(
+                        promotionId = promotion.id,
+                        promotionName = promotion.name,
+                        rewardConfigurations = rewards
+                    )
+                )
+
+                _currentCart.value = _currentCart.value + line
+                invalidateRequestId()
+            } catch (_: Exception) {
+                _quoteState.value = QuoteState.Error("No se pudo configurar la promoción seleccionada.")
+            }
+        }
+    }
+
+    private suspend fun quoteUnconfiguredProduct(menuItem: MenuItem, quantity: Int): ConfiguredProduct {
+        val quote = menuRepository.quoteItem(
+            menuItem.id,
+            ItemQuoteRequestDto(quantity = quantity, groups = emptyList())
+        )
+        return ConfiguredProduct(
+            menuItemId = quote.menuItemId,
+            name = quote.name,
+            quantity = quote.quantity,
+            baseUnitPrice = quote.baseUnitPrice,
+            unitTotal = quote.unitTotal,
+            total = quote.total,
+            groups = emptyList()
+        )
+    }
+
     fun incrementCartItem(product: ConfiguredProduct, onRequiresConfiguration: () -> Unit) {
+        if (product.promotionSelection != null) return
+
         val menuItem = _allProducts.value.find { it.id == product.menuItemId } ?: return
 
         if (menuItem.requiresConfiguration) {
@@ -325,7 +466,9 @@ class PosViewModel(
         if (index >= 0) {
             val existing = currentList[index]
 
-            if (existing.quantity > 1) {
+            if (existing.promotionSelection != null) {
+                currentList.removeAt(index)
+            } else if (existing.quantity > 1) {
                 currentList[index] = existing.copy(
                     quantity = existing.quantity - 1,
                     total = existing.unitTotal * BigDecimal(existing.quantity - 1)
@@ -494,7 +637,12 @@ class PosViewModel(
             menuItemId = product.menuItemId,
             quantity = product.quantity,
             groups = product.groups.map { buildRequestGroup(it) },
-            rewardConfigurations = emptyList() // Manual checkout never infers rewards
+            rewardConfigurations = product.promotionSelection?.rewardConfigurations?.map { reward ->
+                QuoteRequestRewardConfigDto(
+                    rewardOrdinal = reward.rewardOrdinal,
+                    groups = reward.groups.map { buildRequestGroup(it) }
+                )
+            } ?: emptyList()
         )
     }
 
