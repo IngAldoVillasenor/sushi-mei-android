@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -36,6 +37,9 @@ fun PromotionsListScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = viewModel::loadPromotions) {
+                        Icon(Icons.Default.Refresh, contentDescription = "Actualizar promociones")
+                    }
                     IconButton(onClick = { onEditPromotion(null) }) {
                         Icon(Icons.Default.Add, contentDescription = "Nueva Promoción")
                     }
@@ -51,6 +55,34 @@ fun PromotionsListScreen(
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            } else if (uiState.errorMessage != null) {
+                Card(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Text(
+                            uiState.errorMessage!!,
+                            color = MaterialTheme.colorScheme.onErrorContainer
+                        )
+                        Button(onClick = viewModel::loadPromotions) {
+                            Text("Reintentar")
+                        }
+                    }
+                }
             } else if (uiState.promotions.isEmpty()) {
                 Text(
                     text = "No hay promociones registradas.",

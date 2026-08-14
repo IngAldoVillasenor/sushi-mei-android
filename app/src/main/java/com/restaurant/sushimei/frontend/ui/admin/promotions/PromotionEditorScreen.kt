@@ -70,6 +70,7 @@ fun PromotionEditorScreen(
             (promotion?.benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat ?: true
         )
     }
+    var formError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(uiState.saveSuccess) {
         if (uiState.saveSuccess) {
@@ -98,7 +99,8 @@ fun PromotionEditorScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (uiState.errorMessage != null) {
+            val displayedError = formError ?: uiState.errorMessage
+            if (displayedError != null) {
                 Card(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
                     modifier = Modifier.fillMaxWidth()
@@ -106,7 +108,7 @@ fun PromotionEditorScreen(
                     Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Warning, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
                         Spacer(Modifier.width(8.dp))
-                        Text(uiState.errorMessage!!, color = MaterialTheme.colorScheme.onErrorContainer)
+                        Text(displayedError, color = MaterialTheme.colorScheme.onErrorContainer)
                     }
                 }
             }
@@ -140,7 +142,7 @@ fun PromotionEditorScreen(
             OutlinedTextField(
                 value = targetId,
                 onValueChange = { targetId = it },
-                label = { Text("ID del Target (ej. ROLL_CLASSIC)") },
+                label = { Text("ID numérico del tag o producto") },
                 modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
@@ -191,7 +193,7 @@ fun PromotionEditorScreen(
                 }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     RadioButton(
-                        selected = benefitType == "BUY_X_PAY_Y", 
+                        selected = benefitType == "BUY_X_GET_Y_SAME_ITEM",
                         onClick = { 
                             benefitType = "BUY_X_GET_Y_SAME_ITEM" 
                             // Clear irrelevant fields
@@ -237,21 +239,46 @@ fun PromotionEditorScreen(
             
             Button(
                 onClick = {
+                    val normalizedName = name.trim()
+                    val parsedTargetId = targetId.toLongOrNull()
+                    val parsedFixedPrice = fixedPrice.toBigDecimalOrNull()
+                    val parsedBuyQuantity = buyQuantity.toIntOrNull()
+                    val parsedRewardQuantity = rewardQuantity.toIntOrNull()
+                    formError = when {
+                        normalizedName.isEmpty() -> "Escribe un nombre para la promoción."
+                        daysOfWeek.isEmpty() -> "Selecciona al menos un día de la semana."
+                        parsedTargetId == null || parsedTargetId <= 0L ->
+                            "Selecciona un ID válido de tag o producto."
+                        benefitType == "FIXED_UNIT_PRICE" &&
+                            (parsedFixedPrice == null || parsedFixedPrice <= java.math.BigDecimal.ZERO) ->
+                            "El precio promocional debe ser mayor a cero."
+                        benefitType == "BUY_X_GET_Y_SAME_ITEM" &&
+                            (parsedBuyQuantity == null || parsedBuyQuantity <= 0 ||
+                                parsedRewardQuantity == null || parsedRewardQuantity <= 0) ->
+                            "Las cantidades de compra y regalo deben ser mayores a cero."
+                        else -> null
+                    }
+                    if (formError != null) {
+                        return@Button
+                    }
+
                     val benefit = if (benefitType == "FIXED_UNIT_PRICE") {
-                        PromotionBenefit.FixedUnitPrice(fixedPrice.toBigDecimalOrNull() ?: java.math.BigDecimal.ZERO)
+                        PromotionBenefit.FixedUnitPrice(requireNotNull(parsedFixedPrice))
                     } else {
                         PromotionBenefit.BuyXGetYSameItem(
-                            buyQuantity = buyQuantity.toIntOrNull() ?: 2,
-                            rewardQuantity = rewardQuantity.toIntOrNull() ?: 1,
+                            buyQuantity = requireNotNull(parsedBuyQuantity),
+                            rewardQuantity = requireNotNull(parsedRewardQuantity),
                             repeat = repeat
                         )
                     }
                     
                     val updatedPromotion = Promotion(
                         id = promotion?.id ?: 0L,
-                        name = name,
+                        name = normalizedName,
                         active = active,
                         priority = promotion?.priority ?: 100,
+                        validFrom = promotion?.validFrom,
+                        validUntil = promotion?.validUntil,
                         schedule = PromotionSchedule(
                             daysOfWeek = daysOfWeek,
                             allDay = allDay
@@ -259,8 +286,8 @@ fun PromotionEditorScreen(
                         targets = listOf(
                             PromotionTarget(
                                 type = targetType,
-                                targetId = targetId.toLongOrNull() ?: 0L,
-                                displayName = targetDisplayName
+                                targetId = requireNotNull(parsedTargetId),
+                                displayName = targetDisplayName.trim()
                             )
                         ),
                         benefit = benefit,
