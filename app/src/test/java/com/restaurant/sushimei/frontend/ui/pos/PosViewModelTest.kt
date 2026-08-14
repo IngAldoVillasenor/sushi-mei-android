@@ -53,6 +53,11 @@ class PosViewModelTest {
         coEvery { menuRepository.observeActiveCategories() } returns flowOf(listOf("Rolls"))
         coEvery { menuRepository.observeActive() } returns flowOf(listOf(catalogItemSimple, catalogItemConfigurable))
         coEvery { menuRepository.refreshCatalog(any()) } returns Unit
+        coEvery { promotionRepository.getActivePromotions() } returns emptyList()
+        coEvery { promotionRepository.quoteCart(any()) } returns OrderPricingPreview(
+            subtotal = BigDecimal.ZERO,
+            total = BigDecimal.ZERO
+        )
 
         coEvery { menuRepository.quoteItem(1, any()) } returns ItemQuoteResponseDto(
             menuItemId = 1, name = "Simple Item", quantity = 1,
@@ -125,5 +130,40 @@ class PosViewModelTest {
         } else {
             org.junit.Assert.fail("Expected PosUiState.Success")
         }
+    }
+
+    @Test
+    fun `active bogo promotion creates one authoritative line with reward ordinal`() = runTest {
+        val promotion = Promotion(
+            id = 20L,
+            name = "Jueves 2x1",
+            active = true,
+            priority = 100,
+            schedule = PromotionSchedule(daysOfWeek = setOf(4), allDay = true),
+            targets = listOf(PromotionTarget(PromotionTargetType.ITEM, 1L, "Simple Item")),
+            benefit = PromotionBenefit.BuyXGetYSameItem(
+                buyQuantity = 1,
+                rewardQuantity = 1,
+                repeat = true
+            )
+        )
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+
+        testScheduler.advanceUntilIdle()
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        val stateWithPromotions = viewModel.uiState.value as PosUiState.Success
+        assertEquals(listOf(promotion), stateWithPromotions.activePromotions)
+        assertEquals(listOf(1L), viewModel.eligibleProducts(promotion).map { it.id })
+
+        val menuItem = stateWithPromotions.allProducts.first { it.id == 1L }
+        viewModel.addPromotionBundle(promotion, menuItem)
+        testScheduler.advanceUntilIdle()
+
+        val line = (viewModel.uiState.value as PosUiState.Success).currentCart.single()
+        assertEquals(20L, line.promotionSelection?.promotionId)
+        assertEquals(1, line.promotionSelection?.rewardConfigurations?.single()?.rewardOrdinal)
+        assertTrue(line.promotionSelection?.rewardConfigurations?.single()?.groups?.isEmpty() == true)
     }
 }

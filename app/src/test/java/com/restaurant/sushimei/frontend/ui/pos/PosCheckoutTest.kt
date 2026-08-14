@@ -125,6 +125,84 @@ class PosCheckoutTest {
     }
 
     @Test
+    fun `purchased and reward configurations remain independent in checkout request`() = runTest {
+        val purchasedGroups = listOf(
+            ConfiguredGroup(
+                groupId = 10L,
+                name = "Rollo comprado",
+                selections = listOf(
+                    ConfiguredSelection(
+                        menuItemId = 201L,
+                        name = "Comprado empanizado",
+                        quantity = 1,
+                        catalogUnitPrice = BigDecimal.ZERO,
+                        priceAdjustment = BigDecimal.ZERO
+                    )
+                )
+            )
+        )
+        val rewardGroups = listOf(
+            ConfiguredGroup(
+                groupId = 20L,
+                name = "Rollo gratis",
+                selections = listOf(
+                    ConfiguredSelection(
+                        menuItemId = 202L,
+                        name = "Gratis frío",
+                        quantity = 1,
+                        catalogUnitPrice = BigDecimal.ZERO,
+                        priceAdjustment = BigDecimal.ZERO
+                    )
+                )
+            )
+        )
+        viewModel.addConfiguredProduct(
+            ConfiguredProduct(
+                id = "promo-line-1",
+                menuItemId = 24L,
+                name = "California roll",
+                quantity = 1,
+                baseUnitPrice = BigDecimal("79.00"),
+                groups = purchasedGroups,
+                unitTotal = BigDecimal("79.00"),
+                total = BigDecimal("79.00"),
+                promotionSelection = PromotionLineSelection(
+                    promotionId = 8L,
+                    promotionName = "Jueves 2x1",
+                    rewardConfigurations = listOf(
+                        ConfiguredRewardConfiguration(
+                            rewardOrdinal = 1,
+                            groups = rewardGroups
+                        )
+                    )
+                )
+            )
+        )
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Aldo")
+        viewModel.updatePaymentMethod(PaymentMethod.TRANSFER)
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val line = fakeManualRepo.lastRequest?.lines?.single()
+        assertNotNull(line)
+        assertEquals(10L, line?.groups?.single()?.groupId)
+        assertEquals(201L, line?.groups?.single()?.selections?.single()?.menuItemId)
+        assertEquals(1, line?.rewardConfigurations?.single()?.rewardOrdinal)
+        assertEquals(20L, line?.rewardConfigurations?.single()?.groups?.single()?.groupId)
+        assertEquals(
+            202L,
+            line?.rewardConfigurations?.single()?.groups?.single()?.selections?.single()?.menuItemId
+        )
+
+        val serializedLine = Gson().toJsonTree(line).asJsonObject
+        assertFalse(serializedLine.has("promotionId"))
+        assertFalse(serializedLine.has("promotionName"))
+    }
+
+    @Test
     fun `test idempotency requestId lifecycle on success and material metadata changes`() = runTest {
         fillCart()
 
@@ -502,6 +580,7 @@ class FakeMenuRepository : IMenuRepository {
 class FakePromotionRepository : IPromotionRepository {
     override fun observePromotions(): Flow<List<Promotion>> = flowOf(emptyList())
     override suspend fun getPromotions(): List<Promotion> = emptyList()
+    override suspend fun getActivePromotions(): List<Promotion> = emptyList()
     override suspend fun getPromotion(id: Long): Promotion? = null
     override suspend fun createPromotion(promotion: Promotion): Promotion = TODO()
     override suspend fun updatePromotion(promotion: Promotion): Promotion = TODO()

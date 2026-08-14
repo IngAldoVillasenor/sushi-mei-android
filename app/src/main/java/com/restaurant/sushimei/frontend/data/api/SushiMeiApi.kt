@@ -166,19 +166,22 @@ interface SushiMeiApi {
     @GET("/api/v1/promotions")
     suspend fun getPromotions(
         @Query("includeInactive") includeInactive: Boolean = false
-    ): Response<List<PromotionResponseDto>>
+    ): Response<List<PromotionResponse>>
+
+    @GET("/api/v1/promotions/active")
+    suspend fun getActivePromotions(): Response<List<PromotionResponse>>
 
     @GET("/api/v1/promotions/{id}")
-    suspend fun getPromotion(@Path("id") id: Long): Response<PromotionResponseDto>
+    suspend fun getPromotion(@Path("id") id: Long): Response<PromotionResponse>
 
     @POST("/api/v1/promotions")
-    suspend fun createPromotion(@Body request: PromotionCreateRequestDto): Response<PromotionResponseDto>
+    suspend fun createPromotion(@Body request: PromotionCreateRequest): Response<PromotionResponse>
 
     @PUT("/api/v1/promotions/{id}")
     suspend fun updatePromotion(
         @Path("id") id: Long,
-        @Body request: PromotionUpdateRequestDto
-    ): Response<PromotionResponseDto>
+        @Body request: PromotionUpdateRequest
+    ): Response<PromotionResponse>
 
     @DELETE("/api/v1/promotions/{id}")
     suspend fun deletePromotion(@Path("id") id: Long): Response<Unit>

@@ -66,6 +66,11 @@ class MockPromotionRepository : IPromotionRepository {
         return promotionsFlow.value
     }
 
+    override suspend fun getActivePromotions(): List<Promotion> {
+        delay(300)
+        return promotionsFlow.value.filter { it.active }
+    }
+
     override suspend fun getPromotion(id: Long): Promotion? {
         return promotionsFlow.value.find { it.id == id }
     }

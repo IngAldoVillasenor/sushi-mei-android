@@ -6,6 +6,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -43,7 +44,9 @@ fun ConfiguratorScreen(
     menuItemId: Long,
     viewModel: ConfiguratorViewModel,
     onDismiss: () -> Unit,
-    onAddToCart: (com.restaurant.sushimei.frontend.data.model.ConfiguredProduct) -> Unit
+    onAddToCart: (com.restaurant.sushimei.frontend.data.model.ConfiguredProduct) -> Unit,
+    contextLabel: String? = null,
+    actionLabel: String = "Agregar a pedido"
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
@@ -69,7 +72,19 @@ fun ConfiguratorScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(config.name) },
+                title = {
+                    Column {
+                        Text(config.name)
+                        contextLabel?.let {
+                            Text(it, style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
+                },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar configurador")
+                    }
+                },
                 actions = {
                     Text(
                         text = "$${config.basePrice}",
@@ -114,7 +129,7 @@ fun ConfiguratorScreen(
                         },
                         enabled = canSubmit
                     ) {
-                        Text("Agregar a pedido")
+                        Text(actionLabel)
                     }
                 }
             }
