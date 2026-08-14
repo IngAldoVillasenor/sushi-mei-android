@@ -2,6 +2,7 @@ package com.restaurant.sushimei.frontend.ui.admin.promotions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.model.Promotion
 import com.restaurant.sushimei.frontend.data.repository.IPromotionRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,11 @@ class PromotionsViewModel(
                     promotions = promotions,
                     errorMessage = null
                 )
+            } catch (e: ApiException) {
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    errorMessage = "Error al cargar promociones: ${e.message}${e.referenceSuffix()}"
+                )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
@@ -69,6 +75,11 @@ class PromotionsViewModel(
                     promotions = updated,
                     errorMessage = null,
                     saveSuccess = true
+                )
+            } catch (e: ApiException) {
+                _uiState.value = _uiState.value.copy(
+                    isSaving = false,
+                    errorMessage = "${e.message}${e.referenceSuffix()}"
                 )
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(

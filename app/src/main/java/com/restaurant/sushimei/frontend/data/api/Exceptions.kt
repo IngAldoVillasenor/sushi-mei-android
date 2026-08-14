@@ -2,8 +2,26 @@ package com.restaurant.sushimei.frontend.data.api
 
 import java.io.IOException
 
-open class ApiException(val code: String, message: String) : IOException(message)
+open class ApiException(
+    val code: String,
+    message: String,
+    val httpStatus: Int? = null,
+    val requestId: String? = null
+) : IOException(message) {
+    fun referenceSuffix(): String = requestId
+        ?.takeIf { it.isNotBlank() }
+        ?.let { " (Ref. ${it.take(8)})" }
+        .orEmpty()
+}
 
-class VersionConflictException(message: String = "Conflicto de versión detectado (HTTP 409). El recurso fue modificado por otro usuario.") : ApiException("VERSION_CONFLICT", message)
-class MenuItemUnavailableException(message: String) : ApiException("ITEM_UNAVAILABLE", message)
-class ConfigurationConflictException(message: String) : ApiException("CONFIGURATION_CONFLICT", message)
+class VersionConflictException(
+    message: String = "Conflicto de versión detectado (HTTP 409). El recurso fue modificado por otro usuario.",
+    httpStatus: Int? = 409,
+    requestId: String? = null
+) : ApiException("VERSION_CONFLICT", message, httpStatus, requestId)
+
+class MenuItemUnavailableException(message: String, httpStatus: Int? = null, requestId: String? = null) :
+    ApiException("ITEM_UNAVAILABLE", message, httpStatus, requestId)
+
+class ConfigurationConflictException(message: String, httpStatus: Int? = null, requestId: String? = null) :
+    ApiException("CONFIGURATION_CONFLICT", message, httpStatus, requestId)
