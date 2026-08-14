@@ -13,7 +13,7 @@ class RemotePromotionRepository(
 
     private val promotionsFlow = MutableStateFlow<List<Promotion>>(emptyList())
 
-    private fun PromotionResponse.toDomain() = Promotion(
+    private fun PromotionResponseDto.toDomain() = Promotion(
         id = id,
         name = name,
         active = active,
@@ -21,72 +21,93 @@ class RemotePromotionRepository(
         validFrom = validFrom,
         validUntil = validUntil,
         schedule = PromotionSchedule(
-            daysOfWeek = daysOfWeek,
-            allDay = true
+            daysOfWeek = schedule.daysOfWeek,
+            allDay = schedule.allDay,
+            startTime = schedule.startTime,
+            endTime = schedule.endTime
         ),
         targets = targets.map {
             PromotionTarget(
-                type = PromotionTargetType.valueOf(it.targetType),
+                type = PromotionTargetType.valueOf(it.type),
                 targetId = it.targetId,
-                displayName = it.targetId.toString()
+                displayName = it.displayName
             )
         },
-        benefit = when (benefitType) {
+        benefit = when (benefit.type) {
             "BUY_X_GET_Y_SAME_ITEM" -> PromotionBenefit.BuyXGetYSameItem(
-                buyQuantity = requireNotNull(buyQuantity) { "buyQuantity is required for $benefitType" },
-                rewardQuantity = requireNotNull(rewardQuantity) { "rewardQuantity is required for $benefitType" },
-                repeat = requireNotNull(repeat) { "repeat is required for $benefitType" }
+                buyQuantity = benefit.buyQuantity ?: 2,
+                rewardQuantity = benefit.rewardQuantity ?: 1,
+                repeat = benefit.repeat ?: true
             )
-            "FIXED_UNIT_PRICE" -> PromotionBenefit.FixedUnitPrice(
-                amount = requireNotNull(fixedUnitPrice) { "fixedUnitPrice is required for $benefitType" }
+            else -> PromotionBenefit.FixedUnitPrice(
+                amount = benefit.amount ?: BigDecimal.ZERO
             )
-            else -> error("Unsupported promotion benefit type: $benefitType")
         },
         version = version
     )
 
-    private fun Promotion.toCreateRequest() = PromotionCreateRequest(
+    private fun Promotion.toCreateDto() = PromotionCreateRequestDto(
         name = name,
         active = active,
         priority = priority,
-        benefitType = when (benefit) {
-            is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-            is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
-        },
-        fixedUnitPrice = (benefit as? PromotionBenefit.FixedUnitPrice)?.amount,
-        buyQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity,
-        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity,
-        repeat = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat,
         validFrom = validFrom,
         validUntil = validUntil,
-        daysOfWeek = schedule.daysOfWeek,
+        schedule = PromotionScheduleDto(
+            daysOfWeek = schedule.daysOfWeek,
+            allDay = schedule.allDay,
+            startTime = schedule.startTime,
+            endTime = schedule.endTime
+        ),
         targets = targets.map {
-            PromotionTargetRequest(
-                targetType = it.type.name,
-                targetId = it.targetId
+            PromotionTargetDto(
+                type = it.type.name,
+                targetId = it.targetId,
+                displayName = it.displayName
+            )
+        },
+        benefit = when (val b = benefit) {
+            is PromotionBenefit.FixedUnitPrice -> PromotionBenefitDto(
+                type = "FIXED_UNIT_PRICE",
+                amount = b.amount
+            )
+            is PromotionBenefit.BuyXGetYSameItem -> PromotionBenefitDto(
+                type = "BUY_X_GET_Y_SAME_ITEM",
+                buyQuantity = b.buyQuantity,
+                rewardQuantity = b.rewardQuantity,
+                repeat = b.repeat
             )
         }
     )
 
-    private fun Promotion.toUpdateRequest() = PromotionUpdateRequest(
+    private fun Promotion.toUpdateDto() = PromotionUpdateRequestDto(
         name = name,
         active = active,
         priority = priority,
-        benefitType = when (benefit) {
-            is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-            is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
-        },
-        fixedUnitPrice = (benefit as? PromotionBenefit.FixedUnitPrice)?.amount,
-        buyQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity,
-        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity,
-        repeat = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat,
         validFrom = validFrom,
         validUntil = validUntil,
-        daysOfWeek = schedule.daysOfWeek,
+        schedule = PromotionScheduleDto(
+            daysOfWeek = schedule.daysOfWeek,
+            allDay = schedule.allDay,
+            startTime = schedule.startTime,
+            endTime = schedule.endTime
+        ),
         targets = targets.map {
-            PromotionTargetRequest(
-                targetType = it.type.name,
-                targetId = it.targetId
+            PromotionTargetDto(
+                type = it.type.name,
+                targetId = it.targetId,
+                displayName = it.displayName
+            )
+        },
+        benefit = when (val b = benefit) {
+            is PromotionBenefit.FixedUnitPrice -> PromotionBenefitDto(
+                type = "FIXED_UNIT_PRICE",
+                amount = b.amount
+            )
+            is PromotionBenefit.BuyXGetYSameItem -> PromotionBenefitDto(
+                type = "BUY_X_GET_Y_SAME_ITEM",
+                buyQuantity = b.buyQuantity,
+                rewardQuantity = b.rewardQuantity,
+                repeat = b.repeat
             )
         },
         version = version
@@ -97,17 +118,6 @@ class RemotePromotionRepository(
 
     override suspend fun getPromotions(): List<Promotion> {
         val response = api.getPromotions(includeInactive = true)
-        if (response.isSuccessful) {
-            val list = response.body()?.map { it.toDomain() } ?: emptyList()
-            promotionsFlow.value = list
-            return list
-        } else {
-            throw Exception("HTTP ${response.code()}: ${response.message()}")
-        }
-    }
-
-    override suspend fun getActivePromotions(): List<Promotion> {
-        val response = api.getActivePromotions()
         if (response.isSuccessful) {
             val list = response.body()?.map { it.toDomain() } ?: emptyList()
             promotionsFlow.value = list
@@ -129,7 +139,7 @@ class RemotePromotionRepository(
     }
 
     override suspend fun createPromotion(promotion: Promotion): Promotion {
-        val response = api.createPromotion(promotion.toCreateRequest())
+        val response = api.createPromotion(promotion.toCreateDto())
         if (response.isSuccessful) {
             getPromotions()
             return response.body()?.toDomain() ?: throw Exception("Body null")
@@ -139,7 +149,7 @@ class RemotePromotionRepository(
     }
 
     override suspend fun updatePromotion(promotion: Promotion): Promotion {
-        val response = api.updatePromotion(promotion.id, promotion.toUpdateRequest())
+        val response = api.updatePromotion(promotion.id, promotion.toUpdateDto())
         if (response.isSuccessful) {
             getPromotions()
             return response.body()?.toDomain() ?: throw Exception("Body null")
@@ -183,12 +193,7 @@ class RemotePromotionRepository(
                     menuItemId = it.menuItemId,
                     quantity = it.quantity,
                     groups = mapGroups(it.groups),
-                    rewardConfigurations = it.promotionSelection?.rewardConfigurations?.map { reward ->
-                        QuoteRequestRewardConfigDto(
-                            rewardOrdinal = reward.rewardOrdinal,
-                            groups = mapGroups(reward.groups)
-                        )
-                    } ?: emptyList()
+                    rewardConfigurations = emptyList() // The UI currently doesn't specify custom reward configs
                 )
             }
         )
@@ -196,14 +201,6 @@ class RemotePromotionRepository(
         val response = api.quotePromotions(request)
         if (response.isSuccessful) {
             val body = response.body() ?: throw Exception("Quote response body null")
-
-            val selectedPromotionByLine = cart.associate { it.id to it.promotionSelection }
-            body.lines.forEach { line ->
-                val selectedPromotion = selectedPromotionByLine[line.lineKey]
-                if (selectedPromotion != null && line.appliedPromotion?.id != selectedPromotion.promotionId) {
-                    throw Exception("La promoción ${selectedPromotion.promotionName} no está disponible para esta orden.")
-                }
-            }
             
             // Map the quote response back to OrderPricingPreview
             

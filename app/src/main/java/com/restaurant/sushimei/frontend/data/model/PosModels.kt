@@ -30,24 +30,7 @@ data class ConfiguredProduct(
 
     // El precio total ajustado devuelto por la cotización del backend
     val unitTotal: BigDecimal = baseUnitPrice,
-    val total: BigDecimal = baseUnitPrice * BigDecimal(quantity),
-    val promotionSelection: PromotionLineSelection? = null
-)
-
-/**
- * Metadatos locales de una promoción elegida desde el POS. El ID y el nombre no
- * se envían como autoridad al backend; el servidor vuelve a resolver la regla.
- */
-data class PromotionLineSelection(
-    val promotionId: Long,
-    val promotionName: String,
-    val rewardConfigurations: List<ConfiguredRewardConfiguration> = emptyList()
-)
-
-/** Configuración independiente de una unidad gratuita de la misma línea. */
-data class ConfiguredRewardConfiguration(
-    val rewardOrdinal: Int,
-    val groups: List<ConfiguredGroup> = emptyList()
+    val total: BigDecimal = baseUnitPrice * BigDecimal(quantity)
 )
 
 /**
