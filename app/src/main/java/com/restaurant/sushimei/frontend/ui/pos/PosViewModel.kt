@@ -195,6 +195,11 @@ class PosViewModel(
                     val preview = promotionRepository.quoteCart(cart)
 
                     _quoteState.value = QuoteState.Valid(preview)
+                } catch (e: ApiException) {
+                    if (e.code == "PROMOTION_REWARD_INVALID" && recoverUnavailablePromotionLines()) {
+                        return@collect
+                    }
+                    _quoteState.value = QuoteState.Error("Error al cotizar orden: ${e.message}")
                 } catch (e: Exception) {
                     _quoteState.value = QuoteState.Error("Error al cotizar orden: ${e.message}")
                 }
@@ -212,6 +217,31 @@ class PosViewModel(
                 _activePromotions.value = emptyList()
                 _promotionLoadError.value = "No se pudieron cargar las promociones activas."
             }
+        }
+    }
+
+    private suspend fun recoverUnavailablePromotionLines(): Boolean {
+        return try {
+            val applicablePromotions = promotionRepository.getActivePromotions()
+                .sortedWith(compareByDescending<Promotion> { it.priority }.thenBy { it.id })
+            val applicableIds = applicablePromotions.mapTo(mutableSetOf()) { it.id }
+            val current = _currentCart.value
+            val recovered = current.filter { product ->
+                product.promotionSelection?.promotionId?.let(applicableIds::contains) ?: true
+            }
+
+            _activePromotions.value = applicablePromotions
+            if (recovered.size == current.size) {
+                false
+            } else {
+                _currentCart.value = recovered
+                _promotionLoadError.value = "Una promoción dejó de estar disponible y se retiró de la orden."
+                invalidateRequestId()
+                true
+            }
+        } catch (_: Exception) {
+            _promotionLoadError.value = "La promoción cambió y no se pudo actualizar. Intenta de nuevo."
+            false
         }
     }
 
@@ -596,6 +626,9 @@ class PosViewModel(
                     _checkoutState.value = CheckoutState.Error("Respuesta inesperada del servidor.")
                 }
             } catch (e: ApiException) {
+                if (e.code == "ORDER_PROMOTION_CONFLICT" || e.code == "PROMOTION_REWARD_INVALID") {
+                    recoverUnavailablePromotionLines()
+                }
                 _checkoutState.value = CheckoutState.Error(mapApiError(e))
             } catch (e: java.io.IOException) {
                 _checkoutState.value = CheckoutState.Error("Error de red: La orden no pudo confirmarse. Intenta de nuevo.")
@@ -623,7 +656,8 @@ class PosViewModel(
 
             "ORDER_CONFIGURATION_INVALID" -> "Configuración de producto inválida."
 
-            "ORDER_PROMOTION_CONFLICT" -> "Conflicto de promoción. Los precios pudieron haber cambiado."
+            "ORDER_PROMOTION_CONFLICT", "PROMOTION_REWARD_INVALID" ->
+                "La promoción cambió o dejó de estar disponible. Revisa la orden e intenta de nuevo."
 
             "ORDER_FORBIDDEN_OPERATION", "AUTH_FORBIDDEN" -> "No tienes permisos para realizar esta operación."
 

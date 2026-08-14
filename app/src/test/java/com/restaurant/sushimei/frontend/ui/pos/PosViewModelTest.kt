@@ -1,5 +1,6 @@
 package com.restaurant.sushimei.frontend.ui.pos
 
+import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.model.*
 import com.restaurant.sushimei.frontend.data.repository.IManualPosOrderRepository
 import com.restaurant.sushimei.frontend.data.repository.IMenuRepository
@@ -165,5 +166,45 @@ class PosViewModelTest {
         assertEquals(20L, line.promotionSelection?.promotionId)
         assertEquals(1, line.promotionSelection?.rewardConfigurations?.single()?.rewardOrdinal)
         assertTrue(line.promotionSelection?.rewardConfigurations?.single()?.groups?.isEmpty() == true)
+    }
+
+    @Test
+    fun `stale promotion is removed when authoritative quote rejects it`() = runTest {
+        val promotion = Promotion(
+            id = 20L,
+            name = "Jueves 2x1",
+            active = true,
+            priority = 100,
+            schedule = PromotionSchedule(daysOfWeek = setOf(4), allDay = true),
+            targets = listOf(PromotionTarget(PromotionTargetType.ITEM, 1L, "Simple Item")),
+            benefit = PromotionBenefit.BuyXGetYSameItem(
+                buyQuantity = 1,
+                rewardQuantity = 1,
+                repeat = true
+            )
+        )
+        testScheduler.advanceUntilIdle()
+        coEvery { promotionRepository.getActivePromotions() } returnsMany listOf(
+            listOf(promotion),
+            emptyList()
+        )
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+        coEvery { promotionRepository.quoteCart(any()) } throws ApiException(
+            "PROMOTION_REWARD_INVALID",
+            "La promoción ya no aplica"
+        )
+
+        val menuItem = (viewModel.uiState.value as PosUiState.Success).allProducts.first { it.id == 1L }
+        viewModel.addPromotionBundle(promotion, menuItem)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value as PosUiState.Success
+        assertTrue(state.currentCart.isEmpty())
+        assertTrue(state.activePromotions.isEmpty())
+        assertEquals(
+            "Una promoción dejó de estar disponible y se retiró de la orden.",
+            state.promotionLoadError
+        )
     }
 }

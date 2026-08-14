@@ -53,7 +53,10 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
 
     val localOrders by viewModel.localOrders.collectAsState()
 
-    val pendingBackend = backendSummaries.filter { it.status == "PENDING_VALIDATION" || it.status == "PENDING" }
+    val pendingBackend = backendSummaries.filter {
+        it.orderSource != "ANDROID_MANUAL" &&
+            (it.status == "PENDING_VALIDATION" || it.status == "PENDING")
+    }
 
     val preparingBackend = backendSummaries.filter { it.status == "PREPARING" }
 
