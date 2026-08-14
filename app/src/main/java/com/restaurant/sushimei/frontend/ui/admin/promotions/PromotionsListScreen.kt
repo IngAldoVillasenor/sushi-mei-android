@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.restaurant.sushimei.frontend.data.model.Promotion
 import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
+import com.restaurant.sushimei.frontend.data.model.PromotionTargetType
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
