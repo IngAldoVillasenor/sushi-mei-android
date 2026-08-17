@@ -171,6 +171,7 @@ data class QuoteRequestSelectionDto(
 
 data class QuoteRequestRewardConfigDto(
     val rewardOrdinal: Int,
+    val menuItemId: Long? = null,
     val groups: List<QuoteRequestGroupDto> = emptyList()
 )
 
@@ -275,6 +276,7 @@ data class ItemQuoteResponseSelectionDto(
     val menuItemId: Long,
     val name: String,
     val quantity: Int,
+    val displayOnTicket: Boolean = true,
     val catalogUnitPrice: BigDecimal,
     val priceAdjustment: BigDecimal,
     val groups: List<ItemQuoteResponseGroupDto> = emptyList()
@@ -353,6 +355,7 @@ data class OrderConfigurationSnapshotDto(
     val selectionPosition: Int,
     val menuItemId: Long,
     val itemName: String,
+    val displayOnTicket: Boolean = true,
     val quantity: Int,
     val catalogUnitPrice: BigDecimal,
     val priceAdjustment: BigDecimal

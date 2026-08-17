@@ -414,35 +414,51 @@ class PosViewModel(
 
         val purchasedQuantity: Int
         val rewardQuantity: Int
+        val isEligibleItemBenefit: Boolean
         when (val benefit = promotion.benefit) {
             is PromotionBenefit.FixedUnitPrice -> {
                 purchasedQuantity = 1
                 rewardQuantity = 0
+                isEligibleItemBenefit = false
             }
-            is PromotionBenefit.BuyXGetYSameItem -> {
+            is PromotionBenefit.BuyXGetY -> {
                 purchasedQuantity = benefit.buyQuantity
                 rewardQuantity = benefit.rewardQuantity
+                isEligibleItemBenefit = PromotionBenefit.BuyXGetY.isEligibleItemVariant(benefit.type)
             }
         }
 
+        // The purchased product's menuItemId must always match the chosen menu item.
         if (purchasedProduct != null && purchasedProduct.menuItemId != menuItem.id) return
         if (menuItem.requiresConfiguration && purchasedProduct == null) return
-        if (menuItem.requiresConfiguration &&
-            (rewardProducts.size != rewardQuantity || rewardProducts.any { it.menuItemId != menuItem.id })
-        ) return
+
+        // Validate reward list when rewards are expected.
+        if (rewardQuantity > 0 && rewardProducts.isNotEmpty()) {
+            val rewardCountOk = rewardProducts.size == rewardQuantity
+            // For SAME_ITEM: every reward must be the same product as the purchased item.
+            // For ELIGIBLE_ITEM: reward products may differ — backend is authoritative for eligibility.
+            val rewardItemsOk = if (isEligibleItemBenefit) {
+                true
+            } else {
+                rewardProducts.all { it.menuItemId == menuItem.id }
+            }
+            if (!rewardCountOk || !rewardItemsOk) return
+        }
+        if (menuItem.requiresConfiguration && rewardQuantity > 0 && rewardProducts.size != rewardQuantity) return
 
         viewModelScope.launch {
             try {
                 val purchased = purchasedProduct ?: quoteUnconfiguredProduct(menuItem, purchasedQuantity)
-                val rewards = if (menuItem.requiresConfiguration) {
-                    rewardProducts.mapIndexed { index, reward ->
+                val rewards = when {
+                    rewardQuantity == 0 -> emptyList()
+                    rewardProducts.isNotEmpty() -> rewardProducts.mapIndexed { index, reward ->
                         ConfiguredRewardConfiguration(
                             rewardOrdinal = index + 1,
+                            menuItemId = reward.menuItemId,
                             groups = reward.groups
                         )
                     }
-                } else {
-                    (1..rewardQuantity).map { ordinal ->
+                    else -> (1..rewardQuantity).map { ordinal ->
                         ConfiguredRewardConfiguration(rewardOrdinal = ordinal)
                     }
                 }
@@ -681,6 +697,7 @@ class PosViewModel(
             rewardConfigurations = product.promotionSelection?.rewardConfigurations?.map { reward ->
                 QuoteRequestRewardConfigDto(
                     rewardOrdinal = reward.rewardOrdinal,
+                    menuItemId = reward.menuItemId,
                     groups = reward.groups.map { buildRequestGroup(it) }
                 )
             } ?: emptyList()

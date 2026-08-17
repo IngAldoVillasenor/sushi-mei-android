@@ -47,6 +47,7 @@ data class PromotionLineSelection(
 /** Configuración independiente de una unidad gratuita de la misma línea. */
 data class ConfiguredRewardConfiguration(
     val rewardOrdinal: Int,
+    val menuItemId: Long? = null,
     val groups: List<ConfiguredGroup> = emptyList()
 )
 

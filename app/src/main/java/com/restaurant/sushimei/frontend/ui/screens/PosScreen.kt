@@ -60,7 +60,8 @@ private data class PromotionConfigurationFlow(
     val promotion: Promotion,
     val menuItem: MenuItem,
     val purchasedProduct: ConfiguredProduct? = null,
-    val rewardProducts: List<ConfiguredProduct> = emptyList()
+    val rewardProducts: List<ConfiguredProduct> = emptyList(),
+    val currentRewardMenuItem: MenuItem? = null
 )
 
 private sealed interface PosPrintState {
@@ -527,7 +528,8 @@ fun PosScreen() {
             onDismiss = { selectedPromotion = null },
             onSelect = { item ->
                 selectedPromotion = null
-                if (item.requiresConfiguration) {
+                val bogo = promotion.benefit as? PromotionBenefit.BuyXGetY
+                if (item.requiresConfiguration || bogo?.type == "BUY_X_GET_Y_ELIGIBLE_ITEM") {
                     promotionConfigurationFlow = PromotionConfigurationFlow(
                         promotion = promotion,
                         menuItem = item
@@ -540,11 +542,27 @@ fun PosScreen() {
     }
 
     promotionConfigurationFlow?.let { flow ->
-        val bogo = flow.promotion.benefit as? PromotionBenefit.BuyXGetYSameItem
+        val bogo = flow.promotion.benefit as? PromotionBenefit.BuyXGetY
         val configuringReward = flow.purchasedProduct != null && bogo != null
         val rewardOrdinal = flow.rewardProducts.size + 1
+        if (configuringReward && bogo?.type == "BUY_X_GET_Y_ELIGIBLE_ITEM" && flow.currentRewardMenuItem == null) {
+            PromotionItemPickerDialog(
+                promotion = flow.promotion,
+                eligibleProducts = viewModel.eligibleProducts(flow.promotion),
+                onDismiss = { promotionConfigurationFlow = null },
+                onSelect = { selectedRewardItem ->
+                    promotionConfigurationFlow = flow.copy(currentRewardMenuItem = selectedRewardItem)
+                }
+            )
+            return@let
+        }
+        val targetMenuItemId = if (configuringReward && bogo?.type == "BUY_X_GET_Y_ELIGIBLE_ITEM") {
+            flow.currentRewardMenuItem!!.id
+        } else {
+            flow.menuItem.id
+        }
         val contextLabel = if (configuringReward) {
-            "${flow.promotion.name}: configura el roll gratis $rewardOrdinal/${bogo?.rewardQuantity}"
+            "${flow.promotion.name}: configura el roll gratis ${rewardOrdinal}/${bogo?.rewardQuantity}"
         } else if (bogo != null) {
             "${flow.promotion.name}: configura el roll comprado"
         } else {
@@ -567,14 +585,14 @@ fun PosScreen() {
                     .clip(MaterialTheme.shapes.large),
                 color = MaterialTheme.colorScheme.background
             ) {
-                val stageKey = if (configuringReward) "reward-$rewardOrdinal" else "purchase"
+                val stageKey = if (configuringReward) "reward-${rewardOrdinal}" else "purchase"
                 val configViewModel: ConfiguratorViewModel = viewModel(
-                    key = "promotion-${flow.promotion.id}-${flow.menuItem.id}-$stageKey",
+                    key = "promotion-${flow.promotion.id}-${targetMenuItemId}-${stageKey}",
                     factory = ConfiguratorViewModel.factory(menuRepository)
                 )
 
                 ConfiguratorScreen(
-                    menuItemId = flow.menuItem.id,
+                    menuItemId = targetMenuItemId,
                     viewModel = configViewModel,
                     onDismiss = { promotionConfigurationFlow = null },
                     contextLabel = contextLabel,
@@ -602,7 +620,7 @@ fun PosScreen() {
                                 )
                                 promotionConfigurationFlow = null
                             } else {
-                                promotionConfigurationFlow = flow.copy(rewardProducts = rewards)
+                                promotionConfigurationFlow = flow.copy(rewardProducts = rewards, currentRewardMenuItem = null)
                             }
                         }
                     }
@@ -774,7 +792,7 @@ private fun PromotionItemPickerDialog(
 private fun promotionBenefitLabel(promotion: Promotion): String {
     return when (val benefit = promotion.benefit) {
         is PromotionBenefit.FixedUnitPrice -> "$${benefit.amount} por roll"
-        is PromotionBenefit.BuyXGetYSameItem ->
+        is PromotionBenefit.BuyXGetY ->
             "Compra ${benefit.buyQuantity}, recibe ${benefit.rewardQuantity} gratis"
     }
 }

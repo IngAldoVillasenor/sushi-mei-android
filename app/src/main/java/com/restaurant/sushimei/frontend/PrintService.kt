@@ -288,7 +288,25 @@ class PrintService(private val context: Context) {
         }
     }
 
-    fun formatOperationalTicket(order: OperationalOrderDetailDto): ByteArray {
+    private fun printConfigurationTree(
+        out: OutputStream,
+        configList: List<com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto>,
+        parentId: Long?,
+        indentLevel: Int
+    ) {
+        val children = configList.filter { it.parentSelectionSnapshotId == parentId }
+        for (child in children) {
+            if (child.displayOnTicket) {
+                val indent = "   ".repeat(indentLevel)
+                out.write("${indent}+ ${child.itemName}\n".toByteArray())
+                printConfigurationTree(out, configList, child.id, indentLevel + 1)
+            } else {
+                printConfigurationTree(out, configList, child.id, indentLevel)
+            }
+        }
+    }
+
+    fun formatOperationalTicket(order: com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto): ByteArray {
         val out = ByteArrayOutputStream()
 
         val ESC: Byte = 0x1B
@@ -362,10 +380,7 @@ class PrintService(private val context: Context) {
 
                 out.write(lineText.toByteArray())
 
-                line.configuration.forEach { config ->
-
-                    out.write("   + ${config.itemName}\n".toByteArray())
-                }
+                printConfigurationTree(out, line.configuration, null, 1)
             }
         } else if (!order.legacyOrderDetails.isNullOrBlank()) {
             out.write("${order.legacyOrderDetails}\n".toByteArray())

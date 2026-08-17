@@ -68,7 +68,7 @@ class RemotePromotionRepositoryTest {
         assertEquals("Jueves 2x1", promotion.name)
         assertEquals(setOf(4), promotion.schedule.daysOfWeek)
         assertEquals(24L, promotion.targets.single().targetId)
-        assertTrue(promotion.benefit is PromotionBenefit.BuyXGetYSameItem)
+        assertTrue(promotion.benefit is PromotionBenefit.BuyXGetY)
         assertNull(promotion.validFrom)
         coVerify(exactly = 1) { api.getActivePromotions() }
     }
@@ -136,7 +136,7 @@ class RemotePromotionRepositoryTest {
                 promotionId = 8L,
                 promotionName = "Jueves 2x1",
                 rewardConfigurations = listOf(
-                    ConfiguredRewardConfiguration(1, listOf(rewardGroup))
+                    ConfiguredRewardConfiguration(rewardOrdinal = 1, menuItemId = 99L, groups = listOf(rewardGroup))
                 )
             )
         )
@@ -152,6 +152,10 @@ class RemotePromotionRepositoryTest {
         assertEquals(201L, line.groups.single().selections.single().menuItemId)
         assertEquals(1, line.rewardConfigurations.single().rewardOrdinal)
         assertEquals(20L, line.rewardConfigurations.single().groups.single().groupId)
+        assertEquals(
+            99L,
+            line.rewardConfigurations.single().menuItemId
+        )
         assertEquals(
             202L,
             line.rewardConfigurations.single().groups.single().selections.single().menuItemId

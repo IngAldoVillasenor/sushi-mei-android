@@ -150,7 +150,7 @@ class PromotionsViewModelTest {
         priority = 90,
         schedule = PromotionSchedule(daysOfWeek = setOf(4), allDay = true),
         targets = listOf(PromotionTarget(PromotionTargetType.TAG, 10L, "Rollos")),
-        benefit = PromotionBenefit.BuyXGetYSameItem(
+        benefit = PromotionBenefit.BuyXGetY(type = "BUY_X_GET_Y_SAME_ITEM",
             buyQuantity = 1,
             rewardQuantity = 1,
             repeat = true

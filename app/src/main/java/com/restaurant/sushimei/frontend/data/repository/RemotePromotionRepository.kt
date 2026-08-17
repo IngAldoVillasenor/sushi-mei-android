@@ -33,11 +33,13 @@ class RemotePromotionRepository(
             )
         },
         benefit = when (benefitType) {
-            "BUY_X_GET_Y_SAME_ITEM" -> PromotionBenefit.BuyXGetYSameItem(
-                buyQuantity = requireNotNull(buyQuantity) { "buyQuantity is required for $benefitType" },
-                rewardQuantity = requireNotNull(rewardQuantity) { "rewardQuantity is required for $benefitType" },
-                repeat = requireNotNull(repeat) { "repeat is required for $benefitType" }
-            )
+            PromotionBenefit.BuyXGetY.SAME_ITEM, PromotionBenefit.BuyXGetY.ELIGIBLE_ITEM ->
+                PromotionBenefit.BuyXGetY.validated(
+                    type = benefitType,
+                    buyQuantity = requireNotNull(buyQuantity) { "buyQuantity is required for $benefitType" },
+                    rewardQuantity = requireNotNull(rewardQuantity) { "rewardQuantity is required for $benefitType" },
+                    repeat = requireNotNull(repeat) { "repeat is required for $benefitType" }
+                )
             "FIXED_UNIT_PRICE" -> PromotionBenefit.FixedUnitPrice(
                 amount = requireNotNull(fixedUnitPrice) { "fixedUnitPrice is required for $benefitType" }
             )
@@ -52,12 +54,12 @@ class RemotePromotionRepository(
         priority = priority,
         benefitType = when (benefit) {
             is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-            is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
+            is PromotionBenefit.BuyXGetY -> benefit.type
         },
         fixedUnitPrice = (benefit as? PromotionBenefit.FixedUnitPrice)?.amount,
-        buyQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity,
-        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity,
-        repeat = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat,
+        buyQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.buyQuantity,
+        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.rewardQuantity,
+        repeat = (benefit as? PromotionBenefit.BuyXGetY)?.repeat,
         validFrom = validFrom,
         validUntil = validUntil,
         daysOfWeek = schedule.daysOfWeek,
@@ -75,12 +77,12 @@ class RemotePromotionRepository(
         priority = priority,
         benefitType = when (benefit) {
             is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-            is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
+            is PromotionBenefit.BuyXGetY -> benefit.type
         },
         fixedUnitPrice = (benefit as? PromotionBenefit.FixedUnitPrice)?.amount,
-        buyQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity,
-        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity,
-        repeat = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat,
+        buyQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.buyQuantity,
+        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.rewardQuantity,
+        repeat = (benefit as? PromotionBenefit.BuyXGetY)?.repeat,
         validFrom = validFrom,
         validUntil = validUntil,
         daysOfWeek = schedule.daysOfWeek,
@@ -187,6 +189,7 @@ class RemotePromotionRepository(
                     rewardConfigurations = it.promotionSelection?.rewardConfigurations?.map { reward ->
                         QuoteRequestRewardConfigDto(
                             rewardOrdinal = reward.rewardOrdinal,
+                            menuItemId = reward.menuItemId,
                             groups = mapGroups(reward.groups)
                         )
                     } ?: emptyList()
@@ -208,9 +211,9 @@ class RemotePromotionRepository(
                     )
                 }
             }
-            
+
             // Map the quote response back to OrderPricingPreview
-            
+
             // Reconstruct the reward items conceptually (for UI)
             val allRewards = mutableListOf<ConfiguredProduct>()
             val adjustments = mutableListOf<PricingAdjustment>()
