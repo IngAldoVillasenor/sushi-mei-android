@@ -31,11 +31,34 @@ sealed class PromotionBenefit {
         val amount: BigDecimal
     ) : PromotionBenefit()
 
-    data class BuyXGetYSameItem(
+    data class BuyXGetY(
+        val type: String,
         val buyQuantity: Int,
         val rewardQuantity: Int,
         val repeat: Boolean
-    ) : PromotionBenefit()
+    ) : PromotionBenefit() {
+
+        init {
+            require(type == SAME_ITEM || type == ELIGIBLE_ITEM) {
+                "Unsupported BuyXGetY type: $type. Expected $SAME_ITEM or $ELIGIBLE_ITEM."
+            }
+        }
+
+        companion object {
+            const val SAME_ITEM = "BUY_X_GET_Y_SAME_ITEM"
+            const val ELIGIBLE_ITEM = "BUY_X_GET_Y_ELIGIBLE_ITEM"
+
+            fun isEligibleItemVariant(type: String) =
+                type == ELIGIBLE_ITEM
+
+            fun validated(
+                type: String,
+                buyQuantity: Int,
+                rewardQuantity: Int,
+                repeat: Boolean
+            ) = BuyXGetY(type, buyQuantity, rewardQuantity, repeat)
+        }
+    }
 }
 
 data class Promotion(

@@ -176,7 +176,7 @@ fun PromotionCard(
                 is PromotionBenefit.FixedUnitPrice -> {
                     Text(text = "Beneficio: Precio fijo $${benefit.amount}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
-                is PromotionBenefit.BuyXGetYSameItem -> {
+                is PromotionBenefit.BuyXGetY -> {
                     Text(
                         text = "Beneficio: Compra ${benefit.buyQuantity}, Regala ${benefit.rewardQuantity} (Repetir: ${if(benefit.repeat) "Sí" else "No"})", 
                         style = MaterialTheme.typography.bodyMedium, 

@@ -169,4 +169,77 @@ class PrintServiceTest {
         assertTrue("Output should contain structured item name", outputString.contains("Structured Sushi"))
         assertTrue("Output should NOT contain legacy fallback string", !outputString.contains("LEGACY FALLBACK DO NOT PRINT"))
     }
+    @Test
+    fun `test recursive displayOnTicket`() {
+        val detail = OperationalOrderDetailDto(
+            id = 100,
+            requestId = "req-1",
+            orderSource = "POS",
+            createdByUserId = 1,
+            fulfillmentType = FulfillmentType.DELIVERY,
+            paymentMethod = PaymentMethod.CASH,
+            deliveryAddress = "Av. Siempre Viva 742",
+            pickupName = null,
+            cashDenomination = BigDecimal("500.00"),
+            phoneNumber = "555-1234",
+            status = "PENDING",
+            createdAt = Instant.now(),
+            total = BigDecimal("350.00"),
+            legacyOrderDetails = null,
+            paymentNotes = null,
+            transferReceiptPath = null,
+            lines = listOf(
+                OperationalOrderLineDto(
+                    id = 101,
+                    lineKind = "STANDARD",
+                    lineKey = "uuid-1",
+                    sourceMenuItemId = 99,
+                    name = "Combo",
+                    quantity = 1,
+                    catalogBaseUnitPrice = BigDecimal("175.00"),
+                    chargedBaseUnitPrice = BigDecimal("175.00"),
+                    configurationAdjustmentAmount = BigDecimal.ZERO,
+                    finalUnitAmount = BigDecimal("175.00"),
+                    finalLineTotal = BigDecimal("350.00"),
+                    promotion = null,
+                    rewardOrdinal = null,
+                    sourcePaidLineId = null,
+                    configuration = listOf(
+                        com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                            id = 1L,
+                            parentSelectionSnapshotId = null,
+                            groupId = 1L,
+                            groupName = "Box",
+                            selectionPosition = 1,
+                            menuItemId = 100L,
+                            itemName = "Virtual Box (Hidden)",
+                            displayOnTicket = false,
+                            quantity = 1,
+                            catalogUnitPrice = BigDecimal.ZERO,
+                            priceAdjustment = BigDecimal.ZERO
+                        ),
+                        com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                            id = 2L,
+                            parentSelectionSnapshotId = 1L,
+                            groupId = 2L,
+                            groupName = "Drinks",
+                            selectionPosition = 1,
+                            menuItemId = 101L,
+                            itemName = "Coke",
+                            displayOnTicket = true,
+                            quantity = 1,
+                            catalogUnitPrice = BigDecimal.ZERO,
+                            priceAdjustment = BigDecimal.ZERO
+                        )
+                    )
+                )
+            )
+        )
+
+        val context = mockk<Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(detail))
+
+        assertTrue(!outputString.contains("Virtual Box (Hidden)"))
+        assertTrue(outputString.contains("   + Coke")) // Level 1 indentation because parent was level 1
+    }
 }

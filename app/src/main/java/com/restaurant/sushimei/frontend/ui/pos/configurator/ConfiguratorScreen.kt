@@ -202,44 +202,58 @@ fun ConfigurationGroupView(
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            group.options.forEach { option ->
-                val optionNodes = currentSelections.filter { it.option.menuItemId == option.menuItemId }
-                val quantity = optionNodes.size
+            val groupedOptions = group.options
+                .sortedWith(compareBy<ConfigurationOptionDto> { it.catalogPrice }.thenBy { it.name.lowercase() }.thenBy { it.menuItemId })
+                .groupBy { it.category ?: "" }
 
-                ConfigurationOptionRow(
-                    option = option,
-                    quantity = quantity,
-                    allowDuplicates = group.allowDuplicates,
-                    canAddMore = totalSelected < group.maxSelections,
-                    onAdd = { onAdd(group.id, option, parentOccurrenceId) },
-                    onRemove = {
-                        if (optionNodes.isNotEmpty()) {
-                            onRemove(optionNodes.last().occurrenceId)
-                        }
-                    }
-                )
+            groupedOptions.forEach { (category, options) ->
+                if (category.isNotEmpty()) {
+                    Text(
+                        text = category.uppercase(),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp, start = 4.dp)
+                    )
+                }
+                options.forEach { option ->
+                    val optionNodes = currentSelections.filter { it.option.menuItemId == option.menuItemId }
+                    val quantity = optionNodes.size
 
-                optionNodes.forEachIndexed { index, node ->
-                    if (node.option.requiresConfiguration) {
-                        Column(modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) {
-                            if (group.allowDuplicates && quantity > 1) {
-                                Text("Ocurrencia ${index + 1}", style = MaterialTheme.typography.labelSmall)
+                    ConfigurationOptionRow(
+                        option = option,
+                        quantity = quantity,
+                        allowDuplicates = group.allowDuplicates,
+                        canAddMore = totalSelected < group.maxSelections,
+                        onAdd = { onAdd(group.id, option, parentOccurrenceId) },
+                        onRemove = {
+                            if (optionNodes.isNotEmpty()) {
+                                onRemove(optionNodes.last().occurrenceId)
                             }
+                        }
+                    )
 
-                            if (node.isLoadingNested) {
-                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                            } else if (node.nestedError != null) {
-                                Text(node.nestedError, color = MaterialTheme.colorScheme.error)
-                            } else if (node.nestedConfiguration != null) {
-                                node.nestedConfiguration.groups.forEach { childGroup ->
-                                    val childSelections = node.nestedSelections[childGroup.id] ?: emptyList()
-                                    ConfigurationGroupView(
-                                        group = childGroup,
-                                        currentSelections = childSelections,
-                                        onAdd = onAdd,
-                                        onRemove = onRemove,
-                                        parentOccurrenceId = node.occurrenceId
-                                    )
+                    optionNodes.forEachIndexed { index, node ->
+                        if (node.option.requiresConfiguration) {
+                            Column(modifier = Modifier.padding(start = 24.dp, top = 4.dp, bottom = 4.dp)) {
+                                if (group.allowDuplicates && quantity > 1) {
+                                    Text("Ocurrencia ${index + 1}", style = MaterialTheme.typography.labelSmall)
+                                }
+
+                                if (node.isLoadingNested) {
+                                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                } else if (node.nestedError != null) {
+                                    Text(node.nestedError, color = MaterialTheme.colorScheme.error)
+                                } else if (node.nestedConfiguration != null) {
+                                    node.nestedConfiguration.groups.forEach { childGroup ->
+                                        val childSelections = node.nestedSelections[childGroup.id] ?: emptyList()
+                                        ConfigurationGroupView(
+                                            group = childGroup,
+                                            currentSelections = childSelections,
+                                            onAdd = onAdd,
+                                            onRemove = onRemove,
+                                            parentOccurrenceId = node.occurrenceId
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -259,50 +273,80 @@ fun ConfigurationOptionRow(
     onAdd: () -> Unit,
     onRemove: () -> Unit
 ) {
-    Row(
+    Card(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        colors = CardDefaults.cardColors(
+            containerColor = if (quantity > 0) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+        ),
+        border = if (quantity > 0) androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = option.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = if (option.available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
-            )
-            if (option.priceAdjustment.compareTo(java.math.BigDecimal.ZERO) > 0) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "+$${option.priceAdjustment}",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary
+                    text = option.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = if (option.available) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+                    fontWeight = if (quantity > 0) FontWeight.Bold else FontWeight.Normal
                 )
-            }
-        }
-
-        if (!option.available) {
-            Text("No disponible", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
-            return@Row
-        }
-
-        if (allowDuplicates) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onRemove, enabled = quantity > 0) {
-                    Icon(Icons.Default.Remove, contentDescription = "Remove")
+                // Always show the backend-provided catalog price.
+                if (option.catalogPrice.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                    Text(
+                        text = "$${String.format("%.2f", option.catalogPrice)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
-                Text(text = quantity.toString(), style = MaterialTheme.typography.bodyLarge)
-                IconButton(onClick = onAdd, enabled = canAddMore) {
-                    Icon(Icons.Default.Add, contentDescription = "Add")
+                // Show adjustment on top of catalog price when non-zero.
+                if (option.priceAdjustment.compareTo(java.math.BigDecimal.ZERO) > 0) {
+                    Text(
+                        text = "+$${option.priceAdjustment}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
-        } else {
-            val isSelected = quantity > 0
-            if (isSelected) {
-                FilledTonalIconButton(onClick = onRemove) {
-                    Icon(Icons.Default.Check, contentDescription = "Selected")
+
+            if (!option.available) {
+                Text("No disponible", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.labelSmall)
+                return@Row
+            }
+
+            if (allowDuplicates) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    FilledTonalIconButton(
+                        onClick = onRemove,
+                        enabled = quantity > 0,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Remove")
+                    }
+                    Text(
+                        text = quantity.toString(),
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                    FilledTonalIconButton(
+                        onClick = onAdd,
+                        enabled = canAddMore,
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Add")
+                    }
                 }
             } else {
-                IconButton(onClick = onAdd, enabled = canAddMore) {
-                    Icon(Icons.Default.Add, contentDescription = "Select")
+                val isSelected = quantity > 0
+                if (isSelected) {
+                    FilledTonalIconButton(onClick = onRemove, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Check, contentDescription = "Selected")
+                    }
+                } else {
+                    IconButton(onClick = onAdd, enabled = canAddMore, modifier = Modifier.size(36.dp)) {
+                        Icon(Icons.Default.Add, contentDescription = "Select")
+                    }
                 }
             }
         }

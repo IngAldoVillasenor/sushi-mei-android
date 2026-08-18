@@ -33,11 +33,13 @@ class RemotePromotionRepository(
             )
         },
         benefit = when (benefitType) {
-            "BUY_X_GET_Y_SAME_ITEM" -> PromotionBenefit.BuyXGetYSameItem(
-                buyQuantity = requireNotNull(buyQuantity) { "buyQuantity is required for $benefitType" },
-                rewardQuantity = requireNotNull(rewardQuantity) { "rewardQuantity is required for $benefitType" },
-                repeat = requireNotNull(repeat) { "repeat is required for $benefitType" }
-            )
+            PromotionBenefit.BuyXGetY.SAME_ITEM, PromotionBenefit.BuyXGetY.ELIGIBLE_ITEM ->
+                PromotionBenefit.BuyXGetY.validated(
+                    type = benefitType,
+                    buyQuantity = requireNotNull(buyQuantity) { "buyQuantity is required for $benefitType" },
+                    rewardQuantity = requireNotNull(rewardQuantity) { "rewardQuantity is required for $benefitType" },
+                    repeat = requireNotNull(repeat) { "repeat is required for $benefitType" }
+                )
             "FIXED_UNIT_PRICE" -> PromotionBenefit.FixedUnitPrice(
                 amount = requireNotNull(fixedUnitPrice) { "fixedUnitPrice is required for $benefitType" }
             )
@@ -52,12 +54,12 @@ class RemotePromotionRepository(
         priority = priority,
         benefitType = when (benefit) {
             is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-            is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
+            is PromotionBenefit.BuyXGetY -> benefit.type
         },
         fixedUnitPrice = (benefit as? PromotionBenefit.FixedUnitPrice)?.amount,
-        buyQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity,
-        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity,
-        repeat = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat,
+        buyQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.buyQuantity,
+        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.rewardQuantity,
+        repeat = (benefit as? PromotionBenefit.BuyXGetY)?.repeat,
         validFrom = validFrom,
         validUntil = validUntil,
         daysOfWeek = schedule.daysOfWeek,
@@ -75,12 +77,12 @@ class RemotePromotionRepository(
         priority = priority,
         benefitType = when (benefit) {
             is PromotionBenefit.FixedUnitPrice -> "FIXED_UNIT_PRICE"
-            is PromotionBenefit.BuyXGetYSameItem -> "BUY_X_GET_Y_SAME_ITEM"
+            is PromotionBenefit.BuyXGetY -> benefit.type
         },
         fixedUnitPrice = (benefit as? PromotionBenefit.FixedUnitPrice)?.amount,
-        buyQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.buyQuantity,
-        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.rewardQuantity,
-        repeat = (benefit as? PromotionBenefit.BuyXGetYSameItem)?.repeat,
+        buyQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.buyQuantity,
+        rewardQuantity = (benefit as? PromotionBenefit.BuyXGetY)?.rewardQuantity,
+        repeat = (benefit as? PromotionBenefit.BuyXGetY)?.repeat,
         validFrom = validFrom,
         validUntil = validUntil,
         daysOfWeek = schedule.daysOfWeek,
@@ -187,6 +189,7 @@ class RemotePromotionRepository(
                     rewardConfigurations = it.promotionSelection?.rewardConfigurations?.map { reward ->
                         QuoteRequestRewardConfigDto(
                             rewardOrdinal = reward.rewardOrdinal,
+                            menuItemId = reward.menuItemId,
                             groups = mapGroups(reward.groups)
                         )
                     } ?: emptyList()
@@ -208,14 +211,23 @@ class RemotePromotionRepository(
                     )
                 }
             }
-            
+
             // Map the quote response back to OrderPricingPreview
-            
-            // Reconstruct the reward items conceptually (for UI)
-            val allRewards = mutableListOf<ConfiguredProduct>()
+
+            val allRewards = mutableListOf<QuotedRewardItem>()
+            val quotedLines = mutableListOf<QuotedCartLine>()
             val adjustments = mutableListOf<PricingAdjustment>()
 
             body.lines.forEach { line ->
+                quotedLines.add(
+                    QuotedCartLine(
+                        lineKey = line.lineKey,
+                        menuItemId = line.menuItemId,
+                        chargedBaseUnitPrice = line.chargedBaseUnitPrice,
+                        lineTotal = line.lineTotal
+                    )
+                )
+
                 // Collect line adjustments
                 if (line.appliedPromotion != null) {
                     adjustments.add(
@@ -228,18 +240,19 @@ class RemotePromotionRepository(
                     )
                 }
 
-                // Map rewards to ConfiguredProduct physically separate units
+                // Map each reward to QuotedRewardItem, linking it to its purchased line via sourceLineKey.
                 line.rewards.forEach { reward ->
                     allRewards.add(
-                        ConfiguredProduct(
-                            id = java.util.UUID.randomUUID().toString(), // local UI key
+                        QuotedRewardItem(
+                            sourceLineKey = reward.sourceLineKey,
+                            rewardOrdinal = reward.rewardOrdinal,
                             menuItemId = reward.menuItemId,
-                            name = "${reward.name} (Promo: ${reward.promotion.name})",
-                            quantity = 1,
-                            baseUnitPrice = BigDecimal.ZERO, // Rewards are technically free base price
-                            groups = emptyList(), // Can be mapped if reward.configuration is present
-                            unitTotal = BigDecimal.ZERO,
-                            total = BigDecimal.ZERO
+                            name = reward.name,
+                            promotionName = reward.promotion.name,
+                            catalogBaseUnitPrice = reward.catalogBaseUnitPrice,
+                            chargedBaseUnitPrice = reward.chargedBaseUnitPrice,
+                            configurationAdjustmentTotal = reward.configurationAdjustmentTotal,
+                            total = reward.total
                         )
                     )
                 }
@@ -248,6 +261,7 @@ class RemotePromotionRepository(
             return OrderPricingPreview(
                 subtotal = body.catalogBaseSubtotal + body.configurationAdjustmentTotal,
                 adjustments = adjustments,
+                quotedLines = quotedLines,
                 rewardItems = allRewards,
                 total = body.total
             )

@@ -48,7 +48,7 @@ class MockPromotionRepository : IPromotionRepository {
                     displayName = "Rollos Clásicos"
                 )
             ),
-            benefit = PromotionBenefit.BuyXGetYSameItem(
+            benefit = PromotionBenefit.BuyXGetY(type="BUY_X_GET_Y_SAME_ITEM",
                 buyQuantity = 2,
                 rewardQuantity = 1,
                 repeat = true
@@ -88,7 +88,7 @@ class MockPromotionRepository : IPromotionRepository {
         delay(400)
         val currentList = promotionsFlow.value.toMutableList()
         val index = currentList.indexOfFirst { it.id == promotion.id }
-        
+
         if (index != -1) {
             val existing = currentList[index]
             // Simulando el HTTP 409 Conflict Optimistic Concurrency
@@ -116,23 +116,27 @@ class MockPromotionRepository : IPromotionRepository {
 
     override suspend fun quoteCart(cart: List<ConfiguredProduct>): OrderPricingPreview {
         delay(200) // Simulación de llamada de red
-        
+
         val subtotal = cart.fold(java.math.BigDecimal.ZERO) { acc, item -> acc + item.total }
 
-        val rewardItems = mutableListOf<ConfiguredProduct>()
-        
+        val rewardItems = mutableListOf<QuotedRewardItem>()
+
         for (item in cart) {
-            if (item.name.contains("roll", ignoreCase = true)) {
-                val reward = ConfiguredProduct(
-                    menuItemId = item.menuItemId,
-                    name = item.name,
-                    quantity = item.quantity,
-                    baseUnitPrice = java.math.BigDecimal.ZERO,
-                    unitTotal = java.math.BigDecimal.ZERO,
-                    total = java.math.BigDecimal.ZERO,
-                    groups = emptyList()
+            item.promotionSelection?.rewardConfigurations?.forEachIndexed { index, rewardConfig ->
+                val rewardMenuItemId = rewardConfig.menuItemId ?: item.menuItemId
+                rewardItems.add(
+                    QuotedRewardItem(
+                        sourceLineKey = item.id,
+                        rewardOrdinal = rewardConfig.rewardOrdinal,
+                        menuItemId = rewardMenuItemId,
+                        name = "Recompensa ${index + 1}",
+                        promotionName = item.promotionSelection?.promotionName ?: "",
+                        catalogBaseUnitPrice = item.baseUnitPrice,
+                        chargedBaseUnitPrice = java.math.BigDecimal.ZERO,
+                        configurationAdjustmentTotal = java.math.BigDecimal.ZERO,
+                        total = java.math.BigDecimal.ZERO
+                    )
                 )
-                rewardItems.add(reward)
             }
         }
 
@@ -140,7 +144,7 @@ class MockPromotionRepository : IPromotionRepository {
             subtotal = subtotal,
             adjustments = emptyList(),
             rewardItems = rewardItems,
-            total = subtotal 
+            total = subtotal
         )
     }
 }
