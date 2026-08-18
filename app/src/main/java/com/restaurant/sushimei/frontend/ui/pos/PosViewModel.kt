@@ -430,7 +430,11 @@ class PosViewModel(
 
         // The purchased product's menuItemId must always match the chosen menu item.
         if (purchasedProduct != null && purchasedProduct.menuItemId != menuItem.id) return
-        if (menuItem.requiresConfiguration && purchasedProduct == null) return
+
+        // requiresConfiguration is a STANDALONE ordering context.
+        // For ELIGIBLE_ITEM BOGO, we never require a configured purchasedProduct — the picker
+        // provides pre-quoted slots directly. Only gate for SAME_ITEM standalone configurator flow.
+        if (!isEligibleItemBenefit && menuItem.requiresConfiguration && purchasedProduct == null) return
 
         // Validate reward list when rewards are expected.
         if (rewardQuantity > 0 && rewardProducts.isNotEmpty()) {
@@ -444,7 +448,8 @@ class PosViewModel(
             }
             if (!rewardCountOk || !rewardItemsOk) return
         }
-        if (menuItem.requiresConfiguration && rewardQuantity > 0 && rewardProducts.size != rewardQuantity) return
+        // For SAME_ITEM configurable: ensure all reward slots are provided before committing.
+        if (!isEligibleItemBenefit && menuItem.requiresConfiguration && rewardQuantity > 0 && rewardProducts.size != rewardQuantity) return
 
         viewModelScope.launch {
             try {
@@ -478,6 +483,61 @@ class PosViewModel(
                 invalidateRequestId()
             } catch (_: Exception) {
                 _quoteState.value = QuoteState.Error("No se pudo configurar la promoción seleccionada.")
+            }
+        }
+    }
+
+    /**
+     * Dedicated BOGO entry point for BUY_X_GET_Y_ELIGIBLE_ITEM promotions.
+     *
+     * Called by FlexibleBogoPickerDialog after the cashier selects slots from a single screen.
+     * requiresConfiguration is intentionally ignored here — roll configuration is a standalone
+     * ordering context, never a BOGO selection context.
+     *
+     * @param promotion The active promotion being applied.
+     * @param purchasedMenuItem The MenuItem occupying the purchased slot (slot 1).
+     * @param rewardMenuItems The MenuItems occupying the reward slots (slots 2..N), in selection order.
+     */
+    fun addEligibleItemBundle(
+        promotion: Promotion,
+        purchasedMenuItem: MenuItem,
+        rewardMenuItems: List<MenuItem>
+    ) {
+        if (eligibleProducts(promotion).none { it.id == purchasedMenuItem.id }) return
+        val bogo = promotion.benefit as? PromotionBenefit.BuyXGetY ?: return
+        if (!PromotionBenefit.BuyXGetY.isEligibleItemVariant(bogo.type)) return
+        if (rewardMenuItems.size != bogo.rewardQuantity) return
+
+        viewModelScope.launch {
+            try {
+                // Quote the purchased item at the backend. No configuration groups — BOGO context.
+                val purchased = quoteUnconfiguredProduct(purchasedMenuItem, bogo.buyQuantity)
+
+                // Build reward configuration slots from raw MenuItem ids.
+                // No configuration groups — reward configuration is not part of BOGO selection.
+                val rewards = rewardMenuItems.mapIndexed { index, rewardItem ->
+                    ConfiguredRewardConfiguration(
+                        rewardOrdinal = index + 1,
+                        menuItemId = rewardItem.id,
+                        groups = emptyList()
+                    )
+                }
+
+                val line = purchased.copy(
+                    id = UUID.randomUUID().toString(),
+                    quantity = bogo.buyQuantity,
+                    total = purchased.unitTotal * BigDecimal(bogo.buyQuantity),
+                    promotionSelection = PromotionLineSelection(
+                        promotionId = promotion.id,
+                        promotionName = promotion.name,
+                        rewardConfigurations = rewards
+                    )
+                )
+
+                _currentCart.value = _currentCart.value + line
+                invalidateRequestId()
+            } catch (_: Exception) {
+                _quoteState.value = QuoteState.Error("No se pudo agregar la promoción al carrito.")
             }
         }
     }

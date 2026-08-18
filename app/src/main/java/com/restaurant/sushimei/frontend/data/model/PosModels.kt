@@ -73,13 +73,37 @@ data class ConfiguredSelection(
 )
 
 /**
+ * Reward item returned by the backend quote, associated to a purchased cart line
+ * via [sourceLineKey]. All price fields come from the server — no local calculation.
+ */
+data class QuotedRewardItem(
+    val sourceLineKey: String,             // matches ConfiguredProduct.id of the purchased line
+    val rewardOrdinal: Int,
+    val menuItemId: Long,
+    val name: String,
+    val promotionName: String,
+    val catalogBaseUnitPrice: BigDecimal,
+    val chargedBaseUnitPrice: BigDecimal,  // backend-authoritative; typically $0 for free rewards
+    val configurationAdjustmentTotal: BigDecimal,
+    val total: BigDecimal
+)
+
+data class QuotedCartLine(
+    val lineKey: String,
+    val menuItemId: Long,
+    val chargedBaseUnitPrice: BigDecimal,
+    val lineTotal: BigDecimal
+)
+
+/**
  * Representa la pre-visualización de precios del carrito entero,
  * devuelta por el backend al aplicar promociones.
  */
 data class OrderPricingPreview(
     val subtotal: BigDecimal,
     val adjustments: List<PricingAdjustment> = emptyList(),
-    val rewardItems: List<ConfiguredProduct> = emptyList(),
+    val quotedLines: List<QuotedCartLine> = emptyList(),
+    val rewardItems: List<QuotedRewardItem> = emptyList(),
     val total: BigDecimal
 )
 

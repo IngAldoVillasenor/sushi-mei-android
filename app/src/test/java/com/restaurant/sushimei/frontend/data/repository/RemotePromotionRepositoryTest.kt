@@ -19,6 +19,8 @@ import com.restaurant.sushimei.frontend.data.model.QuoteRequestDto
 import com.restaurant.sushimei.frontend.data.model.QuoteResponseDto
 import com.restaurant.sushimei.frontend.data.model.QuoteResponseLineDto
 import com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto
+import com.restaurant.sushimei.frontend.data.model.QuoteResponseRewardDto
+import com.restaurant.sushimei.frontend.data.model.PromotionSummaryDto
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
@@ -214,6 +216,96 @@ class RemotePromotionRepositoryTest {
         }
 
         assertEquals("PROMOTION_REWARD_INVALID", exception.code)
+    }
+
+    @Test
+    fun `quoteCart parses QuoteResponseRewardDto into QuotedRewardItem preserving all fields`() = runTest {
+        val lineKey = "cart-line-key-123"
+        coEvery { api.quotePromotions(any()) } returns Response.success(
+            QuoteResponseDto(
+                quotedAt = Instant.parse("2026-08-17T12:00:00Z"),
+                businessTimeZone = "America/Mexico_City",
+                lines = listOf(
+                    QuoteResponseLineDto(
+                        lineKey = lineKey,
+                        menuItemId = 1L,
+                        name = "California",
+                        quantity = 1,
+                        catalogBaseUnitPrice = BigDecimal("100.00"),
+                        chargedBaseUnitPrice = BigDecimal("100.00"),
+                        configuration = ItemQuoteResponseDto(
+                            menuItemId = 1L, name = "California", quantity = 1,
+                            baseUnitPrice = BigDecimal("100.00"), baseTotal = BigDecimal("100.00"),
+                            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("100.00"),
+                            total = BigDecimal("100.00")
+                        ),
+                        appliedPromotion = PromotionSummaryDto(id = 8L, name = "Jueves 2x1"),
+                        promotionAdjustmentTotal = BigDecimal("-130.00"),
+                        lineTotal = BigDecimal("100.00"),
+                        rewards = listOf(
+                            QuoteResponseRewardDto(
+                                sourceLineKey = "explicit-source-key",
+                                rewardOrdinal = 1,
+                                promotion = PromotionSummaryDto(id = 8L, name = "Jueves 2x1"),
+                                menuItemId = 42L,
+                                name = "Empanizado Reward",
+                                catalogBaseUnitPrice = BigDecimal("130.00"),
+                                chargedBaseUnitPrice = BigDecimal.ZERO,
+                                configurationAdjustmentTotal = BigDecimal("15.00"),
+                                total = BigDecimal("15.00"),
+                                configuration = ItemQuoteResponseDto(
+                                    menuItemId = 42L, name = "Empanizado Reward", quantity = 1,
+                                    baseUnitPrice = BigDecimal.ZERO, baseTotal = BigDecimal.ZERO,
+                                    unitAdjustmentTotal = BigDecimal("15.00"), unitTotal = BigDecimal("15.00"),
+                                    total = BigDecimal("15.00")
+                                )
+                            )
+                        )
+                    )
+                ),
+                catalogBaseSubtotal = BigDecimal("230.00"),
+                configurationAdjustmentTotal = BigDecimal("15.00"),
+                promotionAdjustmentTotal = BigDecimal("-130.00"),
+                total = BigDecimal("115.00")
+            )
+        )
+
+        val product = ConfiguredProduct(
+            id = lineKey,
+            menuItemId = 1L,
+            name = "California",
+            quantity = 1,
+            baseUnitPrice = BigDecimal("100.00"),
+            promotionSelection = PromotionLineSelection(
+                promotionId = 8L,
+                promotionName = "Jueves 2x1",
+                rewardConfigurations = listOf(
+                    ConfiguredRewardConfiguration(
+                        rewardOrdinal = 1,
+                        menuItemId = 42L,
+                        groups = emptyList()
+                    )
+                )
+            )
+        )
+
+        val preview = repository.quoteCart(listOf(product))
+
+        assertEquals(1, preview.quotedLines.size)
+        val quotedLine = preview.quotedLines.first()
+        assertEquals(lineKey, quotedLine.lineKey)
+        assertEquals(1L, quotedLine.menuItemId)
+        assertEquals(BigDecimal("100.00"), quotedLine.chargedBaseUnitPrice)
+        assertEquals(BigDecimal("100.00"), quotedLine.lineTotal)
+
+        assertEquals(1, preview.rewardItems.size)
+        val reward = preview.rewardItems.first()
+        assertEquals("Source line key must map from reward explicitly", "explicit-source-key", reward.sourceLineKey)
+        assertEquals("Reward ordinal must be preserved", 1, reward.rewardOrdinal)
+        assertEquals("MenuItemId must match backend", 42L, reward.menuItemId)
+        assertEquals("Name must match backend", "Empanizado Reward", reward.name)
+        assertEquals("Total must match authoritative backend total", BigDecimal("15.00"), reward.total)
+        assertEquals("Configuration adjustment must be preserved", BigDecimal("15.00"), reward.configurationAdjustmentTotal)
     }
 
     private fun configuredGroup(groupId: Long, selectionId: Long) = ConfiguredGroup(

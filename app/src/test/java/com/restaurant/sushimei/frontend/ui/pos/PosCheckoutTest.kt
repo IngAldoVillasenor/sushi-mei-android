@@ -588,6 +588,6 @@ class FakePromotionRepository : IPromotionRepository {
     override suspend fun archivePromotion(id: Long) {}
 
     override suspend fun quoteCart(cart: List<ConfiguredProduct>): OrderPricingPreview {
-        return OrderPricingPreview(BigDecimal.ZERO, emptyList(), emptyList(), BigDecimal.ZERO)
+        return OrderPricingPreview(subtotal = BigDecimal.ZERO, total = BigDecimal.ZERO)
     }
 }

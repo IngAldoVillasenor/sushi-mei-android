@@ -119,20 +119,24 @@ class MockPromotionRepository : IPromotionRepository {
 
         val subtotal = cart.fold(java.math.BigDecimal.ZERO) { acc, item -> acc + item.total }
 
-        val rewardItems = mutableListOf<ConfiguredProduct>()
+        val rewardItems = mutableListOf<QuotedRewardItem>()
 
         for (item in cart) {
-            if (item.name.contains("roll", ignoreCase = true)) {
-                val reward = ConfiguredProduct(
-                    menuItemId = item.menuItemId,
-                    name = item.name,
-                    quantity = item.quantity,
-                    baseUnitPrice = java.math.BigDecimal.ZERO,
-                    unitTotal = java.math.BigDecimal.ZERO,
-                    total = java.math.BigDecimal.ZERO,
-                    groups = emptyList()
+            item.promotionSelection?.rewardConfigurations?.forEachIndexed { index, rewardConfig ->
+                val rewardMenuItemId = rewardConfig.menuItemId ?: item.menuItemId
+                rewardItems.add(
+                    QuotedRewardItem(
+                        sourceLineKey = item.id,
+                        rewardOrdinal = rewardConfig.rewardOrdinal,
+                        menuItemId = rewardMenuItemId,
+                        name = "Recompensa ${index + 1}",
+                        promotionName = item.promotionSelection?.promotionName ?: "",
+                        catalogBaseUnitPrice = item.baseUnitPrice,
+                        chargedBaseUnitPrice = java.math.BigDecimal.ZERO,
+                        configurationAdjustmentTotal = java.math.BigDecimal.ZERO,
+                        total = java.math.BigDecimal.ZERO
+                    )
                 )
-                rewardItems.add(reward)
             }
         }
 

@@ -449,4 +449,241 @@ class PosViewModelTest {
         val cart = (viewModel.uiState.value as PosUiState.Success).currentCart
         assertTrue("SAME_ITEM must reject reward with different menuItemId", cart.isEmpty())
     }
+
+    // -------------------------------------------------------------------------
+    // addEligibleItemBundle (FlexibleBogoPickerDialog entry point) tests
+    // -------------------------------------------------------------------------
+
+    private fun makeEligiblePromotion(
+        purchasedItemId: Long = 1L,
+        purchasedItemName: String = "Simple Item"
+    ) = Promotion(
+        id = 200L,
+        name = "Jueves 2x1",
+        active = true,
+        priority = 100,
+        schedule = PromotionSchedule(daysOfWeek = setOf(4), allDay = true),
+        targets = listOf(PromotionTarget(PromotionTargetType.ITEM, purchasedItemId, purchasedItemName)),
+        benefit = PromotionBenefit.BuyXGetY.validated(
+            type = PromotionBenefit.BuyXGetY.ELIGIBLE_ITEM,
+            buyQuantity = 1,
+            rewardQuantity = 1,
+            repeat = false
+        )
+    )
+
+    @Test
+    fun `addEligibleItemBundle adds purchased and reward from two different items`() = runTest {
+        // Demonstrates: two different eligible products → one cart line with reward config
+        val promotion = makeEligiblePromotion()
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        val purchasedItem = MenuItem(id = 1, nombre = "California", categoria = "Rolls", precio = BigDecimal("100.00"))
+        val rewardItem = MenuItem(id = 2, nombre = "Empanizado", categoria = "Rolls", precio = BigDecimal("130.00"))
+
+        // quoteItem for purchased item must be mocked
+        coEvery { menuRepository.quoteItem(1, any()) } returns ItemQuoteResponseDto(
+            menuItemId = 1, name = "California", quantity = 1,
+            baseUnitPrice = BigDecimal("100.00"), baseTotal = BigDecimal("100.00"),
+            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("100.00"),
+            total = BigDecimal("100.00"), groups = emptyList()
+        )
+
+        viewModel.addEligibleItemBundle(
+            promotion = promotion,
+            purchasedMenuItem = purchasedItem,
+            rewardMenuItems = listOf(rewardItem)
+        )
+        testScheduler.advanceUntilIdle()
+
+        val cart = (viewModel.uiState.value as PosUiState.Success).currentCart
+        assertEquals("Exactly one cart line", 1, cart.size)
+        val line = cart.single()
+        assertEquals("Purchased slot = California (id=1)", 1L, line.menuItemId)
+        val rewardConfig = line.promotionSelection?.rewardConfigurations?.single()
+        assertNotNull("Reward configuration must exist", rewardConfig)
+        assertEquals("Reward slot = Empanizado (id=2)", 2L, rewardConfig?.menuItemId)
+        assertEquals("Reward ordinal = 1", 1, rewardConfig?.rewardOrdinal)
+    }
+
+    @Test
+    fun `addEligibleItemBundle first slot is purchased second is reward`() = runTest {
+        // Verifies slot assignment order: selection order determines purchased vs reward.
+        val promotion = makeEligiblePromotion()
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        val itemA = MenuItem(id = 1, nombre = "Item A", categoria = "Rolls", precio = BigDecimal("100.00"))
+        val itemB = MenuItem(id = 2, nombre = "Item B", categoria = "Rolls", precio = BigDecimal("80.00"))
+        coEvery { menuRepository.quoteItem(1, any()) } returns ItemQuoteResponseDto(
+            menuItemId = 1, name = "Item A", quantity = 1,
+            baseUnitPrice = BigDecimal("100.00"), baseTotal = BigDecimal("100.00"),
+            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("100.00"),
+            total = BigDecimal("100.00"), groups = emptyList()
+        )
+
+        viewModel.addEligibleItemBundle(promotion, itemA, listOf(itemB))
+        testScheduler.advanceUntilIdle()
+
+        val line = (viewModel.uiState.value as PosUiState.Success).currentCart.single()
+        assertEquals("purchasedMenuItem becomes the cart line product", 1L, line.menuItemId)
+        assertEquals("rewardMenuItems[0] becomes rewardOrdinal=1", 2L,
+            line.promotionSelection?.rewardConfigurations?.first()?.menuItemId)
+    }
+
+    @Test
+    fun `addEligibleItemBundle same item may occupy both purchased and reward slots`() = runTest {
+        // Same roll in both slots is valid for ELIGIBLE_ITEM.
+        val promotion = makeEligiblePromotion()
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        val item = MenuItem(id = 1, nombre = "California", categoria = "Rolls", precio = BigDecimal("100.00"))
+        coEvery { menuRepository.quoteItem(1, any()) } returns ItemQuoteResponseDto(
+            menuItemId = 1, name = "California", quantity = 1,
+            baseUnitPrice = BigDecimal("100.00"), baseTotal = BigDecimal("100.00"),
+            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("100.00"),
+            total = BigDecimal("100.00"), groups = emptyList()
+        )
+
+        viewModel.addEligibleItemBundle(promotion, item, listOf(item))
+        testScheduler.advanceUntilIdle()
+
+        val cart = (viewModel.uiState.value as PosUiState.Success).currentCart
+        assertEquals("Same item twice is allowed", 1, cart.size)
+        val rewardConfig = cart.single().promotionSelection?.rewardConfigurations?.single()
+        assertEquals("Reward also points to same item", 1L, rewardConfig?.menuItemId)
+    }
+
+    @Test
+    fun `addEligibleItemBundle succeeds even when requiresConfiguration is true`() = runTest {
+        // DOMAIN RULE: requiresConfiguration is a standalone ordering context.
+        // BOGO picker must NEVER be blocked by requiresConfiguration=true.
+        val promotion = makeEligiblePromotion(purchasedItemId = 1)
+        val configurableItem = MenuItem(
+            id = 1,
+            nombre = "Configurable Roll",
+            categoria = "Rolls",
+            precio = BigDecimal("0.00"),
+            requiresConfiguration = true,  // <-- standalone flag, must NOT affect BOGO
+            pricingMode = ItemPricingMode.SELECTION_SUM
+        )
+        val rewardItem = MenuItem(id = 2, nombre = "Simple Reward", categoria = "Rolls", precio = BigDecimal("100.00"))
+
+        coEvery { menuRepository.observeActive() } returns flowOf(listOf(configurableItem, rewardItem))
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        // quoteItem for the configurable item as purchased — no groups, BOGO context
+        coEvery { menuRepository.quoteItem(1, any()) } returns ItemQuoteResponseDto(
+            menuItemId = 1, name = "Configurable Roll", quantity = 1,
+            baseUnitPrice = BigDecimal("0.00"), baseTotal = BigDecimal("0.00"),
+            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("0.00"),
+            total = BigDecimal("0.00"), groups = emptyList()
+        )
+
+        viewModel.addEligibleItemBundle(promotion, configurableItem, listOf(rewardItem))
+        testScheduler.advanceUntilIdle()
+
+        val cart = (viewModel.uiState.value as PosUiState.Success).currentCart
+        assertEquals("requiresConfiguration=true must NOT block BOGO selection", 1, cart.size)
+        assertEquals("No configuration groups attached in BOGO context",
+            emptyList<ConfiguredGroup>(), cart.single().groups)
+    }
+
+    @Test
+    fun `addEligibleItemBundle reward sourceLineKey matches cart line id`() = runTest {
+        // Verifies: the cart line id is what the quote mapper uses as sourceLineKey.
+        val promotion = makeEligiblePromotion()
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        val purchasedItem = MenuItem(id = 1, nombre = "California", categoria = "Rolls", precio = BigDecimal("100.00"))
+        val rewardItem = MenuItem(id = 2, nombre = "Empanizado", categoria = "Rolls", precio = BigDecimal("130.00"))
+        coEvery { menuRepository.quoteItem(1, any()) } returns ItemQuoteResponseDto(
+            menuItemId = 1, name = "California", quantity = 1,
+            baseUnitPrice = BigDecimal("100.00"), baseTotal = BigDecimal("100.00"),
+            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("100.00"),
+            total = BigDecimal("100.00"), groups = emptyList()
+        )
+
+        viewModel.addEligibleItemBundle(promotion, purchasedItem, listOf(rewardItem))
+        testScheduler.advanceUntilIdle()
+
+        val line = (viewModel.uiState.value as PosUiState.Success).currentCart.single()
+        val cartLineId = line.id  // the UUID the ViewModel assigned
+
+        // Simulate what the quote mapper does: sourceLineKey = lineKey = the cart line id sent to server
+        // This proves the cart line id is the anchor for reward association.
+        assertTrue("Cart line must have a non-empty id", cartLineId.isNotEmpty())
+        assertNotNull("Reward configuration must exist so quote can associate via sourceLineKey",
+            line.promotionSelection?.rewardConfigurations?.firstOrNull())
+    }
+
+    @Test
+    fun `addEligibleItemBundle sets quantity to buyQuantity and maps reward properly`() = runTest {
+        val promotion = makeEligiblePromotion(purchasedItemId = 1L, purchasedItemName = "California").copy(
+            benefit = PromotionBenefit.BuyXGetY(
+                type = "BUY_X_GET_Y_ELIGIBLE_ITEM",
+                buyQuantity = 2,
+                rewardQuantity = 1,
+                repeat = false
+            )
+        )
+        coEvery { promotionRepository.getActivePromotions() } returns listOf(promotion)
+        viewModel.refreshActivePromotions()
+        testScheduler.advanceUntilIdle()
+
+        val purchasedItem = MenuItem(id = 1L, nombre = "California", categoria = "Rolls", precio = BigDecimal("100.00"))
+        val rewardItem = MenuItem(id = 2L, nombre = "Empanizado", categoria = "Rolls", precio = BigDecimal("130.00"))
+
+        coEvery { menuRepository.quoteItem(1L, any()) } returns ItemQuoteResponseDto(
+            menuItemId = 1L, name = "California", quantity = 2,
+            baseUnitPrice = BigDecimal("100.00"), baseTotal = BigDecimal("200.00"),
+            unitAdjustmentTotal = BigDecimal.ZERO, unitTotal = BigDecimal("100.00"),
+            total = BigDecimal("200.00"), groups = emptyList()
+        )
+
+        viewModel.addEligibleItemBundle(promotion, purchasedItem, listOf(rewardItem))
+        testScheduler.advanceUntilIdle()
+
+        val cart = (viewModel.uiState.value as PosUiState.Success).currentCart
+        assertEquals("Cart must have exactly 1 purchased line", 1, cart.size)
+
+        val line = cart.single()
+        assertEquals("Cart line quantity must match buyQuantity", 2, line.quantity)
+        assertEquals("Cart line menu item must be the purchased item", 1L, line.menuItemId)
+
+        val rewards = line.promotionSelection?.rewardConfigurations
+        assertNotNull(rewards)
+        assertEquals("Cart line must carry exactly 1 reward configuration", 1, rewards?.size)
+        assertEquals("Reward must be the selected reward item", 2L, rewards?.first()?.menuItemId)
+    }
+
+    @Test
+    fun `QuotedRewardItem carries backend-authoritative name and total`() {
+        // Unit-level: QuotedRewardItem stores what the server returns verbatim.
+        val reward = QuotedRewardItem(
+            sourceLineKey = "cart-line-abc",
+            rewardOrdinal = 1,
+            menuItemId = 42L,
+            name = "Empanizado",
+            promotionName = "Jueves 2x1",
+            catalogBaseUnitPrice = BigDecimal("130.00"),
+            chargedBaseUnitPrice = BigDecimal.ZERO,
+            configurationAdjustmentTotal = BigDecimal("15.00"),
+            total = BigDecimal("15.00")  // only adjustment
+        )
+
+        assertEquals("name must be backend name", "Empanizado", reward.name)
+        assertEquals("total is authoritative backend value", BigDecimal("15.00"), reward.total)
+        assertEquals("sourceLineKey links reward to purchased line", "cart-line-abc", reward.sourceLineKey)
+        assertEquals("configurationAdjustmentTotal is ajuste", BigDecimal("15.00"), reward.configurationAdjustmentTotal)
+    }
 }

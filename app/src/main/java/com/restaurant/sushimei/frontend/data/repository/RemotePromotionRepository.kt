@@ -214,11 +214,20 @@ class RemotePromotionRepository(
 
             // Map the quote response back to OrderPricingPreview
 
-            // Reconstruct the reward items conceptually (for UI)
-            val allRewards = mutableListOf<ConfiguredProduct>()
+            val allRewards = mutableListOf<QuotedRewardItem>()
+            val quotedLines = mutableListOf<QuotedCartLine>()
             val adjustments = mutableListOf<PricingAdjustment>()
 
             body.lines.forEach { line ->
+                quotedLines.add(
+                    QuotedCartLine(
+                        lineKey = line.lineKey,
+                        menuItemId = line.menuItemId,
+                        chargedBaseUnitPrice = line.chargedBaseUnitPrice,
+                        lineTotal = line.lineTotal
+                    )
+                )
+
                 // Collect line adjustments
                 if (line.appliedPromotion != null) {
                     adjustments.add(
@@ -231,18 +240,19 @@ class RemotePromotionRepository(
                     )
                 }
 
-                // Map rewards to ConfiguredProduct physically separate units
+                // Map each reward to QuotedRewardItem, linking it to its purchased line via sourceLineKey.
                 line.rewards.forEach { reward ->
                     allRewards.add(
-                        ConfiguredProduct(
-                            id = java.util.UUID.randomUUID().toString(), // local UI key
+                        QuotedRewardItem(
+                            sourceLineKey = reward.sourceLineKey,
+                            rewardOrdinal = reward.rewardOrdinal,
                             menuItemId = reward.menuItemId,
-                            name = "${reward.name} (Promo: ${reward.promotion.name})",
-                            quantity = 1,
-                            baseUnitPrice = BigDecimal.ZERO, // Rewards are technically free base price
-                            groups = emptyList(), // Can be mapped if reward.configuration is present
-                            unitTotal = BigDecimal.ZERO,
-                            total = BigDecimal.ZERO
+                            name = reward.name,
+                            promotionName = reward.promotion.name,
+                            catalogBaseUnitPrice = reward.catalogBaseUnitPrice,
+                            chargedBaseUnitPrice = reward.chargedBaseUnitPrice,
+                            configurationAdjustmentTotal = reward.configurationAdjustmentTotal,
+                            total = reward.total
                         )
                     )
                 }
@@ -251,6 +261,7 @@ class RemotePromotionRepository(
             return OrderPricingPreview(
                 subtotal = body.catalogBaseSubtotal + body.configurationAdjustmentTotal,
                 adjustments = adjustments,
+                quotedLines = quotedLines,
                 rewardItems = allRewards,
                 total = body.total
             )

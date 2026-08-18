@@ -39,6 +39,7 @@ import com.restaurant.sushimei.frontend.data.model.FulfillmentType
 import com.restaurant.sushimei.frontend.data.model.PaymentMethod
 import com.restaurant.sushimei.frontend.data.model.Promotion
 import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
+import com.restaurant.sushimei.frontend.data.model.QuotedRewardItem
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
 import com.restaurant.sushimei.frontend.data.local.provideManualPosOrderRepository
 import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
@@ -49,6 +50,7 @@ import com.restaurant.sushimei.frontend.ui.pos.PosViewModel
 import com.restaurant.sushimei.frontend.ui.pos.PosUiState
 import com.restaurant.sushimei.frontend.ui.pos.CheckoutState
 import com.restaurant.sushimei.frontend.ui.pos.QuoteState
+import com.restaurant.sushimei.frontend.ui.pos.FlexibleBogoPickerDialog
 import java.math.BigDecimal
 import java.util.Locale
 import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen
@@ -92,7 +94,7 @@ fun PosScreen() {
     val cart = stateSuccess?.currentCart ?: emptyList()
     val quoteState = stateSuccess?.quoteState ?: QuoteState.Idle
     val checkoutState = stateSuccess?.checkoutState ?: CheckoutState.Idle
-    val pricingPreview = if (quoteState is QuoteState.Valid) quoteState.preview else com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(BigDecimal.ZERO, emptyList(), emptyList(), BigDecimal.ZERO)
+    val pricingPreview = if (quoteState is QuoteState.Valid) quoteState.preview else com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(subtotal = BigDecimal.ZERO, total = BigDecimal.ZERO)
 
     val filteredMenuItems = stateSuccess?.filteredProducts ?: emptyList()
     val categories = stateSuccess?.categories ?: listOf("Todos")
@@ -391,6 +393,10 @@ fun PosScreen() {
                     items(cart, key = { it.id }) { configuredProduct ->
                         CartItemRow(
                             configuredProduct = configuredProduct,
+                            quotedLine = pricingPreview.quotedLines.find { it.lineKey == configuredProduct.id },
+                            quotedRewards = pricingPreview.rewardItems.filter {
+                                it.sourceLineKey == configuredProduct.id
+                            },
                             onIncrement = {
                                 viewModel.incrementCartItem(configuredProduct) {
                                     configuringItemId = configuredProduct.menuItemId
@@ -521,22 +527,50 @@ fun PosScreen() {
         }
     }
 
+    // Track whether to show the FlexibleBogoPicker for ELIGIBLE_ITEM promotions.
+    var flexibleBogoPromotion by remember { mutableStateOf<Promotion?>(null) }
+
     selectedPromotion?.let { promotion ->
-        PromotionItemPickerDialog(
+        val bogo = promotion.benefit as? PromotionBenefit.BuyXGetY
+        if (bogo != null && PromotionBenefit.BuyXGetY.isEligibleItemVariant(bogo.type)) {
+            // ELIGIBLE_ITEM: direct single-screen picker — never opens ConfiguratorScreen.
+            selectedPromotion = null
+            flexibleBogoPromotion = promotion
+        } else {
+            // SAME_ITEM and FIXED_UNIT_PRICE: existing picker + optional configurator flow.
+            PromotionItemPickerDialog(
+                promotion = promotion,
+                eligibleProducts = viewModel.eligibleProducts(promotion),
+                onDismiss = { selectedPromotion = null },
+                onSelect = { item ->
+                    selectedPromotion = null
+                    if (item.requiresConfiguration) {
+                        promotionConfigurationFlow = PromotionConfigurationFlow(
+                            promotion = promotion,
+                            menuItem = item
+                        )
+                    } else {
+                        viewModel.addPromotionBundle(promotion, item)
+                    }
+                }
+            )
+        }
+    }
+
+    // FlexibleBogoPickerDialog for BUY_X_GET_Y_ELIGIBLE_ITEM.
+    // Never spawns ConfiguratorScreen — + always fills the slot immediately.
+    flexibleBogoPromotion?.let { promotion ->
+        FlexibleBogoPickerDialog(
             promotion = promotion,
             eligibleProducts = viewModel.eligibleProducts(promotion),
-            onDismiss = { selectedPromotion = null },
-            onSelect = { item ->
-                selectedPromotion = null
-                val bogo = promotion.benefit as? PromotionBenefit.BuyXGetY
-                if (item.requiresConfiguration || bogo?.type == "BUY_X_GET_Y_ELIGIBLE_ITEM") {
-                    promotionConfigurationFlow = PromotionConfigurationFlow(
-                        promotion = promotion,
-                        menuItem = item
-                    )
-                } else {
-                    viewModel.addPromotionBundle(promotion, item)
-                }
+            onDismiss = { flexibleBogoPromotion = null },
+            onComplete = { purchasedItem, rewardItems ->
+                flexibleBogoPromotion = null
+                viewModel.addEligibleItemBundle(
+                    promotion = promotion,
+                    purchasedMenuItem = purchasedItem,
+                    rewardMenuItems = rewardItems
+                )
             }
         )
     }
@@ -545,22 +579,8 @@ fun PosScreen() {
         val bogo = flow.promotion.benefit as? PromotionBenefit.BuyXGetY
         val configuringReward = flow.purchasedProduct != null && bogo != null
         val rewardOrdinal = flow.rewardProducts.size + 1
-        if (configuringReward && bogo?.type == "BUY_X_GET_Y_ELIGIBLE_ITEM" && flow.currentRewardMenuItem == null) {
-            PromotionItemPickerDialog(
-                promotion = flow.promotion,
-                eligibleProducts = viewModel.eligibleProducts(flow.promotion),
-                onDismiss = { promotionConfigurationFlow = null },
-                onSelect = { selectedRewardItem ->
-                    promotionConfigurationFlow = flow.copy(currentRewardMenuItem = selectedRewardItem)
-                }
-            )
-            return@let
-        }
-        val targetMenuItemId = if (configuringReward && bogo?.type == "BUY_X_GET_Y_ELIGIBLE_ITEM") {
-            flow.currentRewardMenuItem!!.id
-        } else {
-            flow.menuItem.id
-        }
+        // ELIGIBLE_ITEM is handled by FlexibleBogoPickerDialog above; this block is SAME_ITEM only.
+        val targetMenuItemId = flow.menuItem.id
         val contextLabel = if (configuringReward) {
             "${flow.promotion.name}: configura el roll gratis ${rewardOrdinal}/${bogo?.rewardQuantity}"
         } else if (bogo != null) {
@@ -1047,6 +1067,8 @@ fun MenuItemCard(
 @Composable
 fun CartItemRow(
     configuredProduct: ConfiguredProduct,
+    quotedLine: com.restaurant.sushimei.frontend.data.model.QuotedCartLine? = null,
+    quotedRewards: List<QuotedRewardItem> = emptyList(),
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     onDelete: () -> Unit
@@ -1060,6 +1082,7 @@ fun CartItemRow(
                 .fillMaxWidth()
                 .padding(12.dp)
         ) {
+            // ── Purchased product header ──────────────────────────────────────────────
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1082,9 +1105,11 @@ fun CartItemRow(
                         color = MaterialTheme.colorScheme.primary
                     )
                 } else {
+                    val displayTotal = quotedLine?.lineTotal ?: configuredProduct.total
                     Text(
-                        text = "Total cotizado abajo",
-                        style = MaterialTheme.typography.labelSmall,
+                        text = "$${String.format(Locale.US, "%.2f", displayTotal)}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -1096,6 +1121,53 @@ fun CartItemRow(
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.tertiary
                 )
+            }
+
+            // ── Quoted reward rows (backend-authoritative prices) ─────────────────────
+            if (quotedRewards.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                quotedRewards.forEach { reward ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 12.dp, top = 2.dp, bottom = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "🎁 ${reward.name}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "$${String.format(Locale.US, "%.2f", reward.chargedBaseUnitPrice)}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.tertiary
+                        )
+                    }
+                    if (reward.configurationAdjustmentTotal.compareTo(java.math.BigDecimal.ZERO) != 0) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 24.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "Ajustes",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "+$${String.format(Locale.US, "%.2f", reward.configurationAdjustmentTotal)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(6.dp))
