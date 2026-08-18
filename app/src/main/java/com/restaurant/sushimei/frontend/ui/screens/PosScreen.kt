@@ -2,6 +2,11 @@ package com.restaurant.sushimei.frontend.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import com.restaurant.sushimei.frontend.data.model.PrintJobUiModel
+import com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus
+import com.restaurant.sushimei.frontend.data.model.PrintJobStatus
+import com.restaurant.sushimei.frontend.data.local.PrintJobEntity
+
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -43,7 +48,6 @@ import com.restaurant.sushimei.frontend.data.model.QuotedRewardItem
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
 import com.restaurant.sushimei.frontend.data.local.provideManualPosOrderRepository
 import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
-import com.restaurant.sushimei.frontend.data.local.PosTicketPrintTracker
 import com.restaurant.sushimei.frontend.data.api.NetworkModule
 import com.restaurant.sushimei.frontend.PrintService
 import com.restaurant.sushimei.frontend.ui.pos.PosViewModel
@@ -66,24 +70,19 @@ private data class PromotionConfigurationFlow(
     val currentRewardMenuItem: MenuItem? = null
 )
 
-private sealed interface PosPrintState {
-    data object Idle : PosPrintState
-    data object Printing : PosPrintState
-    data object Printed : PosPrintState
-    data class Failed(val message: String) : PosPrintState
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PosScreen() {
     val context = LocalContext.current
-    val printTracker = remember { PosTicketPrintTracker(context) }
     val menuRepository = remember { provideMenuRepository(context) }
     val viewModel: PosViewModel = viewModel(
         factory = PosViewModel.factory(
             menuRepository = menuRepository,
             manualPosOrderRepository = provideManualPosOrderRepository(context),
-            promotionRepository = providePromotionRepository(context)
+            promotionRepository = providePromotionRepository(context),
+            printManager = com.restaurant.sushimei.frontend.data.local.providePrintManager(context),
+            printJobRepository = com.restaurant.sushimei.frontend.data.local.providePrintJobRepository(context)
         )
     )
 
@@ -106,114 +105,78 @@ fun PosScreen() {
     var selectedPromotion by remember { mutableStateOf<Promotion?>(null) }
     var promotionConfigurationFlow by remember { mutableStateOf<PromotionConfigurationFlow?>(null) }
     var configuringItemId by remember { mutableStateOf<Long?>(null) }
-    var printState by remember { mutableStateOf<PosPrintState>(PosPrintState.Idle) }
-    var printRetry by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshActivePromotions()
     }
 
     LaunchedEffect(checkoutState) {
-        if (checkoutState is CheckoutState.Success) {
+        if (
+            checkoutState is CheckoutState.Success ||
+            checkoutState is CheckoutState.ConfirmedWithPrintWarning
+        ) {
             showCheckoutDialog = false
             showSuccessDialog = true
         }
     }
 
-    LaunchedEffect(checkoutState, printRetry) {
-        val success = checkoutState as? CheckoutState.Success ?: return@LaunchedEffect
-        val order = success.response
-        if (printTracker.wasPrinted(order.requestId)) {
-            printState = PosPrintState.Printed
-            return@LaunchedEffect
-        }
 
-        printState = PosPrintState.Printing
-        try {
-            val detailResponse = NetworkModule.sushiMeiApi.getOperationalOrderDetail(order.id)
-            val detail = detailResponse.body()
-            if (!detailResponse.isSuccessful || detail == null) {
-                printState = PosPrintState.Failed("No se pudo cargar el ticket confirmado.")
-                return@LaunchedEffect
-            }
+    val printJobs by viewModel.printJobs.collectAsStateWithLifecycle()
 
-            val printed = withContext(Dispatchers.IO) {
-                PrintService(context).printOperationalTicket(detail)
+
+    if (showSuccessDialog && checkoutState is CheckoutState.ConfirmedWithPrintWarning) {
+        AlertDialog(
+            onDismissRequest = {
+                showSuccessDialog = false
+                viewModel.resetCheckoutState()
+            },
+            title = { Text("Orden Confirmada con Advertencia") },
+            text = {
+                Column {
+                    Text("La orden fue creada exitosamente, pero no se pudo registrar la impresión local.")
+                    Text("Orden #${checkoutState.orderId}")
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    showSuccessDialog = false
+                    viewModel.retryPrintRegistration(checkoutState.orderId, checkoutState.requestId, checkoutState.response)
+                    viewModel.resetCheckoutState()
+                }) {
+                    Text("Reintentar registro de impresión")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showSuccessDialog = false
+                    viewModel.resetCheckoutState()
+                }) {
+                    Text("Cerrar")
+                }
             }
-            if (printed) {
-                printTracker.markPrinted(order.requestId)
-                printState = PosPrintState.Printed
-            } else {
-                printState = PosPrintState.Failed("Revisa Bluetooth, el permiso y la impresora emparejada.")
-            }
-        } catch (_: Exception) {
-            printState = PosPrintState.Failed("No se pudo imprimir el ticket. Revisa la conexión e intenta de nuevo.")
-        }
+        )
     }
 
     if (showSuccessDialog && checkoutState is CheckoutState.Success) {
         AlertDialog(
             onDismissRequest = {
-                if (printState != PosPrintState.Printing) {
-                    showSuccessDialog = false
-                    viewModel.resetCheckoutState()
-                }
+                showSuccessDialog = false
+                viewModel.resetCheckoutState()
             },
             icon = {
-                Icon(
-                    imageVector = Icons.Default.CheckCircle,
-                    contentDescription = null,
-                    tint = Color(0xFF2E7D32),
-                    modifier = Modifier.size(48.dp)
-                )
+                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
             },
-            title = {
-                Text(
-                    text = "¡Orden Confirmada!",
-                    fontWeight = FontWeight.Bold,
-                    textAlign = TextAlign.Center
-                )
-            },
-            text = {
-                Text(
-                    text = buildString {
-                        append("Orden #${checkoutState.response.id} procesada y enviada a Cocinando.\n")
-                        append("Total: $${String.format(Locale.US, "%.2f", checkoutState.response.total)} MXN\n\n")
-                        append(
-                            when (val currentPrintState = printState) {
-                                PosPrintState.Idle, PosPrintState.Printing -> "Imprimiendo ticket…"
-                                PosPrintState.Printed -> "Ticket impreso."
-                                is PosPrintState.Failed -> currentPrintState.message
-                            }
-                        )
-                    },
-                    textAlign = TextAlign.Center
-                )
-            },
+            title = { Text("¡Orden Confirmada!") },
+            text = { Text("La orden ha sido enviada con éxito.") },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (printState is PosPrintState.Failed) {
-                            printRetry += 1
-                        } else {
-                            showSuccessDialog = false
-                            viewModel.resetCheckoutState()
-                        }
-                    },
-                    enabled = printState != PosPrintState.Printing,
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                ) {
-                    Text(if (printState is PosPrintState.Failed) "Reintentar impresión" else "Aceptar")
-                }
-            },
-            dismissButton = {
-                if (printState is PosPrintState.Failed) {
-                    TextButton(onClick = {
                         showSuccessDialog = false
                         viewModel.resetCheckoutState()
-                    }) {
-                        Text("Cerrar")
-                    }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                ) {
+                    Text("Aceptar")
                 }
             }
         )
@@ -522,6 +485,16 @@ fun PosScreen() {
                     text = "Cobrar",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            // Using printJobs collected from viewModel
+            if (printJobs.isNotEmpty()) {
+                PrintJobsCard(
+                    jobs = printJobs,
+                    onRetry = viewModel::retryPrintJob,
+                    onReprint = viewModel::reprintJob
                 )
             }
         }
@@ -1232,6 +1205,62 @@ fun CartItemRow(
                         )
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+fun PrintJobsCard(
+    jobs: List<PrintJobUiModel>,
+    onRetry: (String) -> Unit,
+    onReprint: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Estado de Impresión", style = MaterialTheme.typography.titleMedium)
+            Spacer(modifier = Modifier.height(8.dp))
+            jobs.forEach { job ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Orden #${job.orderId}", style = MaterialTheme.typography.bodyMedium)
+                        when (job.status) {
+                            PrintJobStatus.FAILED -> {
+                                Text("Error: ${job.lastError}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
+                            PrintJobStatus.INTERRUPTED -> {
+                                Text("Interrumpido", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                            }
+                            PrintJobStatus.PENDING -> {
+                                Text("Pendiente...", style = MaterialTheme.typography.bodySmall)
+                            }
+                            PrintJobStatus.PRINTING -> {
+                                Text("Imprimiendo...", style = MaterialTheme.typography.bodySmall)
+                            }
+                            PrintJobStatus.PRINTED -> {
+                                Text("Impreso", color = Color(0xFF4CAF50), style = MaterialTheme.typography.bodySmall)
+                                if (job.lastReprintStatus == PrintAttemptStatus.FAILED) {
+                                    Text("Última reimpresión falló: ${job.lastReprintError ?: "Desconocido"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                } else if (job.lastReprintStatus == PrintAttemptStatus.INTERRUPTED) {
+                                    Text("La última reimpresión fue interrumpida y no se puede confirmar si salió.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                    if (job.status == PrintJobStatus.FAILED || job.status == PrintJobStatus.INTERRUPTED) {
+                        Button(onClick = { onRetry(job.jobId) }) { Text("Reintentar") }
+                    } else if (job.status == PrintJobStatus.PRINTED) {
+                        OutlinedButton(onClick = { onReprint(job.jobId) }) { Text("Reimprimir") }
+                    }
+                }
+                HorizontalDivider()
             }
         }
     }

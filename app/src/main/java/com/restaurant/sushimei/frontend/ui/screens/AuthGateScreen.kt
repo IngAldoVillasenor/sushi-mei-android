@@ -30,6 +30,10 @@ fun AuthGateScreen(authRepository: AuthRepository) {
             LoginScreen(authRepository = authRepository)
         }
         is AuthState.Authenticated -> {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                com.restaurant.sushimei.frontend.data.local.providePrintManager(context.applicationContext)
+            }
             // Pasamos el authRepository por si AccountScreen lo necesita para logout
             MainScreen(authRepository = authRepository, user = state.user)
         }

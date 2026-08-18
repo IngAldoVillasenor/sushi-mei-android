@@ -242,4 +242,60 @@ class PrintServiceTest {
         assertTrue(!outputString.contains("Virtual Box (Hidden)"))
         assertTrue(outputString.contains("   + Coke")) // Level 1 indentation because parent was level 1
     }
+
+    @Test
+    fun `test formatOperationalTicket includes REIMPRESION when isReprint is true`() {
+        val detail = com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto(
+            id = 200,
+            requestId = null,
+            orderSource = null,
+            createdByUserId = null,
+            fulfillmentType = null,
+            paymentMethod = null,
+            deliveryAddress = null,
+            pickupName = null,
+            cashDenomination = null,
+            phoneNumber = null,
+            status = "PENDING",
+            createdAt = java.time.Instant.now(),
+            total = java.math.BigDecimal("150.00"),
+            legacyOrderDetails = "2x Maki",
+            paymentNotes = null,
+            transferReceiptPath = null,
+            lines = emptyList()
+        )
+
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(detail, isReprint = true))
+
+        org.junit.Assert.assertTrue("Output should contain REIMPRESION", outputString.contains("*** REIMPRESION ***"))
+    }
+
+    @Test
+    fun `test formatOperationalTicket omits REIMPRESION when isReprint is false`() {
+        val detail = com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto(
+            id = 201,
+            requestId = null,
+            orderSource = null,
+            createdByUserId = null,
+            fulfillmentType = null,
+            paymentMethod = null,
+            deliveryAddress = null,
+            pickupName = null,
+            cashDenomination = null,
+            phoneNumber = null,
+            status = "PENDING",
+            createdAt = java.time.Instant.now(),
+            total = java.math.BigDecimal("150.00"),
+            legacyOrderDetails = "2x Maki",
+            paymentNotes = null,
+            transferReceiptPath = null,
+            lines = emptyList()
+        )
+
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(detail, isReprint = false))
+
+        org.junit.Assert.assertFalse("Output should not contain REIMPRESION", outputString.contains("*** REIMPRESION ***"))
+    }
 }

@@ -79,7 +79,7 @@ class OrderDaoTest {
     }
 
     @Test
-    fun getActiveOrders_shouldReturnOnlyPendingAndPreparing() = runTest {
+    fun getActiveOrders_shouldReturnPendingPreparingAndReady() = runTest {
         val pendingOrder = sampleEntity.copy(id = 1L, status = OrderStatus.PENDING.name)
         val preparingOrder = sampleEntity.copy(id = 2L, status = OrderStatus.PREPARING.name)
         val readyOrder = sampleEntity.copy(id = 3L, status = OrderStatus.READY.name)
@@ -92,10 +92,9 @@ class OrderDaoTest {
 
         val activeOrders = dao.observeActiveOrders().first()
 
-        assertEquals(2, activeOrders.size)
-        // La consulta original ordena por DESC, así que ID 2 debería estar primero.
-        assertEquals(2L, activeOrders[0].id)
-        assertEquals(1L, activeOrders[1].id)
+        assertEquals(3, activeOrders.size)
+        val activeIds = activeOrders.map { it.id }.toSet()
+        assertEquals(setOf(1L, 2L, 3L), activeIds)
     }
 
     @Test

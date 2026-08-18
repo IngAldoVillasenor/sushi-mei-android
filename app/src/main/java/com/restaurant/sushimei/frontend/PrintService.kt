@@ -248,7 +248,7 @@ class PrintService(private val context: Context) {
 
     @SuppressLint("MissingPermission")
 
-    fun printOperationalTicket(order: OperationalOrderDetailDto): Boolean {
+    fun printOperationalTicket(order: OperationalOrderDetailDto, isReprint: Boolean = false): Boolean {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
             if (androidx.core.app.ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 return false
@@ -274,7 +274,7 @@ class PrintService(private val context: Context) {
 
             val outputStream = socket.outputStream
 
-            val formattedText = formatOperationalTicket(order)
+            val formattedText = formatOperationalTicket(order, isReprint)
 
             outputStream.write(formattedText)
 
@@ -306,7 +306,7 @@ class PrintService(private val context: Context) {
         }
     }
 
-    fun formatOperationalTicket(order: com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto): ByteArray {
+    fun formatOperationalTicket(order: com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto, isReprint: Boolean = false): ByteArray {
         val out = ByteArrayOutputStream()
 
         val ESC: Byte = 0x1B
@@ -338,6 +338,13 @@ class PrintService(private val context: Context) {
         out.write(boldOff)
 
         out.write("================================\n".toByteArray())
+
+        if (isReprint) {
+            out.write(boldOn)
+            out.write("*** REIMPRESION ***\n".toByteArray())
+            out.write(boldOff)
+            out.write("================================\n".toByteArray())
+        }
 
         // Datos del pedido
 

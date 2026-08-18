@@ -20,6 +20,11 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+    }
+
     buildTypes {
         debug {
             var debugUrl = providers.gradleProperty("SUSHIMEI_DEBUG_BASE_URL").orNull ?: "http://10.0.2.2:8080/"
@@ -95,4 +100,9 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+    androidTestImplementation(libs.androidx.room.testing)
+    androidTestImplementation(libs.androidx.junit)
+}
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }

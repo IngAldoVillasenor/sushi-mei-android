@@ -31,6 +31,8 @@ class PosCheckoutTest {
     private lateinit var fakeManualRepo: FakeManualPosOrderRepository
     private lateinit var fakeMenuRepo: FakeMenuRepository
     private lateinit var fakePromoRepo: FakePromotionRepository
+    private lateinit var printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository
+    private lateinit var printManager: com.restaurant.sushimei.frontend.PrintManager
 
     @Before
     fun setup() {
@@ -39,7 +41,9 @@ class PosCheckoutTest {
         fakeMenuRepo = FakeMenuRepository()
         fakePromoRepo = FakePromotionRepository()
 
-        viewModel = PosViewModel(fakeMenuRepo, fakeManualRepo, fakePromoRepo)
+        printManager = io.mockk.mockk(relaxed = true)
+        printJobRepository = io.mockk.mockk(relaxed = true)
+        viewModel = PosViewModel(fakeMenuRepo, fakeManualRepo, fakePromoRepo, printManager, printJobRepository)
     }
 
     @After
@@ -512,6 +516,45 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isEmpty())
+    }
+
+    @Test
+    fun `testCheckout_enqueueSuspensionDelaysSuccessAndKeepsCartIntact`() = runTest {
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY)
+        viewModel.updateDeliveryAddress("Av. Falsa 123")
+        viewModel.updateCashDenomination(java.math.BigDecimal("200.00"))
+
+
+        val maki = com.restaurant.sushimei.frontend.data.model.MenuItem(1L, "Maki", "Rolls", java.math.BigDecimal("100.00"), "", "")
+        viewModel.addToCart(maki)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val deferredEnqueue = kotlinx.coroutines.CompletableDeferred<Unit>()
+
+        io.mockk.coEvery {
+            printManager.enqueuePrintJob(any<Long>(), any<String>())
+        } coAnswers {
+            deferredEnqueue.await()
+            com.restaurant.sushimei.frontend.data.local.PrintJobEntity(
+                "job-1", "req-1", 1L, com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PENDING, null, 0L, 0L, null, null
+            )
+        }
+
+        viewModel.cobrarOrden()
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+                val state = viewModel.uiState.value as PosUiState.Success
+        println("STATE BEFORE RESUME: " + state.checkoutState)
+        org.junit.Assert.assertTrue("CheckoutState should not be Success before resume", state.checkoutState !is CheckoutState.Success)
+        org.junit.Assert.assertTrue("Cart should not be empty", state.currentCart.isNotEmpty())
+
+        deferredEnqueue.complete(Unit)
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val finalState = viewModel.uiState.value as PosUiState.Success
+        org.junit.Assert.assertTrue(finalState.checkoutState is CheckoutState.Success)
+        org.junit.Assert.assertTrue(finalState.currentCart.isEmpty())
     }
 }
 

@@ -1,5 +1,12 @@
 package com.restaurant.sushimei.frontend.ui.pos
 
+import com.restaurant.sushimei.frontend.PrintManager
+import com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository
+import com.restaurant.sushimei.frontend.data.local.PrintJobEntity
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
+
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -29,6 +36,7 @@ sealed interface CheckoutState {
     object Loading : CheckoutState
 
     data class Success(val response: ManualPosOrderResponse) : CheckoutState
+    data class ConfirmedWithPrintWarning(val response: ManualPosOrderResponse, val orderId: Long, val requestId: String, val message: String) : CheckoutState
 
     data class Error(val message: String) : CheckoutState
 }
@@ -57,7 +65,9 @@ sealed interface PosUiState {
 class PosViewModel(
     private val menuRepository: IMenuRepository,
     private val manualPosOrderRepository: IManualPosOrderRepository,
-    private val promotionRepository: IPromotionRepository
+    private val promotionRepository: IPromotionRepository,
+    private val printManager: PrintManager,
+    private val printJobRepository: IPrintJobRepository
 ) : ViewModel() {
     // --- Estado interno ---
 
@@ -74,6 +84,38 @@ class PosViewModel(
     private val _isLoading = MutableStateFlow(true)
 
     private val _quoteState = MutableStateFlow<QuoteState>(QuoteState.Idle)
+
+
+    val printJobs: StateFlow<List<PrintJobUiModel>> = combine(
+        printJobRepository.observeAllJobs(),
+        printJobRepository.observeAllAttempts()
+    ) { jobs, attempts ->
+        jobs.map { job ->
+            val jobAttempts = attempts.filter { it.printJobId == job.id }
+            val lastReprint = jobAttempts
+                .filter { it.type == PrintAttemptType.REPRINT }
+                .maxByOrNull { it.startedAt }
+
+            PrintJobUiModel(
+                jobId = job.id,
+                orderId = job.orderId,
+                status = job.status,
+                lastError = job.lastError,
+                printedAt = job.printedAt,
+                activeAttemptId = job.activeAttemptId,
+                lastReprintStatus = lastReprint?.status,
+                lastReprintError = lastReprint?.error
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    fun retryPrintJob(jobId: String) {
+        printManager.retryPrintJob(jobId)
+    }
+
+    fun reprintJob(jobId: String) {
+        printManager.reprintJob(jobId)
+    }
 
     private val _checkoutState = MutableStateFlow<CheckoutState>(CheckoutState.Idle)
 
@@ -699,12 +741,23 @@ class PosViewModel(
                 val response = manualPosOrderRepository.submitOrder(requestSnapshot)
 
                 if (response.result == OrderResult.CREATED || response.result == OrderResult.ALREADY_CREATED) {
-                    clearCart()
-
-                    invalidateRequestId()
-
-                    _checkoutState.value = CheckoutState.Success(response)
+                    try {
+                        printManager.enqueuePrintJob(response.id, response.requestId)
+                        clearCart()
+                        invalidateRequestId()
+                        _checkoutState.value = CheckoutState.Success(response)
+                    } catch (e: Exception) {
+                        clearCart()
+                        invalidateRequestId()
+                        _checkoutState.value = CheckoutState.ConfirmedWithPrintWarning(
+                            response = response,
+                            orderId = response.id,
+                            requestId = response.requestId,
+                            message = "La orden se confirmó exitosamente, pero no se pudo encolar la impresión local: ${e.message}"
+                        )
+                    }
                 } else {
+
                     _checkoutState.value = CheckoutState.Error("Respuesta inesperada del servidor.")
                 }
             } catch (e: ApiException) {
@@ -779,6 +832,23 @@ class PosViewModel(
         )
     }
 
+
+    fun retryPrintRegistration(orderId: Long, requestId: String, response: ManualPosOrderResponse) {
+        viewModelScope.launch {
+            try {
+                printManager.enqueuePrintJob(orderId, requestId)
+                _checkoutState.value = CheckoutState.Success(response)
+            } catch (e: Exception) {
+                _checkoutState.value = CheckoutState.ConfirmedWithPrintWarning(
+                    response = response,
+                    orderId = orderId,
+                    requestId = requestId,
+                    message = "La orden se confirmó exitosamente, pero aún no se puede registrar la impresión: ${e.message}"
+                )
+            }
+        }
+    }
+
     fun resetCheckoutState() {
         _checkoutState.value = CheckoutState.Idle
     }
@@ -791,14 +861,16 @@ class PosViewModel(
         fun factory(
             menuRepository: IMenuRepository,
             manualPosOrderRepository: IManualPosOrderRepository,
-            promotionRepository: IPromotionRepository
+            promotionRepository: IPromotionRepository,
+            printManager: PrintManager,
+            printJobRepository: IPrintJobRepository
         ): ViewModelProvider.Factory =
 
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
 
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository) as T
+                    return PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository) as T
                 }
             }
     }
