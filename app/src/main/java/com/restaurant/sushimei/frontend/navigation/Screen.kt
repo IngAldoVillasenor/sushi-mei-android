@@ -23,7 +23,7 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
 
     object MenuManagement : Screen(
         route = "menu_management",
-        title = "Gestión de Menú",
+        title = "GestiÃ³n de MenÃº",
         icon = Icons.Default.RestaurantMenu
     )
 
