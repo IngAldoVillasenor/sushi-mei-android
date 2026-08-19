@@ -518,6 +518,25 @@ class PosCheckoutTest {
         assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isEmpty())
     }
 
+
+    @Test
+    fun `testCheckout_enqueuePrintJobFails_producesConfirmedWithPrintWarning`() = runTest {
+        fillCart()
+        viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Test Name")
+
+        io.mockk.coEvery {
+            printManager.enqueuePrintJob(any<Long>(), any<String>())
+        } throws RuntimeException("DB Save Failed")
+
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value as PosUiState.Success
+        org.junit.Assert.assertTrue(state.checkoutState is CheckoutState.ConfirmedWithPrintWarning)
+        org.junit.Assert.assertTrue((state.checkoutState as CheckoutState.ConfirmedWithPrintWarning).message.contains("DB Save Failed"))
+    }
+
     @Test
     fun `testCheckout_enqueueSuspensionDelaysSuccessAndKeepsCartIntact`() = runTest {
         viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY)

@@ -41,6 +41,17 @@ sealed interface CheckoutState {
     data class Error(val message: String) : CheckoutState
 }
 
+
+sealed interface CurrentPrintUiState {
+    object Idle : CurrentPrintUiState
+    data class Printing(val jobId: String, val orderId: Long) : CurrentPrintUiState
+    data class Failed(val jobId: String, val orderId: Long, val message: String) : CurrentPrintUiState
+    object Printed : CurrentPrintUiState
+    data class InternalCopyPrinting(val jobId: String, val orderId: Long) : CurrentPrintUiState
+    data class InternalCopyFailed(val jobId: String, val orderId: Long, val message: String) : CurrentPrintUiState
+    object InternalCopyPrinted : CurrentPrintUiState
+}
+
 sealed interface PosUiState {
     object Loading : PosUiState
 
@@ -71,6 +82,51 @@ class PosViewModel(
 ) : ViewModel() {
     // --- Estado interno ---
 
+    private val _currentPrintJobId = MutableStateFlow<String?>(null)
+
+    val currentPrintState: StateFlow<CurrentPrintUiState> = _currentPrintJobId.flatMapLatest { jobId ->
+        if (jobId == null) {
+            flowOf(CurrentPrintUiState.Idle)
+        } else {
+            combine(
+                printJobRepository.observeJobById(jobId),
+                printJobRepository.observeAttemptsForJob(jobId)
+            ) { job, attempts ->
+                if (job == null) return@combine CurrentPrintUiState.Idle
+
+                if (job.status == PrintJobStatus.PENDING || job.status == PrintJobStatus.PRINTING) {
+                    return@combine CurrentPrintUiState.Printing(job.id, job.orderId)
+                }
+                if (job.status == PrintJobStatus.FAILED || job.status == PrintJobStatus.INTERRUPTED) {
+                    return@combine CurrentPrintUiState.Failed(job.id, job.orderId, job.lastError ?: "Error desconocido")
+                }
+
+                val internalCopyAttempts = attempts.filter { it.type == com.restaurant.sushimei.frontend.data.model.PrintAttemptType.INTERNAL_COPY }
+                if (internalCopyAttempts.isEmpty()) {
+                    return@combine CurrentPrintUiState.Printed
+                }
+
+                val latestInternalCopy = internalCopyAttempts.first()
+                when (latestInternalCopy.status) {
+                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.PRINTING -> CurrentPrintUiState.InternalCopyPrinting(job.id, job.orderId)
+                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.FAILED, com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.INTERRUPTED -> CurrentPrintUiState.InternalCopyFailed(job.id, job.orderId, latestInternalCopy.error ?: "Error desconocido")
+                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.SUCCEEDED -> CurrentPrintUiState.InternalCopyPrinted
+                }
+            }
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), CurrentPrintUiState.Idle)
+
+    fun printInternalCopy() {
+        val jobId = _currentPrintJobId.value ?: return
+        printManager.printInternalCopy(jobId)
+    }
+
+    fun retryCurrentPrint() {
+        val jobId = _currentPrintJobId.value ?: return
+        printManager.retryPrintJob(jobId)
+    }
+
+
     private val _allProducts = MutableStateFlow<List<MenuItem>>(emptyList())
 
     private val _selectedCategory = MutableStateFlow<String?>(null)
@@ -86,36 +142,8 @@ class PosViewModel(
     private val _quoteState = MutableStateFlow<QuoteState>(QuoteState.Idle)
 
 
-    val printJobs: StateFlow<List<PrintJobUiModel>> = combine(
-        printJobRepository.observeAllJobs(),
-        printJobRepository.observeAllAttempts()
-    ) { jobs, attempts ->
-        jobs.map { job ->
-            val jobAttempts = attempts.filter { it.printJobId == job.id }
-            val lastReprint = jobAttempts
-                .filter { it.type == PrintAttemptType.REPRINT }
-                .maxByOrNull { it.startedAt }
 
-            PrintJobUiModel(
-                jobId = job.id,
-                orderId = job.orderId,
-                status = job.status,
-                lastError = job.lastError,
-                printedAt = job.printedAt,
-                activeAttemptId = job.activeAttemptId,
-                lastReprintStatus = lastReprint?.status,
-                lastReprintError = lastReprint?.error
-            )
-        }
-    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
-    fun retryPrintJob(jobId: String) {
-        printManager.retryPrintJob(jobId)
-    }
-
-    fun reprintJob(jobId: String) {
-        printManager.reprintJob(jobId)
-    }
 
     private val _checkoutState = MutableStateFlow<CheckoutState>(CheckoutState.Idle)
 
@@ -742,7 +770,8 @@ class PosViewModel(
 
                 if (response.result == OrderResult.CREATED || response.result == OrderResult.ALREADY_CREATED) {
                     try {
-                        printManager.enqueuePrintJob(response.id, response.requestId)
+                        val job = printManager.enqueuePrintJob(response.id, response.requestId)
+                        _currentPrintJobId.value = job.id
                         clearCart()
                         invalidateRequestId()
                         _checkoutState.value = CheckoutState.Success(response)
@@ -836,7 +865,8 @@ class PosViewModel(
     fun retryPrintRegistration(orderId: Long, requestId: String, response: ManualPosOrderResponse) {
         viewModelScope.launch {
             try {
-                printManager.enqueuePrintJob(orderId, requestId)
+                val job = printManager.enqueuePrintJob(orderId, requestId)
+                _currentPrintJobId.value = job.id
                 _checkoutState.value = CheckoutState.Success(response)
             } catch (e: Exception) {
                 _checkoutState.value = CheckoutState.ConfirmedWithPrintWarning(
@@ -851,6 +881,7 @@ class PosViewModel(
 
     fun resetCheckoutState() {
         _checkoutState.value = CheckoutState.Idle
+        _currentPrintJobId.value = null
     }
 
     fun getTotal(): BigDecimal {

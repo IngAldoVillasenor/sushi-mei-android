@@ -78,9 +78,8 @@ class PrintManagerTest {
         manager.enqueuePrintJob(1L, "req-1")
         advanceUntilIdle()
 
-        coVerify { repository.finishAttempt("att-1", PrintAttemptStatus.FAILED, any(), "Bluetooth Error / Not Connected") }
-        coVerify { repository.markJobFailed("job-1", "Bluetooth Error / Not Connected") }
-    }
+        coVerify { repository.finalizeFailure("att-1", any(), "Bluetooth Error / Not Connected") }
+            }
 
     @Test
     fun `FAILED retry becomes PRINTED and clears lastError`() = runTest {
@@ -97,8 +96,7 @@ class PrintManagerTest {
         manager.retryPrintJob("job-1")
         advanceUntilIdle()
 
-        coVerify { repository.finishAttempt("att-1", PrintAttemptStatus.SUCCEEDED, any(), null) }
-        coVerify { repository.markJobPrinted("job-1") }
+        coVerify { repository.finalizeSuccess("att-1", any()) }
     }
 
     @Test
@@ -116,9 +114,8 @@ class PrintManagerTest {
         manager.reprintJob("job-1")
         advanceUntilIdle()
 
-        coVerify { repository.finishAttempt("att-1", PrintAttemptStatus.FAILED, any(), "Bluetooth Error / Not Connected") }
-        coVerify(exactly = 0) { repository.markJobFailed("job-1", any()) }
-    }
+        coVerify { repository.finalizeFailure("att-1", any(), "Bluetooth Error / Not Connected") }
+            }
 
     @Test
     fun `concurrent retry and reprint acquires attempt lock and prevents duplicate prints`() = runTest {
@@ -140,4 +137,40 @@ class PrintManagerTest {
 
         verify(exactly = 1) { printService.printOperationalTicket(any(), any()) }
     }
+
+    @Test
+    fun `INTERNAL_COPY success leaves parent PRINTED`() = runTest {
+        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
+        val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.INTERNAL_COPY, PrintAttemptStatus.PRINTING, 0, null, null)
+
+        coEvery { repository.getJobById("job-1") } returns job
+        coEvery { repository.beginAttempt("job-1", PrintAttemptType.INTERNAL_COPY) } returns attempt
+
+        val orderDetail = mockk<OperationalOrderDetailDto>()
+        coEvery { operationalOrderRepository.getOperationalOrderDetail(1L) } returns orderDetail
+        every { printService.printOperationalTicket(orderDetail, isReprint = false, isInternalCopy = true) } returns true
+
+        manager.printInternalCopy("job-1")
+        advanceUntilIdle()
+
+        coVerify { repository.finalizeSuccess("att-1", any()) }
+                    }
+
+    @Test
+    fun `INTERNAL_COPY failure leaves parent PRINTED`() = runTest {
+        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
+        val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.INTERNAL_COPY, PrintAttemptStatus.PRINTING, 0, null, null)
+
+        coEvery { repository.getJobById("job-1") } returns job
+        coEvery { repository.beginAttempt("job-1", PrintAttemptType.INTERNAL_COPY) } returns attempt
+
+        val orderDetail = mockk<OperationalOrderDetailDto>()
+        coEvery { operationalOrderRepository.getOperationalOrderDetail(1L) } returns orderDetail
+        every { printService.printOperationalTicket(orderDetail, isReprint = false, isInternalCopy = true) } returns false
+
+        manager.printInternalCopy("job-1")
+        advanceUntilIdle()
+
+        coVerify { repository.finalizeFailure("att-1", any(), "Bluetooth Error / Not Connected") }
+            }
 }

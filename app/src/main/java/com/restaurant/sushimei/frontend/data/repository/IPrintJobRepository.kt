@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.Flow
 interface IPrintJobRepository {
     suspend fun getJobByRequestId(requestId: String): PrintJobEntity?
     fun observeAllJobs(): Flow<List<PrintJobEntity>>
+    fun observeJobById(id: String): Flow<PrintJobEntity?>
     fun observeAllAttempts(): Flow<List<PrintAttemptEntity>>
+    fun observeAttemptsForJob(jobId: String): Flow<List<PrintAttemptEntity>>
     suspend fun getJobById(id: String): PrintJobEntity?
     suspend fun getPendingJobs(): List<PrintJobEntity>
     suspend fun getAttemptsForJob(jobId: String): List<PrintAttemptEntity>
@@ -21,4 +23,6 @@ interface IPrintJobRepository {
     suspend fun reconcileOrphanedJobs()
     suspend fun beginAttempt(jobId: String, type: PrintAttemptType): PrintAttemptEntity?
     suspend fun finishAttempt(attemptId: String, status: PrintAttemptStatus, finishedAt: Long?, error: String?)
+    suspend fun finalizeSuccess(attemptId: String, finishedAt: Long)
+    suspend fun finalizeFailure(attemptId: String, finishedAt: Long, error: String?)
 }

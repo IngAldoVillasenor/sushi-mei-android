@@ -11,7 +11,9 @@ import java.util.UUID
 
 class RoomPrintJobRepository(private val dao: PrintJobDao) : IPrintJobRepository {
     override fun observeAllJobs(): Flow<List<PrintJobEntity>> = dao.observeAllJobs()
+    override fun observeJobById(id: String): Flow<PrintJobEntity?> = dao.observeJobById(id)
     override fun observeAllAttempts(): Flow<List<PrintAttemptEntity>> = dao.observeAllAttempts()
+    override fun observeAttemptsForJob(jobId: String): Flow<List<PrintAttemptEntity>> = dao.observeAttemptsForJob(jobId)
 
     override suspend fun getJobById(id: String): PrintJobEntity? = dao.getJobById(id)
 
@@ -74,6 +76,14 @@ class RoomPrintJobRepository(private val dao: PrintJobDao) : IPrintJobRepository
 
     override suspend fun finishAttempt(attemptId: String, status: PrintAttemptStatus, finishedAt: Long?, error: String?) {
         dao.finishAttempt(attemptId, status, finishedAt, error)
+    }
+
+    override suspend fun finalizeSuccess(attemptId: String, finishedAt: Long) {
+        dao.finalizeSuccess(attemptId, finishedAt)
+    }
+
+    override suspend fun finalizeFailure(attemptId: String, finishedAt: Long, error: String?) {
+        dao.finalizeFailure(attemptId, finishedAt, error)
     }
 
     override suspend fun reconcileOrphanedJobs() {

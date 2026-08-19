@@ -16,7 +16,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
+import com.restaurant.sushimei.frontend.ui.pos.CurrentPrintUiState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -110,6 +120,18 @@ fun PosScreen() {
         viewModel.refreshActivePromotions()
     }
 
+    val currentPrintState by viewModel.currentPrintState.collectAsStateWithLifecycle()
+    var pendingPrintRetry by remember { mutableStateOf(false) }
+
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted && pendingPrintRetry) {
+            viewModel.retryCurrentPrint()
+        }
+        pendingPrintRetry = false
+    }
+
     LaunchedEffect(checkoutState) {
         if (
             checkoutState is CheckoutState.Success ||
@@ -117,11 +139,15 @@ fun PosScreen() {
         ) {
             showCheckoutDialog = false
             showSuccessDialog = true
+
+            if (checkoutState is CheckoutState.Success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    pendingPrintRetry = true
+                    bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                }
+            }
         }
     }
-
-
-    val printJobs by viewModel.printJobs.collectAsStateWithLifecycle()
 
 
     if (showSuccessDialog && checkoutState is CheckoutState.ConfirmedWithPrintWarning) {
@@ -158,28 +184,202 @@ fun PosScreen() {
     }
 
     if (showSuccessDialog && checkoutState is CheckoutState.Success) {
-        AlertDialog(
-            onDismissRequest = {
-                showSuccessDialog = false
-                viewModel.resetCheckoutState()
-            },
-            icon = {
-                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
-            },
-            title = { Text("¡Orden Confirmada!") },
-            text = { Text("La orden ha sido enviada con éxito.") },
-            confirmButton = {
-                Button(
-                    onClick = {
+        when (currentPrintState) {
+            is CurrentPrintUiState.Failed -> {
+                AlertDialog(
+                    onDismissRequest = {
                         showSuccessDialog = false
                         viewModel.resetCheckoutState()
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
-                ) {
-                    Text("Aceptar")
-                }
+                    icon = {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD32F2F))
+                    },
+                    title = { Text("Orden Confirmada") },
+                    text = {
+                        Column {
+                            Text("La orden fue creada correctamente.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("No se pudo imprimir el ticket del cliente: ${(currentPrintState as CurrentPrintUiState.Failed).message}")
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED) {
+                                        viewModel.retryCurrentPrint()
+                                    } else {
+                                        pendingPrintRetry = true
+                                        bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+                                    }
+                                } else {
+                                    viewModel.retryCurrentPrint()
+                                }
+                            }
+                        ) {
+                            Text("Reintentar impresión")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showSuccessDialog = false
+                                viewModel.resetCheckoutState()
+                            }
+                        ) {
+                            Text("Cerrar")
+                        }
+                    }
+                )
             }
-        )
+            is CurrentPrintUiState.Printed -> {
+                AlertDialog(
+                    onDismissRequest = {
+                        showSuccessDialog = false
+                        viewModel.resetCheckoutState()
+                    },
+                    icon = {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
+                    },
+                    title = { Text("Ticket del cliente impreso") },
+                    text = {
+                        Column {
+                            Text("El ticket del cliente se imprimió correctamente.")
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("¿Deseas imprimir la copia para control interno?")
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.printInternalCopy()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                        ) {
+                            Text("Imprimir copia interna")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showSuccessDialog = false
+                                viewModel.resetCheckoutState()
+                            }
+                        ) {
+                            Text("No imprimir copia")
+                        }
+                    }
+                )
+            }
+            is CurrentPrintUiState.InternalCopyPrinting -> {
+                AlertDialog(
+                    onDismissRequest = { },
+                    icon = {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
+                    },
+                    title = { Text("Imprimiendo") },
+                    text = {
+                        Text("Imprimiendo copia interna...", color = Color.Gray)
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { },
+                            enabled = false
+                        ) {
+                            Text("Imprimiendo...")
+                        }
+                    }
+                )
+            }
+            is CurrentPrintUiState.InternalCopyPrinted -> {
+                AlertDialog(
+                    onDismissRequest = {
+                        showSuccessDialog = false
+                        viewModel.resetCheckoutState()
+                    },
+                    icon = {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
+                    },
+                    title = { Text("Copia interna impresa") },
+                    text = {
+                        Text("Copia interna impresa correctamente.", color = Color(0xFF2E7D32))
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showSuccessDialog = false
+                                viewModel.resetCheckoutState()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2E7D32))
+                        ) {
+                            Text("Finalizar")
+                        }
+                    }
+                )
+            }
+            is CurrentPrintUiState.InternalCopyFailed -> {
+                AlertDialog(
+                    onDismissRequest = {
+                        showSuccessDialog = false
+                        viewModel.resetCheckoutState()
+                    },
+                    icon = {
+                        Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD32F2F))
+                    },
+                    title = { Text("Error") },
+                    text = {
+                        Column {
+                            Text("No se pudo imprimir la copia interna: ${(currentPrintState as CurrentPrintUiState.InternalCopyFailed).message}")
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.printInternalCopy()
+                            }
+                        ) {
+                            Text("Reintentar copia")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showSuccessDialog = false
+                                viewModel.resetCheckoutState()
+                            }
+                        ) {
+                            Text("Cancelar")
+                        }
+                    }
+                )
+            }
+            else -> {
+                AlertDialog(
+                    onDismissRequest = { },
+                    icon = {
+                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
+                    },
+                    title = { Text("Orden Confirmada") },
+                    text = {
+                        Column {
+                            Text("La orden fue creada correctamente.")
+                            if (currentPrintState is CurrentPrintUiState.Printing) {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Imprimiendo ticket del cliente...", color = Color.Gray)
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { },
+                            enabled = false
+                        ) {
+                            Text("Imprimiendo...")
+                        }
+                    }
+                )
+            }
+        }
     }
 
     if (showCheckoutDialog && stateSuccess != null) {
@@ -488,15 +688,7 @@ fun PosScreen() {
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
-            // Using printJobs collected from viewModel
-            if (printJobs.isNotEmpty()) {
-                PrintJobsCard(
-                    jobs = printJobs,
-                    onRetry = viewModel::retryPrintJob,
-                    onReprint = viewModel::reprintJob
-                )
-            }
+
         }
     }
 
@@ -1205,62 +1397,6 @@ fun CartItemRow(
                         )
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun PrintJobsCard(
-    jobs: List<PrintJobUiModel>,
-    onRetry: (String) -> Unit,
-    onReprint: (String) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Estado de Impresión", style = MaterialTheme.typography.titleMedium)
-            Spacer(modifier = Modifier.height(8.dp))
-            jobs.forEach { job ->
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Orden #${job.orderId}", style = MaterialTheme.typography.bodyMedium)
-                        when (job.status) {
-                            PrintJobStatus.FAILED -> {
-                                Text("Error: ${job.lastError}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                            }
-                            PrintJobStatus.INTERRUPTED -> {
-                                Text("Interrumpido", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                            }
-                            PrintJobStatus.PENDING -> {
-                                Text("Pendiente...", style = MaterialTheme.typography.bodySmall)
-                            }
-                            PrintJobStatus.PRINTING -> {
-                                Text("Imprimiendo...", style = MaterialTheme.typography.bodySmall)
-                            }
-                            PrintJobStatus.PRINTED -> {
-                                Text("Impreso", color = Color(0xFF4CAF50), style = MaterialTheme.typography.bodySmall)
-                                if (job.lastReprintStatus == PrintAttemptStatus.FAILED) {
-                                    Text("Última reimpresión falló: ${job.lastReprintError ?: "Desconocido"}", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                                } else if (job.lastReprintStatus == PrintAttemptStatus.INTERRUPTED) {
-                                    Text("La última reimpresión fue interrumpida y no se puede confirmar si salió.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                                }
-                            }
-                        }
-                    }
-                    if (job.status == PrintJobStatus.FAILED || job.status == PrintJobStatus.INTERRUPTED) {
-                        Button(onClick = { onRetry(job.jobId) }) { Text("Reintentar") }
-                    } else if (job.status == PrintJobStatus.PRINTED) {
-                        OutlinedButton(onClick = { onReprint(job.jobId) }) { Text("Reimprimir") }
-                    }
-                }
-                HorizontalDivider()
             }
         }
     }

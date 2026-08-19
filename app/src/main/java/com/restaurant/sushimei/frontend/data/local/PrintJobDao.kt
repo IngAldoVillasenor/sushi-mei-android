@@ -26,6 +26,8 @@ interface PrintJobDao {
 
     @Query("SELECT * FROM print_jobs ORDER BY createdAt DESC")
     fun observeAllJobs(): Flow<List<PrintJobEntity>>
+    @Query("SELECT * FROM print_jobs WHERE id = :id LIMIT 1")
+    fun observeJobById(id: String): Flow<PrintJobEntity?>
     @Query("SELECT * FROM print_attempts ORDER BY startedAt DESC")
     fun observeAllAttempts(): Flow<List<PrintAttemptEntity>>
 
@@ -43,6 +45,9 @@ interface PrintJobDao {
 
     @Query("SELECT * FROM print_attempts WHERE printJobId = :jobId ORDER BY startedAt DESC")
     suspend fun getAttemptsForJob(jobId: String): List<PrintAttemptEntity>
+
+    @Query("SELECT * FROM print_attempts WHERE printJobId = :jobId ORDER BY startedAt DESC")
+    fun observeAttemptsForJob(jobId: String): Flow<List<PrintAttemptEntity>>
 
     @Query("SELECT * FROM print_attempts WHERE id = :id LIMIT 1")
     suspend fun getAttemptById(id: String): PrintAttemptEntity?
@@ -74,6 +79,9 @@ interface PrintJobDao {
             PrintAttemptType.REPRINT -> {
                 if (job.status != PrintJobStatus.PRINTED) return null
             }
+            PrintAttemptType.INTERNAL_COPY -> {
+                if (job.status != PrintJobStatus.PRINTED) return null
+            }
         }
 
         setJobActiveAttempt(jobId, attemptId)
@@ -102,5 +110,46 @@ interface PrintJobDao {
         updateAttemptStatus(attemptId, status, finishedAt, error)
         val attempt = getAttemptById(attemptId) ?: return
         releaseActiveAttempt(attempt.printJobId, attemptId)
+    }
+
+    @Transaction
+    suspend fun finalizeSuccess(attemptId: String, finishedAt: Long) {
+        val attempt = getAttemptById(attemptId) ?: return
+        val job = getJobById(attempt.printJobId) ?: return
+
+        updateAttemptStatus(attemptId, PrintAttemptStatus.SUCCEEDED, finishedAt, null)
+
+        if (attempt.type == PrintAttemptType.ORIGINAL || attempt.type == PrintAttemptType.RETRY) {
+            val printedAt = job.printedAt ?: finishedAt
+            val newJob = job.copy(
+                status = PrintJobStatus.PRINTED,
+                printedAt = printedAt,
+                updatedAt = finishedAt,
+                lastError = null,
+                activeAttemptId = null
+            )
+            updateJob(newJob)
+        } else {
+            releaseActiveAttempt(attempt.printJobId, attemptId)
+        }
+    }
+
+    @Transaction
+    suspend fun finalizeFailure(attemptId: String, finishedAt: Long, error: String?) {
+        val attempt = getAttemptById(attemptId) ?: return
+        val job = getJobById(attempt.printJobId) ?: return
+
+        updateAttemptStatus(attemptId, PrintAttemptStatus.FAILED, finishedAt, error)
+        if (attempt.type == PrintAttemptType.ORIGINAL || attempt.type == PrintAttemptType.RETRY) {
+            val newJob = job.copy(
+                status = PrintJobStatus.FAILED,
+                updatedAt = finishedAt,
+                lastError = error,
+                activeAttemptId = null
+            )
+            updateJob(newJob)
+        } else {
+            releaseActiveAttempt(attempt.printJobId, attemptId)
+        }
     }
 }

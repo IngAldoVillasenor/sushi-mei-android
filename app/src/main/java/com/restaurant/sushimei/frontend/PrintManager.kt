@@ -45,6 +45,12 @@ class PrintManager(
         }
     }
 
+    fun printInternalCopy(jobId: String) {
+        coroutineScope.launch {
+            processPrintJob(jobId, PrintAttemptType.INTERNAL_COPY)
+        }
+    }
+
     fun reprintJob(jobId: String) {
         coroutineScope.launch {
             processPrintJob(jobId, PrintAttemptType.REPRINT)
@@ -69,24 +75,25 @@ class PrintManager(
 
                 // Print
                 val isReprint = attemptType == PrintAttemptType.REPRINT
-                val printed = printService.printOperationalTicket(orderDetail, isReprint)
+                val isInternalCopy = attemptType == PrintAttemptType.INTERNAL_COPY
+                val printed = printService.printOperationalTicket(orderDetail, isReprint, isInternalCopy)
 
-                if (printed) {
-                    printJobRepository.finishAttempt(attempt.id, com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.SUCCEEDED, System.currentTimeMillis(), null)
-                    if (attemptType != PrintAttemptType.REPRINT) {
-                        printJobRepository.markJobPrinted(jobId)
+                try {
+                    if (printed) {
+                        printJobRepository.finalizeSuccess(attempt.id, System.currentTimeMillis())
+                    } else {
+                        printJobRepository.finalizeFailure(attempt.id, System.currentTimeMillis(), "Bluetooth Error / Not Connected")
                     }
-                } else {
-                    printJobRepository.finishAttempt(attempt.id, com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.FAILED, System.currentTimeMillis(), "Bluetooth Error / Not Connected")
-                    if (attemptType != PrintAttemptType.REPRINT) {
-                        printJobRepository.markJobFailed(jobId, "Bluetooth Error / Not Connected")
-                    }
+                } catch (e: Exception) {
+                    // Physical output succeeded/failed, but DB update failed.
+                    // DO NOT rewrite physical state. Atomicity guarantees safe stranded state.
                 }
             } catch (e: Exception) {
                 val errorMsg = e.message ?: "Unknown Error"
-                printJobRepository.finishAttempt(attempt.id, com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.FAILED, System.currentTimeMillis(), errorMsg)
-                if (attemptType != PrintAttemptType.REPRINT) {
-                    printJobRepository.markJobFailed(jobId, errorMsg)
+                try {
+                    printJobRepository.finalizeFailure(attempt.id, System.currentTimeMillis(), errorMsg)
+                } catch (dbEx: Exception) {
+                    // Ignore
                 }
             }
         } catch (e: Exception) {

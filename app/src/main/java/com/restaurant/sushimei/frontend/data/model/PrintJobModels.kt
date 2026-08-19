@@ -11,7 +11,8 @@ enum class PrintJobStatus {
 enum class PrintAttemptType {
     ORIGINAL,
     RETRY,
-    REPRINT
+    REPRINT,
+    INTERNAL_COPY
 }
 
 enum class PrintAttemptStatus {
