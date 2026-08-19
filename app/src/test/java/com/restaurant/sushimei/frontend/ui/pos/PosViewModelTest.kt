@@ -26,6 +26,8 @@ class PosViewModelTest {
     private lateinit var menuRepository: IMenuRepository
     private lateinit var manualPosOrderRepository: IManualPosOrderRepository
     private lateinit var promotionRepository: IPromotionRepository
+    private lateinit var printManager: com.restaurant.sushimei.frontend.PrintManager
+    private lateinit var printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository
     private lateinit var viewModel: PosViewModel
 
     @Before
@@ -34,6 +36,9 @@ class PosViewModelTest {
         menuRepository = mockk()
         manualPosOrderRepository = mockk()
         promotionRepository = mockk()
+        printManager = mockk(relaxed = true)
+        printJobRepository = mockk(relaxed = true)
+        io.mockk.coEvery { printJobRepository.observeAllJobs() } returns kotlinx.coroutines.flow.flowOf(emptyList())
 
         val catalogItemSimple = MenuItem(
             id = 1,
@@ -67,7 +72,7 @@ class PosViewModelTest {
             groups = emptyList()
         )
 
-        viewModel = PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository)
+        viewModel = PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository)
     }
 
     @After

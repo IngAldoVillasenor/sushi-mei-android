@@ -24,15 +24,16 @@ import com.restaurant.sushimei.frontend.data.repository.RoomOrderRepository
  * correspondiente para no perder datos existentes (excepto en dev si es destructiva).
  */
 @androidx.room.Database(
-    entities = [OrderEntity::class, MenuItemEntity::class],
-    version = 4,
-    exportSchema = false
+    entities = [OrderEntity::class, MenuItemEntity::class, PrintJobEntity::class, PrintAttemptEntity::class],
+    version = 6,
+    exportSchema = true
 )
 @androidx.room.TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun orderDao(): OrderDao
     abstract fun menuDao(): MenuDao
+    abstract fun printJobDao(): PrintJobDao
 
     companion object {
         @Volatile
@@ -64,6 +65,54 @@ abstract class AppDatabase : RoomDatabase() {
          * Singleton seguro para multi-hilo (double-checked locking).
          * Usar siempre esta función — nunca instanciar [AppDatabase] directamente.
          */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `print_jobs` (
+                        `id` TEXT NOT NULL,
+                        `requestId` TEXT NOT NULL,
+                        `orderId` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `lastError` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `printedAt` INTEGER,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_print_jobs_orderId` ON `print_jobs` (`orderId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_print_jobs_requestId` ON `print_jobs` (`requestId`)")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `print_attempts` (
+                        `id` TEXT NOT NULL,
+                        `printJobId` TEXT NOT NULL,
+                        `type` TEXT NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `startedAt` INTEGER NOT NULL,
+                        `finishedAt` INTEGER,
+                        `error` TEXT,
+                        PRIMARY KEY(`id`),
+                        FOREIGN KEY(`printJobId`) REFERENCES `print_jobs`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_print_attempts_printJobId` ON `print_attempts` (`printJobId`)")
+                // Legacy partial index creation removed
+            }
+        }
+
+
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE print_jobs ADD COLUMN activeAttemptId TEXT DEFAULT NULL")
+                db.execSQL("DROP INDEX IF EXISTS `index_print_attempts_active`")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -71,7 +120,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "sushimei_db"
                 )
-                    .addMigrations(MIGRATION_1_2)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6)
                     .apply {
                         if (com.restaurant.sushimei.frontend.BuildConfig.DEBUG) {
                             fallbackToDestructiveMigration(dropAllTables = true)
@@ -158,5 +207,37 @@ fun provideManualPosOrderRepository(context: Context): com.restaurant.sushimei.f
         manualPosOrderRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemoteManualPosOrderRepository(
             api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
         ).also { manualPosOrderRepositoryInstance = it }
+    }
+}
+
+private var operationalOrderRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.IOperationalOrderRepository? = null
+
+fun provideOperationalOrderRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.IOperationalOrderRepository {
+    return operationalOrderRepositoryInstance ?: synchronized(AppDatabase::class.java) {
+        operationalOrderRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemoteOperationalOrderRepository(
+            api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
+        ).also { operationalOrderRepositoryInstance = it }
+    }
+}
+
+private var printJobRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository? = null
+
+fun providePrintJobRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository {
+    return printJobRepositoryInstance ?: synchronized(AppDatabase::class.java) {
+        printJobRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RoomPrintJobRepository(
+            dao = AppDatabase.getInstance(context).printJobDao()
+        ).also { printJobRepositoryInstance = it }
+    }
+}
+
+private var printManagerInstance: com.restaurant.sushimei.frontend.PrintManager? = null
+
+fun providePrintManager(context: Context): com.restaurant.sushimei.frontend.PrintManager {
+    return printManagerInstance ?: synchronized(AppDatabase::class.java) {
+        printManagerInstance ?: com.restaurant.sushimei.frontend.PrintManager(
+            printJobRepository = providePrintJobRepository(context),
+            operationalOrderRepository = provideOperationalOrderRepository(context),
+            printService = com.restaurant.sushimei.frontend.PrintService(context.applicationContext)
+        ).also { printManagerInstance = it }
     }
 }
