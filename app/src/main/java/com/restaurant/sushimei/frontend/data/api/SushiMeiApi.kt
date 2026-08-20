@@ -62,6 +62,23 @@ interface SushiMeiApi {
     @GET("/api/v1/orders/active")
     suspend fun getOperationalActiveOrders(): Response<List<OperationalOrderSummaryDto>>
 
+    @GET("/api/v1/orders")
+    suspend fun getHistoricalOrders(
+        @Query("from") from: String? = null,
+        @Query("to") to: String? = null,
+        @Query("source") source: String? = null,
+        @Query("status") status: String? = null,
+        @Query("page") page: Int? = null,
+        @Query("size") size: Int? = null
+    ): Response<HistoricalOrdersPageDto>
+
+
+    @GET("/api/v1/orders/analytics")
+    suspend fun getOperationalAnalytics(
+        @Query("from") from: String,
+        @Query("to") to: String
+    ): Response<HistoricalAnalyticsResponse>
+
     @GET("/api/v1/orders/{id}")
     suspend fun getOperationalOrderDetail(@Path("id") id: Long): Response<OperationalOrderDetailDto>
 

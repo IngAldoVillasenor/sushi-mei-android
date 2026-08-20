@@ -10,8 +10,8 @@ import java.time.Instant
 // ============================================================================
 
 data class ApiErrorDto(
-    val code: String,
-    val message: String
+    val code: String?,
+    val message: String?
 )
 
 // ============================================================================
@@ -419,4 +419,44 @@ data class OperationalOrderLineDto(
     val rewardOrdinal: Int?,
     val sourcePaidLineId: Long?,
     val configuration: List<OrderConfigurationSnapshotDto> = emptyList()
+)
+
+
+data class HistoricalOrderSummaryDto(
+    val id: Long,
+    val externalOrderId: String?,
+    val externalReference: String?,
+    val orderSource: String?,
+    val status: String,
+    val fulfillmentType: String?,
+    val paymentMethod: String?,
+    val pickupName: String?,
+    val total: BigDecimal?,
+    val createdAt: Instant?,
+    val structuredLinesAvailable: Boolean
+)
+
+data class HistoricalOrdersPageDto(
+    val content: List<HistoricalOrderSummaryDto>,
+    val page: Int,
+    val size: Int,
+    val totalElements: Long,
+    val totalPages: Int
+)
+
+
+data class SalesBySourceResponse(
+    val source: String?, // Important: Nullable!
+    val completedOrderCount: Long,
+    val completedRevenue: java.math.BigDecimal
+)
+
+data class HistoricalAnalyticsResponse(
+    val from: String,
+    val to: String,
+    val completedRevenue: java.math.BigDecimal,
+    val completedOrderCount: Long,
+    val averageCompletedTicket: java.math.BigDecimal,
+    val voidedOrderCount: Long,
+    val salesBySource: List<SalesBySourceResponse>
 )

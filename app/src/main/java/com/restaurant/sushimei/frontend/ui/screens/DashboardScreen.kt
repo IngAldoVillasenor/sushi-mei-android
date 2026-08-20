@@ -1,478 +1,749 @@
 package com.restaurant.sushimei.frontend.ui.screens
 
+
+
 import androidx.compose.animation.core.animateFloatAsState
+
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
+
 import androidx.compose.foundation.background
+
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
+
+import androidx.compose.foundation.lazy.LazyColumn
+
+import androidx.compose.foundation.lazy.items
+
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
+
 import androidx.compose.material3.*
+
 import androidx.compose.runtime.*
+
 import androidx.compose.ui.Alignment
+
 import androidx.compose.ui.Modifier
+
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
+
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.DrawScope
+
 import androidx.compose.ui.platform.LocalContext
+
 import androidx.compose.ui.text.font.FontWeight
+
 import androidx.compose.ui.text.style.TextOverflow
+
 import androidx.compose.ui.unit.dp
+
 import androidx.compose.ui.unit.sp
+
 import androidx.lifecycle.viewmodel.compose.viewModel
+
 import com.restaurant.sushimei.frontend.ui.dashboard.DashboardMetrics
+
+import com.restaurant.sushimei.frontend.ui.dashboard.DashboardUiState
+
 import com.restaurant.sushimei.frontend.ui.dashboard.DashboardViewModel
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
-// ─── Paleta del Dashboard ───────────────────────────────────────────────────
-private val ColorPrimary   = Color(0xFF7C4DFF)   // violeta Sushi Mei
-private val ColorAccent    = Color(0xFFFF6D00)   // naranja salmón
-private val ColorSuccess   = Color(0xFF00C853)   // verde despacho
-private val ColorInfo      = Color(0xFF00B0FF)   // azul activas
-private val ColorSurface   = Color(0xFF1E1E2E)   // dark surface
-private val ColorCard      = Color(0xFF2A2A3E)   // card background
+import com.restaurant.sushimei.frontend.ui.dashboard.DateRangeOption
+
+import com.restaurant.sushimei.frontend.data.model.HistoricalOrderSummaryDto
+
+import java.time.format.DateTimeFormatter
+
+import java.time.ZoneId
+
+
+
+private val ColorPrimary   = Color(0xFF7C4DFF)
+
+private val ColorAccent    = Color(0xFFFF6D00)
+
+private val ColorSuccess   = Color(0xFF00C853)
+
+private val ColorInfo      = Color(0xFF00B0FF)
+
+private val ColorError     = Color(0xFFD32F2F)
+
+
 
 @Composable
+
 fun DashboardScreen(
+
     viewModel: DashboardViewModel = run {
+
         val context = LocalContext.current
+
         viewModel(factory = DashboardViewModel.factory(context))
-    }
-) {
-    val metrics by viewModel.metrics.collectAsState()
-    val today   = remember {
-        SimpleDateFormat("EEEE d 'de' MMMM, yyyy", Locale.forLanguageTag("es-MX"))
-            .format(Date())
-            .replaceFirstChar { it.uppercase() }
+
     }
 
-    Column(
+) {
+
+    val uiState by viewModel.uiState.collectAsState()
+
+
+
+    when (val state = uiState) {
+
+        is DashboardUiState.Loading -> {
+
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+                CircularProgressIndicator()
+
+            }
+
+        }
+
+        is DashboardUiState.Error -> {
+
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                    Text("Error al cargar el dashboard", color = MaterialTheme.colorScheme.error)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(state.message)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(onClick = { viewModel.refresh() }) {
+
+                        Text("Reintentar")
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        is DashboardUiState.Content -> {
+
+            DashboardContent(
+
+                state = state,
+
+                onDateRangeSelected = { viewModel.setDateRange(it) },
+
+                onLoadMore = { viewModel.loadMore() },
+
+                onRefresh = { viewModel.refresh() }
+
+            )
+
+        }
+
+    }
+
+}
+
+
+
+@Composable
+
+private fun DashboardContent(
+
+    state: DashboardUiState.Content,
+
+    onDateRangeSelected: (DateRangeOption) -> Unit,
+
+    onLoadMore: () -> Unit,
+
+    onRefresh: () -> Unit
+
+) {
+
+    val metrics = state.metrics
+
+
+
+    LazyColumn(
+
         modifier = Modifier
+
             .fillMaxSize()
+
             .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
+
+            .padding(horizontal = 24.dp),
+
+        contentPadding = PaddingValues(vertical = 24.dp),
+
         verticalArrangement = Arrangement.spacedBy(20.dp)
+
     ) {
-        // ── Header ─────────────────────────────────────────────────────────
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column {
-                Text(
-                    text = "Dashboard",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    text = today,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            if (metrics.ordenesActivas > 0) {
-                Badge(containerColor = ColorAccent) {
-                    Text(
-                        text = "${metrics.ordenesActivas} activas",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelMedium
-                    )
-                }
-            }
-        }
 
-        // ── KPI Cards — fila ────────────────────────────────────────────────
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            KpiCard(
-                modifier    = Modifier.weight(1f),
-                label       = "Total hoy",
-                value       = "$${formatMoney(metrics.totalHoy)}",
-                emoji       = "💰",
-                color       = ColorSuccess
-            )
-            KpiCard(
-                modifier    = Modifier.weight(1f),
-                label       = "Completadas",
-                value       = "${metrics.ordenesCompletadas}",
-                emoji       = "✅",
-                color       = ColorPrimary
-            )
-            KpiCard(
-                modifier    = Modifier.weight(1f),
-                label       = "Activas ahora",
-                value       = "${metrics.ordenesActivas}",
-                emoji       = "🔥",
-                color       = ColorAccent
-            )
-            KpiCard(
-                modifier    = Modifier.weight(1f),
-                label       = "Ticket promedio",
-                value       = "$${formatMoney(metrics.ticketPromedio)}",
-                emoji       = "🧾",
-                color       = ColorInfo
-            )
-        }
+        item {
 
-        // ── Gráfica de barras — órdenes por hora ───────────────────────────
-        HourlyBarChart(
-            ordenesPorHora = metrics.ordenesPorHora,
-            modifier       = Modifier.fillMaxWidth()
-        )
-
-        // ── Fila inferior: Top productos + Estado actual ────────────────────
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            TopProductsCard(
-                topProductos = metrics.topProductos,
-                modifier     = Modifier.weight(1f)
-            )
-            ResumenEstadoCard(
-                completadas = metrics.ordenesCompletadas,
-                activas     = metrics.ordenesActivas,
-                modifier    = Modifier.weight(0.6f)
-            )
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// KPI Card
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun KpiCard(
-    modifier: Modifier,
-    label: String,
-    value: String,
-    emoji: String,
-    color: Color
-) {
-    Card(
-        modifier  = modifier,
-        shape     = RoundedCornerShape(16.dp),
-        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
             Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(color.copy(alpha = 0.15f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(emoji, fontSize = 18.sp)
-                }
-                Text(
-                    text  = label,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Text(
-                text       = value,
-                style      = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.ExtraBold,
-                color      = color
-            )
-        }
-    }
-}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Gráfica de barras — órdenes por hora (Canvas)
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun HourlyBarChart(
-    ordenesPorHora: List<Int>,
-    modifier: Modifier
-) {
-    val maxVal = ordenesPorHora.maxOrNull()?.takeIf { it > 0 } ?: 1
-    // Animamos la altura de cada barra al llegar
-    val animated = ordenesPorHora.map { count ->
-        animateFloatAsState(
-            targetValue = count.toFloat() / maxVal,
-            animationSpec = tween(durationMillis = 700),
-            label = "bar"
-        ).value
-    }
-
-    Card(
-        modifier  = modifier,
-        shape     = RoundedCornerShape(16.dp),
-        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(4.dp)
-    ) {
-        Column(modifier = Modifier.padding(20.dp)) {
-            Text(
-                "Órdenes completadas por hora",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Hoy — ${ordenesPorHora.sum()} en total",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(16.dp))
-
-            val barColor  = ColorPrimary
-            val emptyColor = MaterialTheme.colorScheme.surfaceVariant
-
-            Canvas(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(140.dp)
-            ) {
-                drawHourlyBars(animated, maxVal, barColor, emptyColor)
-            }
-
-            Spacer(Modifier.height(6.dp))
-
-            // Etiquetas de hora cada 3h
-            Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+
+                horizontalArrangement = Arrangement.SpaceBetween,
+
+                verticalAlignment = Alignment.CenterVertically
+
             ) {
-                listOf("0h", "3h", "6h", "9h", "12h", "15h", "18h", "21h").forEach { label ->
-                    Text(label, style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-        }
-    }
-}
 
-private fun DrawScope.drawHourlyBars(
-    normalized: List<Float>,
-    maxVal: Int,
-    barColor: Color,
-    emptyColor: Color
-) {
-    val totalBars  = 24
-    val gap        = 4.dp.toPx()
-    val barWidth   = (size.width - gap * (totalBars - 1)) / totalBars
-    val chartH     = size.height
+                Column {
 
-    normalized.forEachIndexed { i, ratio ->
-        val left    = i * (barWidth + gap)
-        val barH    = chartH * ratio
-        val top     = chartH - barH
-
-        if (ratio > 0f) {
-            drawRoundRect(
-                brush        = Brush.verticalGradient(
-                    colors = listOf(barColor, barColor.copy(alpha = 0.5f)),
-                    startY = top,
-                    endY   = chartH
-                ),
-                topLeft      = Offset(left, top),
-                size         = Size(barWidth, barH),
-                cornerRadius = CornerRadius(4.dp.toPx())
-            )
-        } else {
-            drawRoundRect(
-                color        = emptyColor,
-                topLeft      = Offset(left, chartH - 4.dp.toPx()),
-                size         = Size(barWidth, 4.dp.toPx()),
-                cornerRadius = CornerRadius(2.dp.toPx())
-            )
-        }
-    }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Top Productos
-// ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun TopProductsCard(
-    topProductos: List<Pair<String, Int>>,
-    modifier: Modifier
-) {
-    Card(
-        modifier  = modifier,
-        shape     = RoundedCornerShape(16.dp),
-        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(4.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                "🏆 Top productos hoy",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            if (topProductos.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
                     Text(
-                        "Sin órdenes despachadas aún",
+
+                        text = "Dashboard",
+
+                        style = MaterialTheme.typography.headlineMedium,
+
+                        fontWeight = FontWeight.Bold
+
+                    )
+
+                    Text(
+
+                        text = "Vista de ventas históricas",
+
                         style = MaterialTheme.typography.bodyMedium,
+
                         color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            } else {
-                val maxCount = topProductos.firstOrNull()?.second ?: 1
-                val medals   = listOf("🥇", "🥈", "🥉", "4️⃣", "5️⃣")
-                topProductos.forEachIndexed { idx, (nombre, cantidad) ->
-                    TopProductRow(
-                        medal    = medals.getOrElse(idx) { "${idx + 1}" },
-                        nombre   = nombre,
-                        cantidad = cantidad,
-                        ratio    = cantidad.toFloat() / maxCount
-                    )
-                }
-            }
-        }
-    }
-}
 
-@Composable
-private fun TopProductRow(
-    medal: String,
-    nombre: String,
-    cantidad: Int,
-    ratio: Float
-) {
-    val animRatio by animateFloatAsState(
-        targetValue    = ratio,
-        animationSpec  = tween(600),
-        label          = "product_bar"
-    )
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+                    )
+
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                    if (metrics.activeOrderCount > 0) {
+
+                        Badge(containerColor = ColorAccent) {
+
+                            Text(
+
+                                text = "${metrics.activeOrderCount} activas",
+
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+
+                                style = MaterialTheme.typography.labelMedium
+
+                            )
+
+                        }
+
+                    }
+
+                    Button(onClick = onRefresh, enabled = !state.isRefreshing) {
+
+                        Text("Actualizar")
+
+                    }
+
+                }
+
+            }
+
+        }
+
+
+
+        item {
+
+            DateRangeSelector(state.dateRangeOption, onDateRangeSelected)
+
+        }
+
+
+
+        item {
+
             Row(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.weight(1f)
+
+                modifier = Modifier.fillMaxWidth(),
+
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+
             ) {
-                Text(medal, fontSize = 16.sp)
-                Text(
-                    text     = nombre,
-                    style    = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Total (Completadas)",
+
+                    value = metrics.completedSalesTotal?.let { "$${formatMoney(it)}" } ?: "--",
+
+                    color = ColorSuccess
+
                 )
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Completadas",
+
+                    value = metrics.completedOrderCount?.toString() ?: "--",
+
+                    color = ColorPrimary
+
+                )
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Ticket promedio",
+
+                    value = metrics.averageCompletedTicket?.let { "$${formatMoney(it)}" } ?: "--",
+
+                    color = ColorInfo
+
+                )
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Anuladas",
+
+                    value = metrics.voidedOrderCount?.toString() ?: "--",
+
+                    color = ColorError
+
+                )
+
             }
+
+        }
+
+
+
+        item {
+
+            Row(
+
+                modifier = Modifier.fillMaxWidth(),
+
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+
+            ) {
+
+                SalesBySourceCard(
+
+                    salesBySource = metrics.salesBySource,
+
+                    modifier = Modifier.fillMaxWidth() // Takes full width since we removed ContractGapCard
+
+                )
+
+            }
+
+        }
+
+
+
+        item {
+
             Text(
-                text  = "×$cantidad",
-                style = MaterialTheme.typography.bodyMedium,
+
+                "Órdenes Históricas",
+
+                style = MaterialTheme.typography.titleLarge,
+
                 fontWeight = FontWeight.Bold,
-                color = ColorPrimary
+
+                modifier = Modifier.padding(top = 16.dp)
+
             )
+
         }
-        LinearProgressIndicator(
-            progress       = { animRatio },
-            modifier       = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
-            color          = ColorPrimary,
-            trackColor     = MaterialTheme.colorScheme.surfaceVariant
-        )
+
+
+
+        items(state.orders) { order ->
+
+            HistoricalOrderRow(order)
+
+        }
+
+
+
+        if (state.paginationError != null) {
+
+            item {
+
+                Text(
+
+                    text = "Error al cargar más: ${state.paginationError}",
+
+                    color = MaterialTheme.colorScheme.error,
+
+                    modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth(),
+
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+
+                )
+
+            }
+
+        }
+
+
+
+        if (state.hasMore) {
+
+            item {
+
+                Box(
+
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+
+                    contentAlignment = Alignment.Center
+
+                ) {
+
+                    if (state.isPaginating) {
+
+                        CircularProgressIndicator()
+
+                    } else {
+
+                        OutlinedButton(onClick = onLoadMore) {
+
+                            Text("Cargar más")
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+
     }
+
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Resumen de estado
-// ─────────────────────────────────────────────────────────────────────────────
+
 
 @Composable
-private fun ResumenEstadoCard(
-    completadas: Int,
-    activas: Int,
-    modifier: Modifier
+
+private fun DateRangeSelector(
+
+    selected: DateRangeOption,
+
+    onSelect: (DateRangeOption) -> Unit
+
 ) {
-    Card(
-        modifier  = modifier,
-        shape     = RoundedCornerShape(16.dp),
-        colors    = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(4.dp)
+
+    Row(
+
+        modifier = Modifier.fillMaxWidth(),
+
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+
     ) {
-        Column(
-            modifier = Modifier.padding(20.dp).fillMaxHeight(),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                "Estado actual",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+
+        val options = listOf(
+
+            DateRangeOption.TODAY to "Hoy",
+
+            DateRangeOption.LAST_7_DAYS to "Últimos 7 días",
+
+            DateRangeOption.LAST_30_DAYS to "Últimos 30 días"
+
+        )
+
+        options.forEach { (option, label) ->
+
+            FilterChip(
+
+                selected = selected == option,
+
+                onClick = { onSelect(option) },
+
+                label = { Text(label) }
+
             )
 
-            StatusBubble(
-                count = activas,
-                label = "En proceso",
-                color = ColorAccent
-            )
-            StatusBubble(
-                count = completadas,
-                label = "Despachadas",
-                color = ColorSuccess
-            )
         }
+
     }
+
 }
+
+
 
 @Composable
-private fun StatusBubble(count: Int, label: String, color: Color) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(RoundedCornerShape(50))
-                .background(color.copy(alpha = 0.15f)),
-            contentAlignment = Alignment.Center
+
+private fun KpiCard(
+
+    modifier: Modifier,
+
+    label: String,
+
+    value: String,
+
+    color: Color
+
+) {
+
+    Card(
+
+        modifier = modifier,
+
+        shape = RoundedCornerShape(16.dp),
+
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+
+        elevation = CardDefaults.cardElevation(4.dp)
+
+    ) {
+
+        Column(
+
+            modifier = Modifier.padding(16.dp),
+
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+
         ) {
-            Text(
-                text       = "$count",
-                fontSize   = 28.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color      = color
-            )
+
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = color)
+
         }
-        Spacer(Modifier.height(6.dp))
-        Text(
-            text  = label,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+
     }
+
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Utilidades
-// ─────────────────────────────────────────────────────────────────────────────
+
+
+@Composable
+
+private fun SalesBySourceCard(
+
+    salesBySource: List<Pair<String, java.math.BigDecimal>>?,
+
+    modifier: Modifier
+
+) {
+
+    Card(
+
+        modifier = modifier,
+
+        shape = RoundedCornerShape(16.dp),
+
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+
+        elevation = CardDefaults.cardElevation(4.dp)
+
+    ) {
+
+        Column(
+
+            modifier = Modifier.padding(20.dp),
+
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+
+        ) {
+
+            Text(
+
+                "Ventas por origen",
+
+                style = MaterialTheme.typography.titleMedium,
+
+                fontWeight = FontWeight.Bold
+
+            )
+
+
+
+            if (salesBySource == null) {
+
+                Text(
+
+                    "Métrica no disponible",
+
+                    style = MaterialTheme.typography.bodyMedium,
+
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                )
+
+            } else if (salesBySource.isEmpty()) {
+
+                Text(
+
+                    "Sin órdenes en el periodo",
+
+                    style = MaterialTheme.typography.bodyMedium,
+
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                )
+
+            } else {
+
+                val maxRevenue = salesBySource.firstOrNull()?.second?.toFloat() ?: 1f
+
+                val safeMax = if (maxRevenue <= 0f) 1f else maxRevenue
+
+                salesBySource.forEach { (source, revenue) ->
+
+                    val ratio = (revenue.toFloat() / safeMax).coerceIn(0f, 1f)
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+
+                        Row(
+
+                            modifier = Modifier.fillMaxWidth(),
+
+                            horizontalArrangement = Arrangement.SpaceBetween,
+
+                            verticalAlignment = Alignment.CenterVertically
+
+                        ) {
+
+                            Text(
+
+                                text = source,
+
+                                style = MaterialTheme.typography.bodyMedium,
+
+                                fontWeight = FontWeight.Medium
+
+                            )
+
+                            Text(
+
+                                text = "$${formatMoney(revenue)}",
+
+                                style = MaterialTheme.typography.bodyMedium,
+
+                                fontWeight = FontWeight.Bold,
+
+                                color = ColorPrimary
+
+                            )
+
+                        }
+
+                        LinearProgressIndicator(
+
+                            progress = { ratio },
+
+                            modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
+
+                            color = ColorPrimary,
+
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+
+                        )
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    }
+
+}
+
+
+
+@Composable
+
+private fun HistoricalOrderRow(order: HistoricalOrderSummaryDto) {
+
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm").withZone(ZoneId.of("America/Mexico_City")) }
+
+    val formattedDate = order.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
+
+
+
+    Card(
+
+        modifier = Modifier.fillMaxWidth(),
+
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+
+        elevation = CardDefaults.cardElevation(2.dp)
+
+    ) {
+
+        Row(
+
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+
+            horizontalArrangement = Arrangement.SpaceBetween,
+
+            verticalAlignment = Alignment.CenterVertically
+
+        ) {
+
+            Column(modifier = Modifier.weight(1f)) {
+
+                Text("Orden #${order.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+
+                if (order.externalOrderId != null) {
+
+                    Text("Ref Ext: ${order.externalOrderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(formattedDate, style = MaterialTheme.typography.bodyMedium)
+
+                Text("Origen: ${order.orderSource ?: "N/A"}", style = MaterialTheme.typography.bodySmall)
+
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+
+                Text(
+
+                    text = "$${formatMoney(order.total ?: java.math.BigDecimal.ZERO)}",
+
+                    style = MaterialTheme.typography.titleMedium,
+
+                    fontWeight = FontWeight.Bold,
+
+                    color = if (order.status == "COMPLETED") ColorSuccess else MaterialTheme.colorScheme.onSurface
+
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Badge(containerColor = if (order.status == "COMPLETED") ColorSuccess else if (order.status == "VOIDED") ColorError else ColorPrimary) {
+
+                    Text(order.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+
+                }
+
+            }
+
+        }
+
+    }
+
+}
+
+
 
 private fun formatMoney(value: java.math.BigDecimal): String =
+
     String.format(java.util.Locale.US, "%,.2f", value)
