@@ -235,8 +235,16 @@ internal class ApiErrorInterceptor(
                 response.peekBody(MAX_ERROR_BODY_BYTES).string(),
                 com.restaurant.sushimei.frontend.data.model.ApiErrorDto::class.java
             )
-            errorCode = apiError.code
-            errorMessage = apiError.message
+            if (apiError != null) {
+                val parsedCode = apiError.code
+                if (parsedCode != null && parsedCode.isNotBlank()) {
+                    errorCode = parsedCode
+                }
+                val parsedMessage = apiError.message
+                if (parsedMessage != null && parsedMessage.isNotBlank()) {
+                    errorMessage = parsedMessage
+                }
+            }
         } catch (_: Exception) {
             // The status, endpoint and requestId still make an unparseable response diagnosable.
         }
