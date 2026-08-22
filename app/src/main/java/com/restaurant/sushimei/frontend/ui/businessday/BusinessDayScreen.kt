@@ -64,9 +64,9 @@ fun BusinessDayScreen(
     val isPrinting by viewModel.isPrinting.collectAsState()
     val requireBluetoothPermission = rememberBluetoothPermissionGateway()
     var inputAmount by remember { mutableStateOf("") }
-    
+
     val snackbarHostState = remember { SnackbarHostState() }
-    
+
     LaunchedEffect(printMessage) {
         printMessage?.let {
             snackbarHostState.showSnackbar(it)
@@ -101,7 +101,7 @@ fun BusinessDayScreen(
             Spacer(modifier = Modifier.width(16.dp))
             Text("Gestión de Día", style = MaterialTheme.typography.headlineMedium)
         }
-        
+
         Spacer(modifier = Modifier.height(24.dp))
 
         when (val currState = state) {
@@ -131,9 +131,9 @@ fun BusinessDayScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { 
+                            onClick = {
                                 val amount = inputAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                viewModel.openBusinessDay(amount) 
+                                viewModel.openBusinessDay(amount)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = inputAmount.isNotBlank() && (inputAmount.toBigDecimalOrNull() != null)
@@ -149,19 +149,19 @@ fun BusinessDayScreen(
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text("DÍA ABIERTO", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.primary)
                         Spacer(modifier = Modifier.height(16.dp))
-                        
+
                         Text("Caja inicial", style = MaterialTheme.typography.labelMedium)
                         Text("${formatCurrency(day.openingCashAmount)}", style = MaterialTheme.typography.bodyLarge)
                         Spacer(modifier = Modifier.height(8.dp))
-                        
+
                         Text("Apertura", style = MaterialTheme.typography.labelMedium)
                         Text(formatInstant(day.openedAt), style = MaterialTheme.typography.bodyLarge)
                         Spacer(modifier = Modifier.height(16.dp))
-                        
-                        Text("Los totales de ventas y la conciliación se calcularán al cerrar el día.", 
-                             style = MaterialTheme.typography.bodyMedium, 
-                             color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        
+
+                        Text("Los totales de ventas y la conciliación se calcularán al cerrar el día.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+
                         Spacer(modifier = Modifier.height(24.dp))
                         OutlinedTextField(
                             value = inputAmount,
@@ -172,9 +172,9 @@ fun BusinessDayScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
-                            onClick = { 
+                            onClick = {
                                 val amount = inputAmount.toBigDecimalOrNull() ?: BigDecimal.ZERO
-                                viewModel.closeBusinessDay(amount) 
+                                viewModel.closeBusinessDay(amount)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
@@ -194,15 +194,15 @@ fun BusinessDayScreen(
                         Text("Fecha: ${formatDate(day.businessDate)}")
                         Text("Apertura: ${formatInstant(day.openedAt)}")
                         Text("Cierre: ${formatInstant(day.closedAt)}")
-                        
+
                         Divider(modifier = Modifier.padding(vertical = 8.dp))
-                        
+
                         Text("Fondo Inicial: ${formatCurrency(day.openingCashAmount)}")
                         Text("Ventas Efectivo: ${formatCurrency(day.cashSalesAmount)}")
                         Text("Efectivo Esperado: ${formatCurrency(day.expectedClosingCashAmount)}")
                         Text("Efectivo Contado: ${formatCurrency(day.actualClosingCashAmount)}")
                         Text("Diferencia: ${formatCurrency(day.cashDifferenceAmount)}")
-                        
+
                         Spacer(modifier = Modifier.height(16.dp))
                         Button(
                             onClick = { requireBluetoothPermission { viewModel.printClosingTicket(day) } },
@@ -222,7 +222,7 @@ fun BusinessDayScreen(
                         }
                     }
                 }
-                
+
                 if (showReopenDialog) {
                     AlertDialog(
                         onDismissRequest = { showReopenDialog = false },
@@ -230,9 +230,9 @@ fun BusinessDayScreen(
                         text = { Text("El día ya fue cerrado. Si lo reabres, podrán registrarse nuevas ventas y será necesario realizar un nuevo cierre.\n\nEl cierre anterior se conservará en el historial.") },
                         confirmButton = {
                             Button(
-                                onClick = { 
+                                onClick = {
                                     showReopenDialog = false
-                                    viewModel.reopenBusinessDay() 
+                                    viewModel.reopenBusinessDay()
                                 },
                                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                             ) {
