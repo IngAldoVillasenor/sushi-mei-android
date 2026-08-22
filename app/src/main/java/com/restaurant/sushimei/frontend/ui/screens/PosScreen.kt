@@ -1,5 +1,8 @@
 package com.restaurant.sushimei.frontend.ui.screens
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+import com.restaurant.sushimei.frontend.ui.util.rememberBluetoothPermissionGateway
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import com.restaurant.sushimei.frontend.data.model.PrintJobUiModel
@@ -599,7 +602,7 @@ fun PosScreen() {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "$${String.format(Locale.US, "%.2f", pricingPreview.subtotal)}",
+                            text = "${formatCurrency(pricingPreview.subtotal)}",
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -619,7 +622,7 @@ fun PosScreen() {
                                 color = Color(0xFFC62828)
                             )
                             Text(
-                                text = "$${String.format(Locale.US, "%.2f", adjustment.amount)}",
+                                text = "${formatCurrency(adjustment.amount)}",
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFC62828)
@@ -656,7 +659,7 @@ fun PosScreen() {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "$${String.format(Locale.US, "%.2f", pricingPreview.total)}",
+                            text = "${formatCurrency(pricingPreview.total)}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary
@@ -891,9 +894,11 @@ private fun ActivePromotionsSection(
                                 text = promotion.name,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+
+                                  minLines = 3,
+                                  maxLines = 3,
+                                  overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                              )
                             Text(
                                 text = promotionBenefitLabel(promotion),
                                 style = MaterialTheme.typography.bodyMedium,
@@ -959,7 +964,7 @@ private fun PromotionItemPickerDialog(
                                             )
                                         }
                                     }
-                                    Text("$${String.format(Locale.US, "%.2f", item.precio)}")
+                                    Text("${formatCurrency(item.precio)}")
                                 }
                             }
                         }
@@ -976,7 +981,7 @@ private fun PromotionItemPickerDialog(
 
 private fun promotionBenefitLabel(promotion: Promotion): String {
     return when (val benefit = promotion.benefit) {
-        is PromotionBenefit.FixedUnitPrice -> "$${benefit.amount} por roll"
+        is PromotionBenefit.FixedUnitPrice -> "${formatCurrency(benefit.amount)} por roll"
         is PromotionBenefit.BuyXGetY ->
             "Compra ${benefit.buyQuantity}, recibe ${benefit.rewardQuantity} gratis"
     }
@@ -1002,6 +1007,7 @@ fun CheckoutDialog(
     uiState: PosUiState.Success,
     onDismiss: () -> Unit
 ) {
+    val requireBluetoothPermission = rememberBluetoothPermissionGateway()
     val total = if (uiState.quoteState is QuoteState.Valid) uiState.quoteState.preview.total else BigDecimal.ZERO
 
     // Derived values directly from UI state
@@ -1015,7 +1021,7 @@ fun CheckoutDialog(
     // Client side validation matching ViewModel
     val isPickupValid = type != FulfillmentType.PICKUP || (pickup.isNotBlank() && pickup.trim().length in 2..120)
     val isDeliveryValid = type != FulfillmentType.DELIVERY || (address.isNotBlank() && address.trim().length in 5..500)
-    val isCashValid = method != PaymentMethod.CASH || (uiState.cashDenomination != null && uiState.cashDenomination > BigDecimal.ZERO)
+    val isCashValid = method != PaymentMethod.CASH || (uiState.cashDenomination != null && uiState.cashDenomination >= total)
     val isCardValid = method != PaymentMethod.CARD || type == FulfillmentType.PICKUP
     val isValid = isPickupValid && isDeliveryValid && isCashValid && isCardValid
 
@@ -1105,16 +1111,34 @@ fun CheckoutDialog(
                             val bd = it.toBigDecimalOrNull()
                             viewModel.updateCashDenomination(bd)
                         },
-                        label = { Text("Denominación (Efectivo a pagar)") },
+                        label = { Text("Efectivo recibido") },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         enabled = !isLoading
                     )
+                    val cashReceived = uiState.cashDenomination ?: java.math.BigDecimal.ZERO
+                    if (cashReceived < total) {
+                        Text(
+                            text = "Efectivo insuficiente",
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    } else {
+                        val changeDue = cashReceived.subtract(total)
+                        Text(
+                            text = "Cambio: ${formatCurrency(changeDue)}",
+                            color = MaterialTheme.colorScheme.primary,
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(16.dp))
                 Text(
-                    text = "Total Estimado: $${String.format(Locale.US, "%.2f", total)}",
+                    text = "Total a Pagar: ${formatCurrency(total)}",
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -1122,7 +1146,7 @@ fun CheckoutDialog(
         },
         confirmButton = {
             Button(
-                onClick = { viewModel.cobrarOrden() },
+                onClick = { requireBluetoothPermission { viewModel.cobrarOrden() } },
                 enabled = isValid && !isLoading
             ) {
                 if (isLoading) {
@@ -1151,13 +1175,13 @@ fun MenuItemCard(
 ) {
     Card(
         onClick = onAddToCart,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().height(170.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
-        Box(modifier = Modifier.padding(12.dp)) {
+        Box(modifier = Modifier.padding(12.dp).fillMaxSize()) {
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1176,7 +1200,7 @@ fun MenuItemCard(
                         val priceText = if (menuItem.requiresConfiguration && menuItem.pricingMode == com.restaurant.sushimei.frontend.data.model.ItemPricingMode.SELECTION_SUM) {
                             "Según selección"
                         } else {
-                            "$${String.format(Locale.US, "%.2f", menuItem.precio)}"
+                            "${formatCurrency(menuItem.precio)}"
                         }
                         Text(
                             text = priceText,
@@ -1194,8 +1218,9 @@ fun MenuItemCard(
                     text = menuItem.nombre,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+                    minLines = 3,
+                    maxLines = 3,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
 
                 Text(
@@ -1203,8 +1228,7 @@ fun MenuItemCard(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.height(36.dp)
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                 )
             }
 
@@ -1258,13 +1282,12 @@ fun CartItemRow(
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+
                 )
 
                 if (configuredProduct.promotionSelection == null) {
                     Text(
-                        text = "$${String.format(Locale.US, "%.2f", configuredProduct.total)}",
+                        text = "${formatCurrency(configuredProduct.total)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -1272,7 +1295,7 @@ fun CartItemRow(
                 } else {
                     val displayTotal = quotedLine?.lineTotal ?: configuredProduct.total
                     Text(
-                        text = "$${String.format(Locale.US, "%.2f", displayTotal)}",
+                        text = "${formatCurrency(displayTotal)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -1304,11 +1327,10 @@ fun CartItemRow(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary,
                             modifier = Modifier.weight(1f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+
                         )
                         Text(
-                            text = "$${String.format(Locale.US, "%.2f", reward.chargedBaseUnitPrice)}",
+                            text = "${formatCurrency(reward.chargedBaseUnitPrice)}",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
                         )
@@ -1326,7 +1348,7 @@ fun CartItemRow(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Text(
-                                text = "+$${String.format(Locale.US, "%.2f", reward.configurationAdjustmentTotal)}",
+                                text = "+${formatCurrency(reward.configurationAdjustmentTotal)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -1345,7 +1367,7 @@ fun CartItemRow(
                 val promotionSelection = configuredProduct.promotionSelection
                 Text(
                     text = if (promotionSelection == null) {
-                        "$${String.format(Locale.US, "%.2f", configuredProduct.unitTotal)} c/u"
+                        "${formatCurrency(configuredProduct.unitTotal)} c/u"
                     } else {
                         "Compra ${configuredProduct.quantity} · ${promotionSelection.rewardConfigurations.size} gratis"
                     },

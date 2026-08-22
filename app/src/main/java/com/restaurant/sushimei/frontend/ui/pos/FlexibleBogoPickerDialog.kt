@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.pos
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -240,7 +242,7 @@ private fun BogoEligibleItemRow(
                 )
                 if (item.precio.compareTo(java.math.BigDecimal.ZERO) > 0) {
                     Text(
-                        text = "$${String.format(Locale.US, "%.2f", item.precio)}",
+                        text = "${formatCurrency(item.precio)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

@@ -208,4 +208,21 @@ interface SushiMeiApi {
     suspend fun quotePromotions(
         @Body request: QuoteRequestDto
     ): Response<QuoteResponseDto>
+
+
+    // ============================================================================
+    // BUSINESS DAY (Phase 8F)
+    // ============================================================================
+
+    @GET("/api/v1/business-days/current")
+    suspend fun getCurrentBusinessDay(): Response<BusinessDayResponse>
+
+    @POST("/api/v1/business-days/open")
+    suspend fun openBusinessDay(@Body request: OpenBusinessDayRequest): Response<BusinessDayResponse>
+
+    @POST("/api/v1/business-days/current/close")
+    suspend fun closeBusinessDay(@Body request: CloseBusinessDayRequest): Response<BusinessDayResponse>
+
+    @POST("/api/v1/business-days/current/reopen")
+    suspend fun reopenCurrentBusinessDay(): Response<BusinessDayResponse>
 }

@@ -15,7 +15,7 @@ interface IPrintJobRepository {
     suspend fun getJobById(id: String): PrintJobEntity?
     suspend fun getPendingJobs(): List<PrintJobEntity>
     suspend fun getAttemptsForJob(jobId: String): List<PrintAttemptEntity>
-    suspend fun enqueuePrint(orderId: Long, requestId: String): PrintJobEntity
+    suspend fun enqueuePrint(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long, requestId: String, snapshotPayload: String? = null): PrintJobEntity
     suspend fun markJobPrinted(jobId: String)
     suspend fun markJobFailed(jobId: String, error: String?)
     suspend fun markJobInterrupted(jobId: String)

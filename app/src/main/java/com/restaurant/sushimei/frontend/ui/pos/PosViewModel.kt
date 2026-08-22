@@ -95,10 +95,10 @@ class PosViewModel(
                 if (job == null) return@combine CurrentPrintUiState.Idle
 
                 if (job.status == PrintJobStatus.PENDING || job.status == PrintJobStatus.PRINTING) {
-                    return@combine CurrentPrintUiState.Printing(job.id, job.orderId)
+                    return@combine CurrentPrintUiState.Printing(job.id, job.documentId)
                 }
                 if (job.status == PrintJobStatus.FAILED || job.status == PrintJobStatus.INTERRUPTED) {
-                    return@combine CurrentPrintUiState.Failed(job.id, job.orderId, job.lastError ?: "Error desconocido")
+                    return@combine CurrentPrintUiState.Failed(job.id, job.documentId, job.lastError ?: "Error desconocido")
                 }
 
                 val internalCopyAttempts = attempts.filter { it.type == com.restaurant.sushimei.frontend.data.model.PrintAttemptType.INTERNAL_COPY }
@@ -108,8 +108,8 @@ class PosViewModel(
 
                 val latestInternalCopy = internalCopyAttempts.first()
                 when (latestInternalCopy.status) {
-                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.PRINTING -> CurrentPrintUiState.InternalCopyPrinting(job.id, job.orderId)
-                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.FAILED, com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.INTERRUPTED -> CurrentPrintUiState.InternalCopyFailed(job.id, job.orderId, latestInternalCopy.error ?: "Error desconocido")
+                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.PRINTING -> CurrentPrintUiState.InternalCopyPrinting(job.id, job.documentId)
+                    com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.FAILED, com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.INTERRUPTED -> CurrentPrintUiState.InternalCopyFailed(job.id, job.documentId, latestInternalCopy.error ?: "Error desconocido")
                     com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.SUCCEEDED -> CurrentPrintUiState.InternalCopyPrinted
                 }
             }
@@ -690,7 +690,8 @@ class PosViewModel(
         payment: PaymentMethod,
         pickup: String?,
         address: String?,
-        denomination: BigDecimal?
+        denomination: BigDecimal?,
+        total: BigDecimal
     ): String? {
         if (fulfillment == FulfillmentType.PICKUP) {
             val trimmedName = pickup?.trim()
@@ -710,7 +711,7 @@ class PosViewModel(
             }
 
             if (payment == PaymentMethod.CASH) {
-                if (denomination == null || denomination <= BigDecimal.ZERO) {
+                if (denomination == null || denomination < total) {
                     return "Debes ingresar una denominación válida mayor a cero."
                 }
             }
@@ -738,7 +739,8 @@ class PosViewModel(
 
         val denomination = _cashDenomination.value
 
-        val validationError = validateCheckout(fulfillment, payment, pickup, address, denomination)
+        val total = getTotal()
+        val validationError = validateCheckout(fulfillment, payment, pickup, address, denomination, total)
 
         if (validationError != null) {
             _checkoutState.value = CheckoutState.Error(validationError)
@@ -770,7 +772,7 @@ class PosViewModel(
 
                 if (response.result == OrderResult.CREATED || response.result == OrderResult.ALREADY_CREATED) {
                     try {
-                        val job = printManager.enqueuePrintJob(response.id, response.requestId)
+                        val job = printManager.enqueuePrintJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, response.id, response.requestId)
                         _currentPrintJobId.value = job.id
                         clearCart()
                         invalidateRequestId()
@@ -824,6 +826,8 @@ class PosViewModel(
                 "La promoción cambió o dejó de estar disponible. Revisa la orden e intenta de nuevo."
 
             "ORDER_FORBIDDEN_OPERATION", "AUTH_FORBIDDEN" -> "No tienes permisos para realizar esta operación."
+            "BUSINESS_DAY_CLOSED" -> "El día operativo ya está cerrado. No se pueden procesar más órdenes."
+            "BUSINESS_DAY_HAS_ACTIVE_ORDERS" -> "No se puede cerrar la caja mientras existan órdenes activas."
 
             else -> "Error del servidor. La orden no pudo confirmarse. Intenta de nuevo."
         }
@@ -865,7 +869,7 @@ class PosViewModel(
     fun retryPrintRegistration(orderId: Long, requestId: String, response: ManualPosOrderResponse) {
         viewModelScope.launch {
             try {
-                val job = printManager.enqueuePrintJob(orderId, requestId)
+                val job = printManager.enqueuePrintJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, orderId, requestId)
                 _currentPrintJobId.value = job.id
                 _checkoutState.value = CheckoutState.Success(response)
             } catch (e: Exception) {

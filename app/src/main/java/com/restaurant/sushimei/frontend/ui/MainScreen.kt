@@ -41,6 +41,7 @@ fun MainScreen(authRepository: AuthRepository, user: AuthenticatedUserDto) {
             Screen.Account -> true
             Screen.ChangePassword -> false
             Screen.Sessions -> false
+            Screen.BusinessDay -> false
         }
     }
 
@@ -103,7 +104,13 @@ fun MainScreen(authRepository: AuthRepository, user: AuthenticatedUserDto) {
                         authRepository = authRepository,
                         user = user,
                         onNavigateToChangePassword = { navController.navigate(Screen.ChangePassword.route) },
-                        onNavigateToSessions = { navController.navigate(Screen.Sessions.route) }
+                        onNavigateToSessions = { navController.navigate(Screen.Sessions.route) },
+                        onNavigateToBusinessDay = { navController.navigate(Screen.BusinessDay.route) }
+                    )
+                }
+                composable(Screen.BusinessDay.route) {
+                    com.restaurant.sushimei.frontend.ui.businessday.BusinessDayScreen(
+                        onBack = { navController.popBackStack() }
                     )
                 }
                 composable(Screen.ChangePassword.route) {
