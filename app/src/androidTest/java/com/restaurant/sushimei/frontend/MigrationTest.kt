@@ -37,7 +37,7 @@ class MigrationTest {
             VALUES ('job-123', 'req-123', 99, 'PENDING', NULL, 1000, 1000, NULL, 'att-456')
             """.trimIndent()
         )
-        
+
         // Insert a print attempt related to this job
         db.execSQL(
             """
@@ -45,7 +45,7 @@ class MigrationTest {
             VALUES ('att-456', 'job-123', 'PRIMARY', 'PRINTING', 1000, NULL, NULL)
             """.trimIndent()
         )
-        
+
         db.close()
 
         // Run migration to v7
@@ -54,7 +54,7 @@ class MigrationTest {
         // Verify the migrated job
         val cursor = db.query("SELECT * FROM print_jobs WHERE id = 'job-123'")
         assertTrue(cursor.moveToFirst())
-        
+
         assertEquals("job-123", cursor.getString(cursor.getColumnIndexOrThrow("id")))
         assertEquals("req-123", cursor.getString(cursor.getColumnIndexOrThrow("requestId")))
         assertEquals("ORDER", cursor.getString(cursor.getColumnIndexOrThrow("documentType")))
@@ -62,7 +62,7 @@ class MigrationTest {
         assertTrue(cursor.isNull(cursor.getColumnIndexOrThrow("snapshotPayload")))
         assertEquals("PENDING", cursor.getString(cursor.getColumnIndexOrThrow("status")))
         assertEquals("att-456", cursor.getString(cursor.getColumnIndexOrThrow("activeAttemptId")))
-        
+
         cursor.close()
 
         // Verify the foreign key relationship still holds for print_attempts
@@ -78,7 +78,7 @@ class MigrationTest {
             VALUES ('job-999', 'req-close-1', 'BUSINESS_DAY_CLOSE', 42, '{"fake":"payload"}', 'PENDING', 2000, 2000)
             """.trimIndent()
         )
-        
+
         val closeCursor = db.query("SELECT * FROM print_jobs WHERE id = 'job-999'")
         assertTrue(closeCursor.moveToFirst())
         assertEquals("BUSINESS_DAY_CLOSE", closeCursor.getString(closeCursor.getColumnIndexOrThrow("documentType")))

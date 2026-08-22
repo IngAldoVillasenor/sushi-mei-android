@@ -28,17 +28,17 @@ class BusinessDayViewModel(
 
     private val _state = MutableStateFlow<BusinessDayState>(BusinessDayState.Loading)
     val state: StateFlow<BusinessDayState> = _state.asStateFlow()
-    
+
     private val _printMessage = MutableStateFlow<String?>(null)
     val printMessage: StateFlow<String?> = _printMessage.asStateFlow()
-    
+
     private val _isPrinting = MutableStateFlow(false)
     val isPrinting: StateFlow<Boolean> = _isPrinting.asStateFlow()
-    
-    
+
+
     private val _reopenMessage = MutableStateFlow<String?>(null)
     val reopenMessage: StateFlow<String?> = _reopenMessage.asStateFlow()
-    
+
     fun clearReopenMessage() {
         _reopenMessage.value = null
     }
@@ -46,7 +46,7 @@ class BusinessDayViewModel(
     fun reopenBusinessDay() {
         val currentState = _state.value
         if (currentState !is BusinessDayState.Closed) return
-        
+
         viewModelScope.launch {
             _state.value = BusinessDayState.Loading
             val result = repository.reopenCurrentBusinessDay()
@@ -149,13 +149,13 @@ class BusinessDayViewModel(
                     requestId = requestId,
                     snapshotPayload = snapshotPayload
                 )
-                
+
                 _printMessage.value = "Cierre agregado a la cola de impresión"
 
                 // Observe the print job's final state
                 printJobRepository.observeJobById(job.id).collect { updatedJob ->
                     if (updatedJob == null) return@collect
-                    
+
                     when (updatedJob.status) {
                         com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PRINTED -> {
                             _printMessage.value = "Cierre impreso correctamente"
@@ -172,7 +172,7 @@ class BusinessDayViewModel(
                         }
                     }
                 }
-                
+
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // Done observing
             } catch (e: Exception) {

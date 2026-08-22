@@ -44,7 +44,7 @@ class BluetoothPermissionGatewayTest {
         }
 
         composeTestRule.onNodeWithText("Imprimir cierre").performClick()
-        
+
         assertTrue(printCalled)
         composeTestRule.onNodeWithText("Permiso Requerido").assertDoesNotExist()
     }
@@ -84,7 +84,7 @@ class BluetoothPermissionGatewayTest {
         }
 
         composeTestRule.onNodeWithText("Imprimir cierre").performClick()
-        
+
         assertTrue(launcherCalled)
         assertTrue(printCalled)
         composeTestRule.onNodeWithText("Permiso Requerido").assertDoesNotExist()
@@ -125,7 +125,7 @@ class BluetoothPermissionGatewayTest {
         }
 
         composeTestRule.onNodeWithText("Imprimir cierre").performClick()
-        
+
         assertTrue(launcherCalled)
         assertFalse(printCalled)
         composeTestRule.onNodeWithText("Permiso Requerido").assertExists()

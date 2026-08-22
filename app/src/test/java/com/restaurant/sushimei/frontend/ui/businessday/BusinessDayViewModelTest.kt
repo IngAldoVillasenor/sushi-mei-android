@@ -114,19 +114,19 @@ class BusinessDayViewModelTest {
     fun `print error reaches UI state`() = runTest(testDispatcher) {
         val day = createDay(BusinessDayStatus.CLOSED)
         coEvery { repository.getCurrentBusinessDay() } returns Result.success(day)
-        
+
         val jobFlow = MutableSharedFlow<PrintJobEntity>()
         every { printJobRepository.observeJobById("job-42") } returns jobFlow
-        
+
         val mockedJob = createJob(PrintJobStatus.PENDING)
         coEvery { printManager.enqueuePrintJob(any(), any(), any(), any()) } returns mockedJob
-        
+
         viewModel = BusinessDayViewModel(repository, printManager, printJobRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
         viewModel.printClosingTicket(day)
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         assertEquals("Cierre agregado a la cola de impresión", viewModel.printMessage.value)
 
         // Now simulate failed state
@@ -141,13 +141,13 @@ class BusinessDayViewModelTest {
     fun `print success reaches UI state`() = runTest(testDispatcher) {
         val day = createDay(BusinessDayStatus.CLOSED)
         coEvery { repository.getCurrentBusinessDay() } returns Result.success(day)
-        
+
         val jobFlow = MutableSharedFlow<PrintJobEntity>()
         every { printJobRepository.observeJobById("job-42") } returns jobFlow
-        
+
         val mockedJob = createJob(PrintJobStatus.PENDING)
         coEvery { printManager.enqueuePrintJob(any(), any(), any(), any()) } returns mockedJob
-        
+
         viewModel = BusinessDayViewModel(repository, printManager, printJobRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -168,12 +168,12 @@ class BusinessDayViewModelTest {
     fun `BUSINESS_DAY_HAS_ACTIVE_ORDERS produces useful UI message`() = runTest(testDispatcher) {
         val day = createDay(BusinessDayStatus.OPEN)
         coEvery { repository.getCurrentBusinessDay() } returns Result.success(day)
-        
+
         val exceptionMessage = "No se puede cerrar la caja mientras existan órdenes activas."
         coEvery { repository.closeBusinessDay(any()) } returns Result.failure(
             com.restaurant.sushimei.frontend.data.api.ApiException("BUSINESS_DAY_HAS_ACTIVE_ORDERS", exceptionMessage, 400, exceptionMessage)
         )
-        
+
         viewModel = BusinessDayViewModel(repository, printManager, printJobRepository)
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -188,35 +188,35 @@ class BusinessDayViewModelTest {
     fun `reopenBusinessDay successful transitions to Open`() = runTest(testDispatcher) {
         val closedDay = createDay(BusinessDayStatus.CLOSED)
         coEvery { repository.getCurrentBusinessDay() } returns Result.success(closedDay)
-        
+
         viewModel = BusinessDayViewModel(repository, printManager, printJobRepository)
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         val reopenedDay = createDay(BusinessDayStatus.OPEN)
         coEvery { repository.reopenCurrentBusinessDay() } returns Result.success(reopenedDay)
-        
+
         viewModel.reopenBusinessDay()
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         val state = viewModel.state.value as BusinessDayState.Open
         assertEquals(reopenedDay, state.day)
         assertEquals("Día reabierto correctamente", viewModel.reopenMessage.value)
     }
-    
+
     @Test
     fun `reopenBusinessDay BUSINESS_DAY_REOPEN_NOT_ALLOWED shows useful message`() = runTest(testDispatcher) {
         val closedDay = createDay(BusinessDayStatus.CLOSED)
         coEvery { repository.getCurrentBusinessDay() } returns Result.success(closedDay)
-        
+
         viewModel = BusinessDayViewModel(repository, printManager, printJobRepository)
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         val exception = com.restaurant.sushimei.frontend.data.api.ApiException("BUSINESS_DAY_REOPEN_NOT_ALLOWED", "Reopen not allowed")
         coEvery { repository.reopenCurrentBusinessDay() } returns Result.failure(exception)
-        
+
         viewModel.reopenBusinessDay()
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         val state = viewModel.state.value as BusinessDayState.Closed
         assertEquals(closedDay, state.day)
         assertEquals("No está permitido reabrir el día.", viewModel.reopenMessage.value)
@@ -226,16 +226,16 @@ class BusinessDayViewModelTest {
     fun `reopenBusinessDay BUSINESS_DAY_NOT_CLOSED shows useful message`() = runTest(testDispatcher) {
         val closedDay = createDay(BusinessDayStatus.CLOSED)
         coEvery { repository.getCurrentBusinessDay() } returns Result.success(closedDay)
-        
+
         viewModel = BusinessDayViewModel(repository, printManager, printJobRepository)
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         val exception = com.restaurant.sushimei.frontend.data.api.ApiException("BUSINESS_DAY_NOT_CLOSED", "Not closed")
         coEvery { repository.reopenCurrentBusinessDay() } returns Result.failure(exception)
-        
+
         viewModel.reopenBusinessDay()
         testDispatcher.scheduler.advanceUntilIdle()
-        
+
         val state = viewModel.state.value as BusinessDayState.Closed
         assertEquals(closedDay, state.day)
         assertEquals("El día no está cerrado.", viewModel.reopenMessage.value)
