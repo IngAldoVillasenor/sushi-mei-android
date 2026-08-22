@@ -4,13 +4,12 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
-    <!-- Permisos clásicos de Bluetooth -->
-    <uses-permission android:name="android.permission.BLUETOOTH" />
-    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    <!-- Permisos clásicos de Bluetooth (solo hasta Android 11) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
 
-    <!-- Permisos para Android 12 y superior -->
+    <!-- Permiso para Android 12 y superior (solo conectar a emparejados, no escanear) -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
 
     <application
         android:allowBackup="true"

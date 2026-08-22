@@ -25,3 +25,9 @@ class MenuItemUnavailableException(message: String, httpStatus: Int? = null, req
 
 class ConfigurationConflictException(message: String, httpStatus: Int? = null, requestId: String? = null) :
     ApiException("CONFIGURATION_CONFLICT", message, httpStatus, requestId)
+
+class BusinessDayClosedException(
+    message: String = "El da operativo ya est cerrado. No se pueden procesar ms rdenes.",
+    httpStatus: Int? = 409,
+    requestId: String? = null
+) : ApiException("BUSINESS_DAY_CLOSED", message, httpStatus, requestId)

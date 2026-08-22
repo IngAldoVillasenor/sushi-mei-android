@@ -5,17 +5,21 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.restaurant.sushimei.frontend.data.model.PrintJobStatus
 
+import com.restaurant.sushimei.frontend.data.model.PrintDocumentType
+
 @Entity(
     tableName = "print_jobs",
     indices = [
-        Index(value = ["orderId"], unique = true),
+        Index(value = ["documentType", "documentId"], unique = true),
         Index(value = ["requestId"], unique = true)
     ]
 )
 data class PrintJobEntity(
     @PrimaryKey val id: String,
     val requestId: String,
-    val orderId: Long,
+    val documentType: PrintDocumentType,
+    val documentId: Long,
+    val snapshotPayload: String?,
     val status: PrintJobStatus,
     val lastError: String?,
     val createdAt: Long,

@@ -53,21 +53,21 @@ class PrintManagerTest {
 
     @Test
     fun `idempotency by orderId and requestId`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PENDING, null, 0, 0, null, null)
-        coEvery { repository.enqueuePrint(1L, "req-1") } returns job
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.PENDING, null, 0, 0, null, null)
+        coEvery { repository.enqueuePrint(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, "req-1", null) } returns job
 
-        manager.enqueuePrintJob(1L, "req-1")
+        manager.enqueuePrintJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, "req-1")
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.enqueuePrint(1L, "req-1") }
+        coVerify(exactly = 1) { repository.enqueuePrint(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, "req-1", null) }
     }
 
     @Test
     fun `original failure sets FAILED on attempt and job`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PENDING, null, 0, 0, null, null)
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.PENDING, null, 0, 0, null, null)
         val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.ORIGINAL, PrintAttemptStatus.PRINTING, 0, null, null)
 
-        coEvery { repository.enqueuePrint(1L, "req-1") } returns job
+        coEvery { repository.enqueuePrint(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, "req-1", null) } returns job
         coEvery { repository.getJobById("job-1") } returns job
         coEvery { repository.beginAttempt("job-1", PrintAttemptType.ORIGINAL) } returns attempt
 
@@ -75,7 +75,7 @@ class PrintManagerTest {
         coEvery { operationalOrderRepository.getOperationalOrderDetail(1L) } returns orderDetail
         every { printService.printOperationalTicket(orderDetail, false) } returns false
 
-        manager.enqueuePrintJob(1L, "req-1")
+        manager.enqueuePrintJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, "req-1")
         advanceUntilIdle()
 
         coVerify { repository.finalizeFailure("att-1", any(), "Bluetooth Error / Not Connected") }
@@ -83,7 +83,7 @@ class PrintManagerTest {
 
     @Test
     fun `FAILED retry becomes PRINTED and clears lastError`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.FAILED, "error", 0, 0, null, null)
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.FAILED, "error", 0, 0, null, null)
         val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.RETRY, PrintAttemptStatus.PRINTING, 0, null, null)
 
         coEvery { repository.getJobById("job-1") } returns job
@@ -101,7 +101,7 @@ class PrintManagerTest {
 
     @Test
     fun `failed REPRINT keeps parent PRINTED`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
         val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.REPRINT, PrintAttemptStatus.PRINTING, 0, null, null)
 
         coEvery { repository.getJobById("job-1") } returns job
@@ -119,7 +119,7 @@ class PrintManagerTest {
 
     @Test
     fun `concurrent retry and reprint acquires attempt lock and prevents duplicate prints`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PENDING, null, 0, 0, null, null)
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.PENDING, null, 0, 0, null, null)
         val attempt1 = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.RETRY, PrintAttemptStatus.PRINTING, 0, null, null)
 
         coEvery { repository.getJobById("job-1") } returns job
@@ -140,7 +140,7 @@ class PrintManagerTest {
 
     @Test
     fun `INTERNAL_COPY success leaves parent PRINTED`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
         val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.INTERNAL_COPY, PrintAttemptStatus.PRINTING, 0, null, null)
 
         coEvery { repository.getJobById("job-1") } returns job
@@ -158,7 +158,7 @@ class PrintManagerTest {
 
     @Test
     fun `INTERNAL_COPY failure leaves parent PRINTED`() = runTest {
-        val job = PrintJobEntity("job-1", "req-1", 1L, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
+        val job = PrintJobEntity("job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, PrintJobStatus.PRINTED, null, 0, 0, 12345L, null)
         val attempt = PrintAttemptEntity("att-1", "job-1", PrintAttemptType.INTERNAL_COPY, PrintAttemptStatus.PRINTING, 0, null, null)
 
         coEvery { repository.getJobById("job-1") } returns job

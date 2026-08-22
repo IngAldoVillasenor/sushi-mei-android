@@ -23,11 +23,18 @@ class RoomPrintJobRepository(private val dao: PrintJobDao) : IPrintJobRepository
 
     override suspend fun getJobByRequestId(requestId: String): PrintJobEntity? = dao.getJobByRequestId(requestId)
 
-    override suspend fun enqueuePrint(orderId: Long, requestId: String): PrintJobEntity {
+    override suspend fun enqueuePrint(
+        documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType,
+        documentId: Long,
+        requestId: String,
+        snapshotPayload: String?
+    ): PrintJobEntity {
         val newJob = PrintJobEntity(
             id = UUID.randomUUID().toString(),
             requestId = requestId,
-            orderId = orderId,
+            documentType = documentType,
+            documentId = documentId,
+            snapshotPayload = snapshotPayload,
             status = PrintJobStatus.PENDING,
             lastError = null,
             createdAt = System.currentTimeMillis(),
@@ -38,16 +45,16 @@ class RoomPrintJobRepository(private val dao: PrintJobDao) : IPrintJobRepository
 
         val rowId = dao.insertJob(newJob)
         if (rowId == -1L) {
-            val byOrderId = dao.getJobByOrderId(orderId)
+            val byDocument = dao.getJobByDocument(documentType, documentId)
             val byRequestId = dao.getJobByRequestId(requestId)
 
-            if (byOrderId == null || byRequestId == null || byOrderId.id != byRequestId.id) {
+            if (byDocument == null || byRequestId == null || byDocument.id != byRequestId.id) {
                 throw IllegalStateException("Insert ignored but identifiers do not map to the same persisted job. Idempotency breach.")
             }
-            return byOrderId
+            return byDocument
         }
 
-        return dao.getJobByOrderId(orderId) ?: throw IllegalStateException("Failed to retrieve persisted job.")
+        return dao.getJobByDocument(documentType, documentId) ?: throw IllegalStateException("Failed to retrieve persisted job.")
     }
 
     override suspend fun markJobPrinted(jobId: String) {

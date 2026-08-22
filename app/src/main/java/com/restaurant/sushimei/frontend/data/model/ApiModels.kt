@@ -460,3 +460,41 @@ data class HistoricalAnalyticsResponse(
     val voidedOrderCount: Long,
     val salesBySource: List<SalesBySourceResponse>
 )
+
+
+// ============================================================================
+// BUSINESS DAY (Phase 8F)
+// ============================================================================
+
+enum class BusinessDayStatus { OPEN, CLOSED }
+
+data class BusinessDayResponse(
+    val businessDayId: Long,
+    val businessDate: String,
+    val status: BusinessDayStatus,
+    val openingCashAmount: java.math.BigDecimal,
+    val openedAt: java.time.Instant,
+    val openedByUserId: Long,
+    val closedAt: java.time.Instant?,
+    val closedByUserId: Long?,
+    val completedSalesAmount: java.math.BigDecimal,
+    val cashSalesAmount: java.math.BigDecimal,
+    val transferSalesAmount: java.math.BigDecimal,
+    val cardSalesAmount: java.math.BigDecimal,
+    val unclassifiedSalesAmount: java.math.BigDecimal,
+    val completedOrderCount: Long,
+    val voidedOrderCount: Long,
+    val expectedClosingCashAmount: java.math.BigDecimal,
+    val actualClosingCashAmount: java.math.BigDecimal?,
+    val cashDifferenceAmount: java.math.BigDecimal?,
+    val closureId: Long? = null,
+    val closureNumber: Int? = null
+)
+
+data class OpenBusinessDayRequest(
+    val openingCashAmount: java.math.BigDecimal
+)
+
+data class CloseBusinessDayRequest(
+    val actualClosingCashAmount: java.math.BigDecimal
+)

@@ -1,4 +1,10 @@
 package com.restaurant.sushimei.frontend
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.LocalDate
+
+
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothManager
@@ -9,6 +15,23 @@ import com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto
 import java.io.ByteArrayOutputStream
 import java.io.OutputStream
 import java.util.UUID
+
+
+private val timeFormatter = DateTimeFormatter.ofPattern("hh:mm a").withZone(ZoneId.of("America/Mexico_City"))
+private val dateFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
+private fun formatInstant(instant: java.time.Instant?): String {
+    if (instant == null) return "N/A"
+    return timeFormatter.format(instant)
+}
+
+private fun formatDate(isoDate: String): String {
+    return try {
+        LocalDate.parse(isoDate).format(dateFormatter)
+    } catch (e: Exception) {
+        isoDate
+    }
+}
 
 class PrintService(private val context: Context) {
     private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
@@ -224,7 +247,7 @@ class PrintService(private val context: Context) {
 
             val linea = "${configuredProduct.quantity}x ${configuredProduct.name}" +
 
-                    "  \$${String.format("%.2f", configuredProduct.total)}\n"
+                    "  ${formatCurrency(configuredProduct.total)}\n"
 
             out.write(linea.toByteArray())
         }
@@ -233,7 +256,7 @@ class PrintService(private val context: Context) {
 
         out.write(boldOn)
 
-        out.write("TOTAL: \$${String.format("%.2f", order.total)}\n".toByteArray())
+        out.write("TOTAL: ${formatCurrency(order.total)}\n".toByteArray())
 
         out.write(boldOff)
 
@@ -247,6 +270,72 @@ class PrintService(private val context: Context) {
     }
 
     @SuppressLint("MissingPermission")
+
+    fun printClosingTicket(day: com.restaurant.sushimei.frontend.data.model.BusinessDayResponse): Boolean {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            if (androidx.core.app.ActivityCompat.checkSelfPermission(context, android.Manifest.permission.BLUETOOTH_CONNECT) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                return false
+            }
+        }
+
+        val bluetoothManager = context.getSystemService(android.content.Context.BLUETOOTH_SERVICE) as android.bluetooth.BluetoothManager
+        val bluetoothAdapter = bluetoothManager.adapter
+        if (bluetoothAdapter == null || !bluetoothAdapter.isEnabled) return false
+        val pairedDevices = bluetoothAdapter.bondedDevices
+        if (pairedDevices.isEmpty()) return false
+        val printerDevice = pairedDevices.first()
+
+        return try {
+            val socket = printerDevice.createRfcommSocketToServiceRecord(SPP_UUID)
+            socket.connect()
+            val outputStream = socket.outputStream
+
+            val out = java.io.ByteArrayOutputStream()
+            val ESC: Byte = 0x1B
+            val GS: Byte = 0x1D
+            val init = byteArrayOf(ESC, 0x40)
+            val center = byteArrayOf(ESC, 0x61, 1)
+            val left = byteArrayOf(ESC, 0x61, 0)
+            val boldOn = byteArrayOf(ESC, 0x45, 1)
+            val boldOff = byteArrayOf(ESC, 0x45, 0)
+            val cut = byteArrayOf(GS, 0x56, 0x41, 0x10)
+
+            out.write(init)
+            out.write(center)
+            out.write(boldOn)
+            out.write("=== CIERRE DEL DIA ===\n".toByteArray())
+            out.write(boldOff)
+            out.write(left)
+            out.write("Dia: ${formatDate(day.businessDate)}\n".toByteArray())
+            out.write("Abierto: ${formatInstant(day.openedAt)}\n".toByteArray())
+            out.write("Cerrado: ${formatInstant(day.closedAt)}\n".toByteArray())
+            out.write("--------------------------------\n".toByteArray())
+            out.write("Ventas Completadas: ${day.completedOrderCount}\n".toByteArray())
+            out.write("Ventas Anuladas: ${day.voidedOrderCount}\n".toByteArray())
+            out.write("Monto Total: ${formatCurrency(day.completedSalesAmount)}\n".toByteArray())
+            out.write("--------------------------------\n".toByteArray())
+            out.write("Efectivo: ${formatCurrency(day.cashSalesAmount)}\n".toByteArray())
+            out.write("Transferencia: ${formatCurrency(day.transferSalesAmount)}\n".toByteArray())
+            out.write("Tarjeta: ${formatCurrency(day.cardSalesAmount)}\n".toByteArray())
+            out.write("No Clasificado: ${formatCurrency(day.unclassifiedSalesAmount)}\n".toByteArray())
+            out.write("--------------------------------\n".toByteArray())
+            out.write("Fondo Inicial: ${formatCurrency(day.openingCashAmount)}\n".toByteArray())
+            out.write("Efectivo Esperado: ${formatCurrency(day.expectedClosingCashAmount)}\n".toByteArray())
+            out.write("Efectivo Contado: ${formatCurrency(day.actualClosingCashAmount)}\n".toByteArray())
+            out.write("Diferencia: ${formatCurrency(day.cashDifferenceAmount)}\n".toByteArray())
+            out.write("================================\n".toByteArray())
+            out.write("\n\n\n\n".toByteArray())
+            out.write(cut)
+
+            outputStream.write(out.toByteArray())
+            outputStream.flush()
+            socket.close()
+
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
 
     fun printOperationalTicket(order: OperationalOrderDetailDto, isReprint: Boolean = false, isInternalCopy: Boolean = false): Boolean {
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -388,7 +477,7 @@ class PrintService(private val context: Context) {
         if (order.lines.isNotEmpty()) {
             order.lines.forEach { line ->
 
-                val lineText = "${line.quantity}x ${line.name}  \$${String.format(java.util.Locale.US, "%.2f", line.finalLineTotal)}\n"
+                val lineText = "${line.quantity}x ${line.name}  ${formatCurrency(line.finalLineTotal)}\n"
 
                 out.write(lineText.toByteArray())
 
@@ -403,7 +492,7 @@ class PrintService(private val context: Context) {
         out.write(boldOn)
 
         if (order.total != null) {
-            out.write("TOTAL: \$${String.format(java.util.Locale.US, "%.2f", order.total)}\n".toByteArray())
+            out.write("TOTAL: ${formatCurrency(order.total)}\n".toByteArray())
         } else {
             out.write("TOTAL: NO DISPONIBLE\n".toByteArray())
         }
@@ -417,13 +506,13 @@ class PrintService(private val context: Context) {
         }
 
         if (order.fulfillmentType == com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY && order.paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH && order.cashDenomination != null) {
-            out.write("Paga con: \$${String.format(java.util.Locale.US, "%.2f", order.cashDenomination)}\n".toByteArray())
+            out.write("Paga con: ${formatCurrency(order.cashDenomination)}\n".toByteArray())
 
             out.write(boldOn)
 
             if (order.total != null) {
                 val change = order.cashDenomination - order.total
-                out.write("Cambio: \$${String.format(java.util.Locale.US, "%.2f", change)}\n".toByteArray())
+                out.write("Cambio: ${formatCurrency(change)}\n".toByteArray())
             } else {
                 out.write("Cambio: NO DISPONIBLE\n".toByteArray())
             }

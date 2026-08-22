@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.pos.configurator
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -87,7 +89,7 @@ fun ConfiguratorScreen(
                 },
                 actions = {
                     Text(
-                        text = "$${config.basePrice}",
+                        text = "${formatCurrency(config.basePrice)}",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(end = 16.dp)
                     )
@@ -108,7 +110,7 @@ fun ConfiguratorScreen(
                         if (uiState.quoteState == QuoteState.LOADING) {
                             Text("Cotizando...", style = MaterialTheme.typography.bodySmall)
                         } else {
-                            Text("Total: $$total", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                            Text("Total: ${formatCurrency(total)}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -295,7 +297,7 @@ fun ConfigurationOptionRow(
                 // Always show the backend-provided catalog price.
                 if (option.catalogPrice.compareTo(java.math.BigDecimal.ZERO) > 0) {
                     Text(
-                        text = "$${String.format("%.2f", option.catalogPrice)}",
+                        text = "${formatCurrency(option.catalogPrice)}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -303,7 +305,7 @@ fun ConfigurationOptionRow(
                 // Show adjustment on top of catalog price when non-zero.
                 if (option.priceAdjustment.compareTo(java.math.BigDecimal.ZERO) > 0) {
                     Text(
-                        text = "+$${option.priceAdjustment}",
+                        text = "+${formatCurrency(option.priceAdjustment)}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )

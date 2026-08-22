@@ -25,7 +25,7 @@ import com.restaurant.sushimei.frontend.data.repository.RoomOrderRepository
  */
 @androidx.room.Database(
     entities = [OrderEntity::class, MenuItemEntity::class, PrintJobEntity::class, PrintAttemptEntity::class],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @androidx.room.TypeConverters(Converters::class)
@@ -113,6 +113,38 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS `print_jobs_new` (
+                        `id` TEXT NOT NULL,
+                        `requestId` TEXT NOT NULL,
+                        `documentType` TEXT NOT NULL,
+                        `documentId` INTEGER NOT NULL,
+                        `snapshotPayload` TEXT,
+                        `status` TEXT NOT NULL,
+                        `lastError` TEXT,
+                        `createdAt` INTEGER NOT NULL,
+                        `updatedAt` INTEGER NOT NULL,
+                        `printedAt` INTEGER,
+                        `activeAttemptId` TEXT,
+                        PRIMARY KEY(`id`)
+                    )
+                """.trimIndent())
+
+                db.execSQL("""
+                    INSERT INTO `print_jobs_new` (`id`, `requestId`, `documentType`, `documentId`, `snapshotPayload`, `status`, `lastError`, `createdAt`, `updatedAt`, `printedAt`, `activeAttemptId`)
+                    SELECT `id`, `requestId`, 'ORDER', `orderId`, NULL, `status`, `lastError`, `createdAt`, `updatedAt`, `printedAt`, `activeAttemptId` FROM `print_jobs`
+                """.trimIndent())
+
+                db.execSQL("DROP TABLE `print_jobs`")
+                db.execSQL("ALTER TABLE `print_jobs_new` RENAME TO `print_jobs`")
+
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_print_jobs_documentType_documentId` ON `print_jobs` (`documentType`, `documentId`)")
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_print_jobs_requestId` ON `print_jobs` (`requestId`)")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(
@@ -120,7 +152,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "sushimei_db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .apply {
                         if (com.restaurant.sushimei.frontend.BuildConfig.DEBUG) {
                             fallbackToDestructiveMigration(dropAllTables = true)
@@ -179,6 +211,8 @@ fun providePromotionRepository(context: Context): com.restaurant.sushimei.fronte
 }
 
 private var authRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.AuthRepository? = null
+@Volatile
+private var businessDayRepositoryInstance: com.restaurant.sushimei.frontend.data.repository.IBusinessDayRepository? = null
 
 /**
  * Devuelve siempre el AuthRepository singleton.
@@ -239,5 +273,13 @@ fun providePrintManager(context: Context): com.restaurant.sushimei.frontend.Prin
             operationalOrderRepository = provideOperationalOrderRepository(context),
             printService = com.restaurant.sushimei.frontend.PrintService(context.applicationContext)
         ).also { printManagerInstance = it }
+    }
+}
+
+fun provideBusinessDayRepository(context: Context): com.restaurant.sushimei.frontend.data.repository.IBusinessDayRepository {
+    return businessDayRepositoryInstance ?: synchronized(AppDatabase::class.java) {
+        businessDayRepositoryInstance ?: com.restaurant.sushimei.frontend.data.repository.RemoteBusinessDayRepository(
+            api = com.restaurant.sushimei.frontend.data.api.NetworkModule.sushiMeiApi
+        ).also { businessDayRepositoryInstance = it }
     }
 }

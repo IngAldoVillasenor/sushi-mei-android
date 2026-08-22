@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.screens
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -258,7 +260,7 @@ fun LocalOrderCard(
                     )
 
                     Text(
-                        text = "$${String.format(java.util.Locale.US, "%.2f", configuredProduct.total)}",
+                        text = "${formatCurrency(configuredProduct.total)}",
                         style = MaterialTheme.typography.bodyMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
@@ -281,7 +283,7 @@ fun LocalOrderCard(
                 Text("Total:", fontWeight = FontWeight.Bold)
 
                 Text(
-                    text = "$${String.format(java.util.Locale.US, "%.2f", order.total)}",
+                    text = "${formatCurrency(order.total)}",
                     fontWeight = FontWeight.ExtraBold,
                     color = MaterialTheme.colorScheme.primary
                 )
@@ -401,11 +403,11 @@ fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: Operationa
                 Text("Dirección: ${summary.deliveryAddress ?: "No especificada"}", fontWeight = FontWeight.Bold)
 
                 if (summary.paymentMethod == PaymentMethod.CASH && summary.cashDenomination != null) {
-                    Text("Paga con: $${summary.cashDenomination}", color = Color.DarkGray)
+                    Text("Paga con: ${formatCurrency(summary.cashDenomination)}", color = Color.DarkGray)
 
                     if (summary.total != null) {
                         val change = summary.cashDenomination - summary.total
-                        Text("Cambio: $$change", color = Color.Red, fontWeight = FontWeight.Bold)
+                        Text("Cambio: ${formatCurrency(change)}", color = Color.Red, fontWeight = FontWeight.Bold)
                     } else {
                         Text("Cambio: NO DISPONIBLE", color = Color.Red, fontWeight = FontWeight.Bold)
                     }
@@ -420,7 +422,7 @@ fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: Operationa
                 if (detail.lines.isNotEmpty()) {
                     detail.lines.forEach { line ->
 
-                        Text("${line.quantity}x ${line.name} ($${line.finalLineTotal})")
+                        Text("${line.quantity}x ${line.name} (${formatCurrency(line.finalLineTotal)})")
 
                         line.configuration.forEach { config ->
 

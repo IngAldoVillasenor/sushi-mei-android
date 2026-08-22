@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.pos
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.restaurant.sushimei.frontend.data.api.ApiException
@@ -25,6 +27,26 @@ import java.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PosCheckoutTest {
+
+    @Test
+    fun `checkout maps BUSINESS_DAY_CLOSED to business specific message`() = runTest(testDispatcher) {
+        fillCart()
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Test Name")
+        viewModel.updatePaymentMethod(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH)
+
+        // Mock the repository to return BusinessDayClosedException
+        fakeManualRepo.shouldFailWithApiError = com.restaurant.sushimei.frontend.data.api.BusinessDayClosedException()
+
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val state = (viewModel.uiState.value as com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success).checkoutState
+        assert(state is CheckoutState.Error)
+        val errorMsg = (state as CheckoutState.Error).message
+        assert(errorMsg.contains("El día operativo ya está cerrado"))
+    }
+
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var viewModel: PosViewModel
@@ -326,8 +348,8 @@ class PosCheckoutTest {
         viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
         viewModel.updatePickupName("Aldo")
 
-        // PICKUP + CASH requires NO denomination
-        viewModel.updateCashDenomination(null)
+        // PICKUP + CASH requires denomination now
+        viewModel.updateCashDenomination(java.math.BigDecimal("200.00"))
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(2, fakeManualRepo.submitCount) // Success!
@@ -359,7 +381,7 @@ class PosCheckoutTest {
 
         // positive accepted
         viewModel.resetCheckoutState()
-        viewModel.updateCashDenomination(BigDecimal("10.00"))
+        viewModel.updateCashDenomination(BigDecimal("200.00"))
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(3, fakeManualRepo.submitCount)
@@ -526,7 +548,7 @@ class PosCheckoutTest {
         viewModel.updatePickupName("Test Name")
 
         io.mockk.coEvery {
-            printManager.enqueuePrintJob(any<Long>(), any<String>())
+            printManager.enqueuePrintJob(any<com.restaurant.sushimei.frontend.data.model.PrintDocumentType>(), any<Long>(), any<String>(), any())
         } throws RuntimeException("DB Save Failed")
 
         viewModel.cobrarOrden()
@@ -551,11 +573,11 @@ class PosCheckoutTest {
         val deferredEnqueue = kotlinx.coroutines.CompletableDeferred<Unit>()
 
         io.mockk.coEvery {
-            printManager.enqueuePrintJob(any<Long>(), any<String>())
+            printManager.enqueuePrintJob(any<com.restaurant.sushimei.frontend.data.model.PrintDocumentType>(), any<Long>(), any<String>(), any())
         } coAnswers {
             deferredEnqueue.await()
             com.restaurant.sushimei.frontend.data.local.PrintJobEntity(
-                "job-1", "req-1", 1L, com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PENDING, null, 0L, 0L, null, null
+                "job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PENDING, null, 0L, 0L, null, null
             )
         }
 
@@ -650,6 +672,7 @@ class FakePromotionRepository : IPromotionRepository {
     override suspend fun archivePromotion(id: Long) {}
 
     override suspend fun quoteCart(cart: List<ConfiguredProduct>): OrderPricingPreview {
-        return OrderPricingPreview(subtotal = BigDecimal.ZERO, total = BigDecimal.ZERO)
+        val total = cart.fold(java.math.BigDecimal.ZERO) { acc, prod -> acc + prod.total }
+        return OrderPricingPreview(subtotal = total, total = total)
     }
 }

@@ -1,0 +1,1 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"><application><activity android:name="com.restaurant.sushimei.frontend.TestHostActivity" android:exported="true" android:theme="@style/Theme.SushiMei" /></application></manifest>

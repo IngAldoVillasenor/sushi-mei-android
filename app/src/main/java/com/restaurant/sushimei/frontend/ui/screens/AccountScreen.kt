@@ -15,7 +15,8 @@ fun AccountScreen(
     authRepository: AuthRepository,
     user: AuthenticatedUserDto,
     onNavigateToChangePassword: () -> Unit,
-    onNavigateToSessions: () -> Unit
+    onNavigateToSessions: () -> Unit,
+    onNavigateToBusinessDay: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isLoggingOut by remember { mutableStateOf(false) }
@@ -51,6 +52,17 @@ fun AccountScreen(
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
         ) {
             Text("Mis Sesiones")
+        }
+
+        if (user.role == com.restaurant.sushimei.frontend.data.model.ApplicationRole.OWNER || user.role == com.restaurant.sushimei.frontend.data.model.ApplicationRole.MANAGER) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = onNavigateToBusinessDay,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Gestión de Día")
+            }
         }
 
         Spacer(modifier = Modifier.weight(1f))

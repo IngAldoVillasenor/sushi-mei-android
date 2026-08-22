@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.screens
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 
 
 import androidx.compose.animation.core.animateFloatAsState
@@ -274,7 +276,7 @@ private fun DashboardContent(
 
                     label = "Total (Completadas)",
 
-                    value = metrics.completedSalesTotal?.let { "$${formatMoney(it)}" } ?: "--",
+                    value = metrics.completedSalesTotal?.let { "${formatCurrency(it)}" } ?: "--",
 
                     color = ColorSuccess
 
@@ -298,7 +300,7 @@ private fun DashboardContent(
 
                     label = "Ticket promedio",
 
-                    value = metrics.averageCompletedTicket?.let { "$${formatMoney(it)}" } ?: "--",
+                    value = metrics.averageCompletedTicket?.let { "${formatCurrency(it)}" } ?: "--",
 
                     color = ColorInfo
 
@@ -626,7 +628,7 @@ private fun SalesBySourceCard(
 
                             Text(
 
-                                text = "$${formatMoney(revenue)}",
+                                text = "${formatCurrency(revenue)}",
 
                                 style = MaterialTheme.typography.bodyMedium,
 
@@ -716,7 +718,7 @@ private fun HistoricalOrderRow(order: HistoricalOrderSummaryDto) {
 
                 Text(
 
-                    text = "$${formatMoney(order.total ?: java.math.BigDecimal.ZERO)}",
+                    text = "${formatCurrency(order.total ?: java.math.BigDecimal.ZERO)}",
 
                     style = MaterialTheme.typography.titleMedium,
 
@@ -741,9 +743,3 @@ private fun HistoricalOrderRow(order: HistoricalOrderSummaryDto) {
     }
 
 }
-
-
-
-private fun formatMoney(value: java.math.BigDecimal): String =
-
-    String.format(java.util.Locale.US, "%,.2f", value)
