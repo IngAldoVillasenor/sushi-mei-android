@@ -94,5 +94,8 @@ interface IMenuRepository {
     suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.TagCreateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
     suspend fun updateTag(id: Long, tag: com.restaurant.sushimei.frontend.data.model.TagUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto
     suspend fun deleteTag(id: Long)
+
+    /** Fetches generic default components for customization. */
+    suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse>
 }
 

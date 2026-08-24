@@ -149,4 +149,13 @@ class RemoteMenuRepository(
             throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
         }
     }
+
+    override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> {
+        val response = api.getMenuItemComponents(menuItemId)
+        if (response.isSuccessful) {
+            return response.body() ?: emptyList()
+        } else {
+            throw Exception("Error : ")
+        }
+    }
 }

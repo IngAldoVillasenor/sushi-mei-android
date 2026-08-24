@@ -1,5 +1,10 @@
 package com.restaurant.sushimei.frontend.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.runtime.Composable
+
 import com.restaurant.sushimei.frontend.ui.util.formatCurrency
 import com.restaurant.sushimei.frontend.ui.util.rememberBluetoothPermissionGateway
 
@@ -118,6 +123,7 @@ fun PosScreen() {
     var selectedPromotion by remember { mutableStateOf<Promotion?>(null) }
     var promotionConfigurationFlow by remember { mutableStateOf<PromotionConfigurationFlow?>(null) }
     var configuringItemId by remember { mutableStateOf<Long?>(null) }
+    var showOpenSaleDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshActivePromotions()
@@ -472,6 +478,9 @@ fun PosScreen() {
                             } else {
                                 viewModel.addToCart(item)
                             }
+                        },
+                        onLongPress = {
+                            configuringItemId = item.id
                         }
                     )
                 }
@@ -1167,21 +1176,32 @@ fun CheckoutDialog(
     )
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MenuItemCard(
     menuItem: MenuItem,
     cartQuantity: Int,
-    onAddToCart: () -> Unit
+    onAddToCart: () -> Unit,
+    onLongPress: () -> Unit
 ) {
     Card(
-        onClick = onAddToCart,
-        modifier = Modifier.fillMaxWidth().height(170.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(170.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         colors = CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
-        Box(modifier = Modifier.padding(12.dp).fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .combinedClickable(
+                    onClick = onAddToCart,
+                    onLongClick = onLongPress
+                )
+                .padding(12.dp)
+        ) {
             Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1422,4 +1442,98 @@ fun CartItemRow(
             }
         }
     }
+}
+
+
+@Composable
+fun OpenSaleDialog(
+    onDismiss: () -> Unit,
+    onSubmit: (String, java.math.BigDecimal, com.restaurant.sushimei.frontend.data.model.PaymentMethod, java.math.BigDecimal?) -> Unit
+) {
+    var description by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var amountStr by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+    var paymentMethod by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) }
+    var cashDenominationStr by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+
+    val amount = amountStr.toBigDecimalOrNull()
+    val cashDenomination = cashDenominationStr.toBigDecimalOrNull()
+
+    val change = if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH && amount != null && cashDenomination != null && cashDenomination >= amount) {
+        cashDenomination.subtract(amount)
+    } else null
+
+    val isFormValid = description.isNotBlank() &&
+                      amount != null && amount > java.math.BigDecimal.ZERO &&
+                      (paymentMethod != com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH || (cashDenomination != null && cashDenomination >= amount))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Venta Libre") },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Descripción") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = amountStr,
+                    onValueChange = { amountStr = it },
+                    label = { Text("Monto") },
+                    singleLine = true,
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
+                    com.restaurant.sushimei.frontend.data.model.PaymentMethod.values().forEach { method ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(
+                                selected = paymentMethod == method,
+                                onClick = { paymentMethod = method }
+                            )
+                            Text(method.name)
+                        }
+                    }
+                }
+
+                if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = cashDenominationStr,
+                        onValueChange = { cashDenominationStr = it },
+                        label = { Text("Efectivo Recibido") },
+                        singleLine = true,
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (change != null) {
+                        Text("Cambio: ", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (isFormValid) {
+                        onSubmit(description, amount!!, paymentMethod, if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) cashDenomination else null)
+                        onDismiss()
+                    }
+                },
+                enabled = isFormValid
+            ) {
+                Text("Registrar")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar")
+            }
+        }
+    )
 }

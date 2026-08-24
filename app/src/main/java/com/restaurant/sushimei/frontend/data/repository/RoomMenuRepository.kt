@@ -186,11 +186,15 @@ class RoomMenuRepository(
         val type = object : TypeToken<List<MenuItem>>() {}.type
         return Gson().fromJson(json, type)
     }
+
+    override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList()
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Mappers: MenuItem ↔ MenuItemEntity
 // ─────────────────────────────────────────────────────────────────────────────
+
+
 
 private fun MenuItemEntity.toDomain() = MenuItem(
     id          = id,

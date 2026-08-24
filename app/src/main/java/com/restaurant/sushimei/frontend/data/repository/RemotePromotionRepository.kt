@@ -192,7 +192,9 @@ class RemotePromotionRepository(
                             menuItemId = reward.menuItemId,
                             groups = mapGroups(reward.groups)
                         )
-                    } ?: emptyList()
+                    } ?: emptyList(),
+                    omittedComponentIds = it.omittedComponents.map { comp -> comp.id },
+                    note = it.note
                 )
             }
         )

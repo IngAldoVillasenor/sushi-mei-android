@@ -36,4 +36,13 @@ class RemoteManualPosOrderRepository(
 
         throw ApiException("HTTP_ERROR", "Unknown error placing order: HTTP ${response.code()}")
     }
+
+    override suspend fun createOpenSale(request: com.restaurant.sushimei.frontend.data.model.OpenSaleRequest): com.restaurant.sushimei.frontend.data.model.OpenSaleResponse {
+        val response = api.createOpenSale(request)
+        if (response.isSuccessful) {
+            return response.body() ?: throw Exception("Empty response body")
+        } else {
+            throw Exception("Error : ")
+        }
+    }
 }

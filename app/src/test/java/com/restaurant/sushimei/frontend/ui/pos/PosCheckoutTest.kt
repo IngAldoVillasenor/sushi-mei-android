@@ -600,6 +600,7 @@ class PosCheckoutTest {
 }
 
 class FakeManualPosOrderRepository : IManualPosOrderRepository {
+    override suspend fun createOpenSale(request: com.restaurant.sushimei.frontend.data.model.OpenSaleRequest): com.restaurant.sushimei.frontend.data.model.OpenSaleResponse { throw Exception("stub") }
     var lastRequest: ManualPosOrderRequest? = null
     var shouldFailWithNetworkError = false
     var shouldFailWithUnexpectedError = false
@@ -641,6 +642,7 @@ class FakeManualPosOrderRepository : IManualPosOrderRepository {
 }
 
 class FakeMenuRepository : IMenuRepository {
+    override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList()
     override suspend fun refreshCatalog(standaloneOnly: Boolean?) {}
     override fun observeAll(): Flow<List<MenuItem>> = flowOf(emptyList())
     override fun observeActive(): Flow<List<MenuItem>> = flowOf(emptyList())

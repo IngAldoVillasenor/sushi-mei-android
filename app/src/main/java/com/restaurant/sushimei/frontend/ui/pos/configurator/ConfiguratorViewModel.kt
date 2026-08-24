@@ -26,6 +26,7 @@ enum class QuoteState {
     ERROR
 }
 
+
 data class SelectionNode(
     val occurrenceId: String = UUID.randomUUID().toString(),
     val option: ConfigurationOptionDto,
@@ -38,6 +39,9 @@ data class SelectionNode(
 data class ConfiguratorUiState(
     val isLoadingConfig: Boolean = false,
     val configuration: ConfigurationResponseDto? = null,
+    val defaultComponents: List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList(),
+    val omittedComponentIds: Set<Long> = emptySet(),
+    val note: String = "",
     val rootSelections: Map<Long, List<SelectionNode>> = emptyMap(),
     val quoteState: QuoteState = QuoteState.NOT_REQUESTED,
     val latestQuote: ItemQuoteResponseDto? = null,
@@ -276,7 +280,9 @@ class ConfiguratorViewModel(
             try {
                 val request = ItemQuoteRequestDto(
                     quantity = 1,
-                    groups = requestGroups
+                    groups = requestGroups,
+                    omittedComponentIds = _uiState.value.omittedComponentIds.toList(),
+                    note = _uiState.value.note.takeIf { it.isNotBlank() }
                 )
 
                 val quote = menuRepository.quoteItem(config.menuItemId, request)
@@ -355,5 +361,21 @@ class ConfiguratorViewModel(
                     return ConfiguratorViewModel(menuRepository) as T
                 }
             }
+    }
+
+    fun toggleComponentOmission(componentId: Long) {
+        val current = _uiState.value.omittedComponentIds.toMutableSet()
+        if (current.contains(componentId)) {
+            current.remove(componentId)
+        } else {
+            current.add(componentId)
+        }
+        _uiState.value = _uiState.value.copy(omittedComponentIds = current)
+        validateAndQuote()
+    }
+
+    fun updateNote(note: String) {
+        _uiState.value = _uiState.value.copy(note = note)
+        validateAndQuote()
     }
 }
