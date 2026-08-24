@@ -30,10 +30,21 @@ class PrintManager(
 
 
 
-    suspend fun enqueuePrintJob(orderId: Long, requestId: String): com.restaurant.sushimei.frontend.data.local.PrintJobEntity {
-        val job = printJobRepository.enqueuePrint(orderId, requestId)
+    suspend fun enqueuePrintJob(
+        documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType,
+        documentId: Long,
+        requestId: String,
+        snapshotPayload: String? = null
+    ): com.restaurant.sushimei.frontend.data.local.PrintJobEntity {
+        val job = printJobRepository.enqueuePrint(documentType, documentId, requestId, snapshotPayload)
+        val attemptType = when (job.status) {
+            com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PRINTED -> PrintAttemptType.REPRINT
+            com.restaurant.sushimei.frontend.data.model.PrintJobStatus.FAILED,
+            com.restaurant.sushimei.frontend.data.model.PrintJobStatus.INTERRUPTED -> PrintAttemptType.RETRY
+            else -> PrintAttemptType.ORIGINAL
+        }
         coroutineScope.launch {
-            processPrintJob(job.id, PrintAttemptType.ORIGINAL)
+            processPrintJob(job.id, attemptType)
         }
         return job
     }
@@ -70,13 +81,16 @@ class PrintManager(
             }
 
             try {
-                // Fetch Operational Order Detail
-                val orderDetail = operationalOrderRepository.getOperationalOrderDetail(job.orderId)
-
-                // Print
                 val isReprint = attemptType == PrintAttemptType.REPRINT
                 val isInternalCopy = attemptType == PrintAttemptType.INTERNAL_COPY
-                val printed = printService.printOperationalTicket(orderDetail, isReprint, isInternalCopy)
+
+                val printed = if (job.documentType == com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER) {
+                    val orderDetail = operationalOrderRepository.getOperationalOrderDetail(job.documentId)
+                    printService.printOperationalTicket(orderDetail, isReprint, isInternalCopy)
+                } else {
+                    val day = com.restaurant.sushimei.frontend.data.api.NetworkModule.configuredGson.fromJson(job.snapshotPayload, com.restaurant.sushimei.frontend.data.model.BusinessDayResponse::class.java)
+                    printService.printClosingTicket(day)
+                }
 
                 try {
                     if (printed) {

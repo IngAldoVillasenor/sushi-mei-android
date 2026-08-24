@@ -1,5 +1,10 @@
 package com.restaurant.sushimei.frontend.data.model
 
+enum class PrintDocumentType {
+    ORDER,
+    BUSINESS_DAY_CLOSE
+}
+
 enum class PrintJobStatus {
     PENDING,
     PRINTING,
@@ -24,7 +29,8 @@ enum class PrintAttemptStatus {
 
 data class PrintJobUiModel(
     val jobId: String,
-    val orderId: Long,
+    val documentType: PrintDocumentType,
+    val documentId: Long,
     val status: PrintJobStatus,
     val lastError: String?,
     val printedAt: Long?,

@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.admin.promotions
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -174,7 +176,7 @@ fun PromotionCard(
             
         when (val benefit = promotion.benefit) {
                 is PromotionBenefit.FixedUnitPrice -> {
-                    Text(text = "Beneficio: Precio fijo $${benefit.amount}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                    Text(text = "Beneficio: Precio fijo ${formatCurrency(benefit.amount)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
                 }
                 is PromotionBenefit.BuyXGetY -> {
                     Text(

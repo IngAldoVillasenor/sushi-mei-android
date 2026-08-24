@@ -261,6 +261,8 @@ internal class ApiErrorInterceptor(
         )
 
         val exception = when {
+            errorCode == "BUSINESS_DAY_CLOSED" ->
+                BusinessDayClosedException(errorMessage, response.code, requestId)
             errorCode.endsWith("VERSION_CONFLICT") ->
                 VersionConflictException(errorMessage, response.code, requestId)
             errorCode == "ITEM_UNAVAILABLE" ->

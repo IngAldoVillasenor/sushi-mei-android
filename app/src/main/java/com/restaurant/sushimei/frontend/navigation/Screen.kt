@@ -51,6 +51,12 @@ sealed class Screen(val route: String, val title: String, val icon: ImageVector)
         icon = Icons.Default.Person
     )
 
+    object BusinessDay : Screen(
+        route = "business_day",
+        title = "Gestión de Día",
+        icon = Icons.Default.Dashboard
+    )
+
     companion object {
         val items = listOf(Pos, Kitchen, MenuManagement, Dashboard, Account)
     }

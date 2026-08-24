@@ -16,8 +16,8 @@ interface PrintJobDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertJob(job: PrintJobEntity): Long
 
-    @Query("SELECT * FROM print_jobs WHERE orderId = :orderId LIMIT 1")
-    suspend fun getJobByOrderId(orderId: Long): PrintJobEntity?
+    @Query("SELECT * FROM print_jobs WHERE documentType = :documentType AND documentId = :documentId LIMIT 1")
+    suspend fun getJobByDocument(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long): PrintJobEntity?
 
     @Query("SELECT * FROM print_jobs WHERE id = :id LIMIT 1")
     suspend fun getJobById(id: String): PrintJobEntity?

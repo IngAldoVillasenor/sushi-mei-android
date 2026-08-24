@@ -1,5 +1,7 @@
 package com.restaurant.sushimei.frontend.ui.admin.configurator
 
+import com.restaurant.sushimei.frontend.ui.util.formatCurrency
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -71,7 +73,7 @@ fun ConfigurationBuilderScreen(
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("Producto ID: ${config.menuItemId}")
                             Text("Nombre: ${config.name}")
-                            Text("Precio Base: $${config.basePrice}")
+                            Text("Precio Base: ${formatCurrency(config.basePrice)}")
                             Text("Independiente: ${if(config.standaloneOrderable) "Sí" else "No"}")
                             Text("Requiere Config: ${if(config.requiresConfiguration) "Sí" else "No"}")
                             // We could add editable fields here for base properties.
@@ -148,7 +150,7 @@ fun BuilderGroupCard(
                 ) {
                     Column {
                         Text(option.name, style = MaterialTheme.typography.bodyMedium)
-                        Text(if (option.priceAdjustment > java.math.BigDecimal.ZERO) "+$${option.priceAdjustment}" else "Incluido", style = MaterialTheme.typography.bodySmall)
+                        Text(if (option.priceAdjustment > java.math.BigDecimal.ZERO) "+${formatCurrency(option.priceAdjustment)}" else "Incluido", style = MaterialTheme.typography.bodySmall)
                     }
                     IconButton(onClick = { onDeleteOption(option.menuItemId) }) {
                         Icon(Icons.Default.Delete, contentDescription = "Eliminar Opción", modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.error)
