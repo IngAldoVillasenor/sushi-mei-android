@@ -1,5 +1,12 @@
 ﻿package com.restaurant.sushimei.frontend.ui
 
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertIsNotEnabled
+import org.junit.Assert.assertEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -69,24 +76,59 @@ class Mvp2ComposeSmokeTest {
     }
 
     @Test
-    fun testOpenSaleDialogRenders() {
-        var submitted = false
+    fun testOpenSaleEntryPointFlow() {
+        var submittedDesc: String? = null
+        var submittedAmt: java.math.BigDecimal? = null
+        var canceled = false
+        var currentState by androidx.compose.runtime.mutableStateOf<com.restaurant.sushimei.frontend.ui.pos.CheckoutState>(com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Idle)
+
         composeTestRule.setContent {
-            OpenSaleDialog(
-                onDismiss = {},
-                onSubmit = { _, _, _, _ -> submitted = true }
+            com.restaurant.sushimei.frontend.ui.screens.OpenSaleEntryPoint(
+                checkoutState = currentState,
+                onSubmit = { desc, amt, _, _ ->
+                    submittedDesc = desc
+                    submittedAmt = amt
+                },
+                onCancel = { canceled = true }
             )
         }
 
-        // Verify primary fields are rendered
+        // 1. Button should be visible
+        composeTestRule.onNodeWithText("Registrar venta libre").assertIsDisplayed()
+
+        // Click button to show dialog
+        composeTestRule.onNodeWithText("Registrar venta libre").performClick()
+
+        // Verify dialog fields
         composeTestRule.onNodeWithText("Venta Libre").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Descripción").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Monto").assertIsDisplayed()
-        // Default PaymentMethod is CASH, so Efectivo Recibido should be visible
-        composeTestRule.onNodeWithText("Efectivo Recibido").assertIsDisplayed()
-        // Switch to CARD, verify the option exists
-        composeTestRule.onNodeWithText("CARD").assertIsDisplayed()
-        composeTestRule.onNodeWithText("CARD").performClick()
+
+        // 2. Fill values
+        composeTestRule.onNode(androidx.compose.ui.test.hasText("Descripción").or(androidx.compose.ui.test.hasText("Descripcin"))).performTextInput("Misc item")
+        composeTestRule.onNodeWithText("Monto").performTextInput("150.50")
+        composeTestRule.onNodeWithText("Efectivo Recibido").performTextInput("200.00")
+
+        // 3. Submit
+        composeTestRule.onNodeWithText("Registrar").performClick()
+        assertEquals("Misc item", submittedDesc)
+        assertEquals(java.math.BigDecimal("150.50"), submittedAmt)
+
+        // 4. Loading state: form remains mounted, registrar disabled
+        currentState = com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
+        composeTestRule.onNodeWithText("Venta Libre").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Procesando...").assertIsNotEnabled()
+
+        // 5. Error state: previous values remain, error text visible
+        currentState = com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Error("Network error")
+        composeTestRule.onNodeWithText("Venta Libre").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Misc item").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Network error").assertIsDisplayed()
+
+        // 6. Success state: OpenSaleDialog disappears, confirmed CheckoutState NOT reset by component
+        currentState = com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleSuccess(com.restaurant.sushimei.frontend.data.model.OpenSaleResponse(100L, "req-1", "CREATED", "POS", 1L, "TEST", 1, java.math.BigDecimal.TEN, java.math.BigDecimal.TEN, com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH, null, "COMPLETED", "2024"))
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithText("Venta Libre").assertDoesNotExist()
+        assertFalse(canceled) // onCancel was NOT called!
+        assertTrue(currentState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleSuccess)
     }
 
     @Test

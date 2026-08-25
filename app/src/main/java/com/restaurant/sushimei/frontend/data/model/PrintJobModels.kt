@@ -10,7 +10,8 @@ enum class PrintJobStatus {
     PRINTING,
     PRINTED,
     FAILED,
-    INTERRUPTED
+    INTERRUPTED,
+    REPRINT_READY
 }
 
 enum class PrintAttemptType {

@@ -136,4 +136,59 @@ class RoomPrintJobRepositoryTest {
         val updatedAttempt = dao.getAttemptById(attempt!!.id)
         assertEquals(PrintAttemptStatus.INTERRUPTED, updatedAttempt!!.status)
     }
+
+    @Test
+    fun testReprintReadyBeginAttemptREPRINT() = runTest {
+        val job = repository.ensureReprintReadyJob(PrintDocumentType.ORDER, 999L, "hist-1")
+        assertEquals(PrintJobStatus.REPRINT_READY, job.status)
+
+        val attempt = repository.beginAttempt(job.id, PrintAttemptType.REPRINT)
+        assertNotNull(attempt)
+        assertEquals(PrintAttemptType.REPRINT, attempt!!.type)
+        assertEquals(PrintAttemptStatus.PRINTING, attempt.status)
+
+        val updatedJob = repository.getJobById(job.id)!!
+        assertEquals(PrintJobStatus.REPRINT_READY, updatedJob.status)
+        assertNull(updatedJob.printedAt)
+        assertEquals(attempt.id, updatedJob.activeAttemptId)
+    }
+
+    @Test
+    fun testReprintReadyFinalizeSuccess() = runTest {
+        val job = repository.ensureReprintReadyJob(PrintDocumentType.ORDER, 999L, "hist-2")
+        val attempt = repository.beginAttempt(job.id, PrintAttemptType.REPRINT)!!
+
+        repository.finalizeSuccess(attempt.id, 1L)
+
+        val updatedJob = repository.getJobById(job.id)!!
+        assertEquals(PrintJobStatus.REPRINT_READY, updatedJob.status)
+        assertNull(updatedJob.printedAt)
+        assertNull(updatedJob.activeAttemptId)
+
+        val attempts = repository.getAttemptsForJob(job.id)
+        assertEquals(PrintAttemptStatus.SUCCEEDED, attempts.first { it.id == attempt.id }.status)
+    }
+
+    @Test
+    fun testReprintReadyFinalizeFailure() = runTest {
+        val job = repository.ensureReprintReadyJob(PrintDocumentType.ORDER, 999L, "hist-3")
+        val attempt = repository.beginAttempt(job.id, PrintAttemptType.REPRINT)!!
+
+        repository.finalizeFailure(attempt.id, 1L, "Printer error")
+
+        val updatedJob = repository.getJobById(job.id)!!
+        assertEquals(PrintJobStatus.REPRINT_READY, updatedJob.status)
+        assertNull(updatedJob.printedAt)
+        assertNull(updatedJob.activeAttemptId)
+
+        val attempts = repository.getAttemptsForJob(job.id)
+        assertEquals(PrintAttemptStatus.FAILED, attempts.first { it.id == attempt.id }.status)
+    }
+
+    @Test
+    fun testReprintReadyBeginAttemptORIGINALRejects() = runTest {
+        val job = repository.ensureReprintReadyJob(PrintDocumentType.ORDER, 999L, "hist-4")
+        val attempt = repository.beginAttempt(job.id, PrintAttemptType.ORIGINAL)
+        assertNull(attempt)
+    }
 }

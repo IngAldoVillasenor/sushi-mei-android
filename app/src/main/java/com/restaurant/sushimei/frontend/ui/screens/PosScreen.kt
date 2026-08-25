@@ -123,7 +123,6 @@ fun PosScreen() {
     var selectedPromotion by remember { mutableStateOf<Promotion?>(null) }
     var promotionConfigurationFlow by remember { mutableStateOf<PromotionConfigurationFlow?>(null) }
     var configuringItemId by remember { mutableStateOf<Long?>(null) }
-    var showOpenSaleDialog by remember { androidx.compose.runtime.mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshActivePromotions()
@@ -144,12 +143,15 @@ fun PosScreen() {
     LaunchedEffect(checkoutState) {
         if (
             checkoutState is CheckoutState.Success ||
-            checkoutState is CheckoutState.ConfirmedWithPrintWarning
+            checkoutState is CheckoutState.ConfirmedWithPrintWarning ||
+            checkoutState is CheckoutState.OpenSaleSuccess ||
+            checkoutState is CheckoutState.OpenSaleConfirmedWithPrintWarning
         ) {
             showCheckoutDialog = false
             showSuccessDialog = true
 
-            if (checkoutState is CheckoutState.Success && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val needsBluetooth = (checkoutState is CheckoutState.Success || checkoutState is CheckoutState.OpenSaleSuccess)
+            if (needsBluetooth && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
                     pendingPrintRetry = true
                     bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
@@ -159,7 +161,8 @@ fun PosScreen() {
     }
 
 
-    if (showSuccessDialog && checkoutState is CheckoutState.ConfirmedWithPrintWarning) {
+    if (showSuccessDialog && (checkoutState is CheckoutState.ConfirmedWithPrintWarning || checkoutState is CheckoutState.OpenSaleConfirmedWithPrintWarning)) {
+        val orderId = if (checkoutState is CheckoutState.ConfirmedWithPrintWarning) checkoutState.orderId else (checkoutState as CheckoutState.OpenSaleConfirmedWithPrintWarning).orderId
         AlertDialog(
             onDismissRequest = {
                 showSuccessDialog = false
@@ -169,30 +172,37 @@ fun PosScreen() {
             text = {
                 Column {
                     Text("La orden fue creada exitosamente, pero no se pudo registrar la impresión local.")
-                    Text("Orden #${checkoutState.orderId}")
+                    Text("Orden #$orderId")
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     showSuccessDialog = false
-                    viewModel.retryPrintRegistration(checkoutState.orderId, checkoutState.requestId, checkoutState.response)
+                    if (checkoutState is CheckoutState.ConfirmedWithPrintWarning) {
+                        viewModel.retryPrintRegistration(checkoutState.orderId, checkoutState.requestId, checkoutState.response)
+                    } else if (checkoutState is CheckoutState.OpenSaleConfirmedWithPrintWarning) {
+                        viewModel.retryOpenSalePrintRegistration(checkoutState.orderId, checkoutState.requestId, checkoutState.response)
+                    }
                     viewModel.resetCheckoutState()
                 }) {
                     Text("Reintentar registro de impresión")
                 }
             },
             dismissButton = {
-                TextButton(onClick = {
-                    showSuccessDialog = false
-                    viewModel.resetCheckoutState()
-                }) {
-                    Text("Cerrar")
+                TextButton(
+                    onClick = {
+                        showSuccessDialog = false
+                        viewModel.resetCheckoutState()
+                    }
+                ) {
+                    Text("Omitir impresión")
                 }
             }
         )
     }
 
-    if (showSuccessDialog && checkoutState is CheckoutState.Success) {
+    if (showSuccessDialog && (checkoutState is CheckoutState.Success || checkoutState is CheckoutState.OpenSaleSuccess)) {
+        val isVentaLibre = checkoutState is CheckoutState.OpenSaleSuccess
         when (currentPrintState) {
             is CurrentPrintUiState.Failed -> {
                 AlertDialog(
@@ -203,10 +213,10 @@ fun PosScreen() {
                     icon = {
                         Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFD32F2F))
                     },
-                    title = { Text("Orden Confirmada") },
+                    title = { Text(if (isVentaLibre) "Venta libre registrada" else "Orden Confirmada") },
                     text = {
                         Column {
-                            Text("La orden fue creada correctamente.")
+                            Text(if (isVentaLibre) "La venta libre se ha registrado con éxito." else "La orden fue creada correctamente.")
                             Spacer(modifier = Modifier.height(8.dp))
                             Text("No se pudo imprimir el ticket del cliente: ${(currentPrintState as CurrentPrintUiState.Failed).message}")
                         }
@@ -368,10 +378,10 @@ fun PosScreen() {
                     icon = {
                         Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32))
                     },
-                    title = { Text("Orden Confirmada") },
+                    title = { Text(if (isVentaLibre) "Venta libre registrada" else "Orden Confirmada") },
                     text = {
                         Column {
-                            Text("La orden fue creada correctamente.")
+                            Text(if (isVentaLibre) "La venta libre se ha registrado con éxito." else "La orden fue creada correctamente.")
                             if (currentPrintState is CurrentPrintUiState.Printing) {
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text("Imprimiendo ticket del cliente...", color = Color.Gray)
@@ -534,6 +544,16 @@ fun PosScreen() {
                     }
                 }
             }
+
+            OpenSaleEntryPoint(
+                checkoutState = checkoutState,
+                onSubmit = { desc, amt, pay, denom ->
+                    viewModel.submitOpenSale(desc, amt, pay, denom)
+                },
+                onCancel = {
+                    viewModel.resetCheckoutState()
+                }
+            )
 
             HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp))
 
@@ -1446,8 +1466,48 @@ fun CartItemRow(
 
 
 @Composable
+fun OpenSaleEntryPoint(
+    checkoutState: com.restaurant.sushimei.frontend.ui.pos.CheckoutState,
+    onSubmit: (String, java.math.BigDecimal, com.restaurant.sushimei.frontend.data.model.PaymentMethod, java.math.BigDecimal?) -> Unit,
+    onCancel: () -> Unit
+) {
+    var showOpenSaleDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+
+    OutlinedButton(
+        onClick = { showOpenSaleDialog = true },
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        enabled = checkoutState != com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp).padding(end = 4.dp)
+        )
+        Text("Registrar venta libre")
+    }
+
+    if (showOpenSaleDialog) {
+        OpenSaleDialog(
+            checkoutState = checkoutState,
+            onCancel = {
+                showOpenSaleDialog = false
+                onCancel()
+            },
+            onSuccessfulSubmissionClosed = {
+                showOpenSaleDialog = false
+            },
+            onSubmit = onSubmit
+        )
+    }
+}
+
+@Composable
 fun OpenSaleDialog(
-    onDismiss: () -> Unit,
+    checkoutState: com.restaurant.sushimei.frontend.ui.pos.CheckoutState,
+    onCancel: () -> Unit,
+    onSuccessfulSubmissionClosed: () -> Unit,
     onSubmit: (String, java.math.BigDecimal, com.restaurant.sushimei.frontend.data.model.PaymentMethod, java.math.BigDecimal?) -> Unit
 ) {
     var description by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
@@ -1466,8 +1526,20 @@ fun OpenSaleDialog(
                       amount != null && amount > java.math.BigDecimal.ZERO &&
                       (paymentMethod != com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH || (cashDenomination != null && cashDenomination >= amount))
 
+    val isLoading = checkoutState == com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
+
+    // Handle success states gracefully
+    androidx.compose.runtime.LaunchedEffect(checkoutState) {
+        if (checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleSuccess ||
+            checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleConfirmedWithPrintWarning) {
+            onSuccessfulSubmissionClosed()
+        }
+    }
+
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = {
+            if (!isLoading) onCancel()
+        },
         title = { Text("Venta Libre") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
@@ -1476,6 +1548,7 @@ fun OpenSaleDialog(
                     onValueChange = { description = it },
                     label = { Text("Descripción") },
                     singleLine = true,
+                    enabled = !isLoading,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -1484,6 +1557,7 @@ fun OpenSaleDialog(
                     onValueChange = { amountStr = it },
                     label = { Text("Monto") },
                     singleLine = true,
+                    enabled = !isLoading,
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -1494,7 +1568,7 @@ fun OpenSaleDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             RadioButton(
                                 selected = paymentMethod == method,
-                                onClick = { paymentMethod = method }
+                                onClick = { if (!isLoading) paymentMethod = method }
                             )
                             Text(method.name)
                         }
@@ -1508,30 +1582,42 @@ fun OpenSaleDialog(
                         onValueChange = { cashDenominationStr = it },
                         label = { Text("Efectivo Recibido") },
                         singleLine = true,
+                        enabled = !isLoading,
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (change != null) {
-                        Text("Cambio: ", color = MaterialTheme.colorScheme.primary)
+                        Text("Cambio: ${com.restaurant.sushimei.frontend.ui.util.formatCurrency(change)}", color = MaterialTheme.colorScheme.primary)
                     }
+                }
+
+                if (checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Error) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = checkoutState.message,
+                        color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall
+                    )
                 }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
-                    if (isFormValid) {
+                    if (isFormValid && !isLoading) {
                         onSubmit(description, amount!!, paymentMethod, if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) cashDenomination else null)
-                        onDismiss()
                     }
                 },
-                enabled = isFormValid
+                enabled = isFormValid && !isLoading
             ) {
-                Text("Registrar")
+                Text(if (isLoading) "Procesando..." else "Registrar")
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(
+                onClick = { if (!isLoading) onCancel() },
+                enabled = !isLoading
+            ) {
                 Text("Cancelar")
             }
         }

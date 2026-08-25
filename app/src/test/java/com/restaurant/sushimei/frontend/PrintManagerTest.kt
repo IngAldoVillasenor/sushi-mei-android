@@ -173,4 +173,46 @@ class PrintManagerTest {
 
         coVerify { repository.finalizeFailure("att-1", any(), "Bluetooth Error / Not Connected") }
             }
+
+    @Test
+    fun `reprintOrder with no local job ensures REPRINT_READY and processes REPRINT`() = runTest {
+        coEvery { repository.getJobByDocument(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 123L) } returns null
+        val newJob = PrintJobEntity("job-new", "hist-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 123L, null, PrintJobStatus.REPRINT_READY, null, 1L, 1L, null, null)
+        coEvery { repository.getJobById("job-new") } returns newJob
+
+        val requestIdSlot = slot<String>()
+        coEvery { repository.ensureReprintReadyJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 123L, capture(requestIdSlot)) } returns newJob
+
+        val attempt = PrintAttemptEntity("att-1", "job-new", PrintAttemptType.REPRINT, PrintAttemptStatus.PRINTING, 1L, null, null)
+        coEvery { repository.beginAttempt("job-new", PrintAttemptType.REPRINT) } returns attempt
+
+        val detail = mockk<OperationalOrderDetailDto>()
+        coEvery { operationalOrderRepository.getOperationalOrderDetail(123L) } returns detail
+        coEvery { printService.printOperationalTicket(detail, true) } returns true
+        coEvery { repository.finalizeSuccess("att-1", 1L) } returns Unit
+
+        val result = manager.reprintOrder(123L)
+        assertTrue(result is ReprintStartResult.Started)
+        assertEquals("job-new", (result as ReprintStartResult.Started).jobId)
+
+        advanceUntilIdle()
+
+        assertEquals("historical-reprint:ORDER:123", requestIdSlot.captured)
+        coVerify { repository.beginAttempt("job-new", PrintAttemptType.REPRINT) }
+        coVerify(exactly = 0) { repository.beginAttempt(any(), PrintAttemptType.ORIGINAL) }
+        coVerify { operationalOrderRepository.getOperationalOrderDetail(123L) }
+        coVerify { printService.printOperationalTicket(detail, true) }
+    }
+
+    @Test
+    fun `reprintOrder with activeAttemptId != null returns AlreadyProcessing`() = runTest {
+        val existingJob = PrintJobEntity("job-ex", "hist-2", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 888L, null, PrintJobStatus.REPRINT_READY, null, 1L, 1L, null, "att-running")
+        coEvery { repository.getJobByDocument(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 888L) } returns existingJob
+
+        val result = manager.reprintOrder(888L)
+        assertTrue(result is ReprintStartResult.AlreadyProcessing)
+        assertEquals("job-ex", (result as ReprintStartResult.AlreadyProcessing).jobId)
+
+        coVerify(exactly = 0) { repository.beginAttempt(any(), any()) }
+    }
 }

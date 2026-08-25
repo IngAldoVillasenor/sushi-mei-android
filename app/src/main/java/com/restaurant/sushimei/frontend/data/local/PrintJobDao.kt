@@ -28,6 +28,9 @@ interface PrintJobDao {
     fun observeAllJobs(): Flow<List<PrintJobEntity>>
     @Query("SELECT * FROM print_jobs WHERE id = :id LIMIT 1")
     fun observeJobById(id: String): Flow<PrintJobEntity?>
+
+    @Query("SELECT * FROM print_jobs WHERE documentType = :documentType AND documentId = :documentId LIMIT 1")
+    fun observeJobByDocument(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long): Flow<PrintJobEntity?>
     @Query("SELECT * FROM print_attempts ORDER BY startedAt DESC")
     fun observeAllAttempts(): Flow<List<PrintAttemptEntity>>
 
@@ -77,7 +80,8 @@ interface PrintJobDao {
                 updateJobStatus(jobId, PrintJobStatus.PRINTING, timestamp)
             }
             PrintAttemptType.REPRINT -> {
-                if (job.status != PrintJobStatus.PRINTED) return null
+                if (job.status != PrintJobStatus.PRINTED && job.status != PrintJobStatus.REPRINT_READY) return null
+                // DO NOT change parent status for REPRINT
             }
             PrintAttemptType.INTERNAL_COPY -> {
                 if (job.status != PrintJobStatus.PRINTED) return null
