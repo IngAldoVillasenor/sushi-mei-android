@@ -16,6 +16,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import java.util.UUID
 
 enum class QuoteState {
@@ -72,19 +74,30 @@ class ConfiguratorViewModel(
             rootSelections = emptyMap(),
             quoteState = QuoteState.NOT_REQUESTED,
             generationToken = token,
-            quoteRevision = ""
+            quoteRevision = "",
+            defaultComponents = emptyList(),
+            omittedComponentIds = emptySet(),
+            note = ""
         )
 
         viewModelScope.launch {
             try {
-                val config = menuRepository.getConfiguration(menuItemId)
-                if (_uiState.value.generationToken != token) return@launch
+                kotlinx.coroutines.coroutineScope {
+                    val configDeferred = async { menuRepository.getConfiguration(menuItemId) }
+                    val componentsDeferred = async { menuRepository.getMenuItemComponents(menuItemId) }
 
-                _uiState.value = _uiState.value.copy(
-                    isLoadingConfig = false,
-                    configuration = config
-                )
-                validateAndQuote()
+                    val config = configDeferred.await()
+                    val components = componentsDeferred.await()
+
+                    if (_uiState.value.generationToken != token) return@coroutineScope
+
+                    _uiState.value = _uiState.value.copy(
+                        isLoadingConfig = false,
+                        configuration = config,
+                        defaultComponents = components
+                    )
+                    validateAndQuote()
+                }
             } catch (e: Exception) {
                 if (_uiState.value.generationToken != token) return@launch
 

@@ -31,7 +31,7 @@ fun PromotionEditorScreen(
 
     val targets = remember(promotion?.id, promotion?.version) {
         mutableStateListOf<PromotionTarget>().apply {
-            addAll(promotion?.targets.orEmpty())
+            addAll(promotion?.targets.orEmpty().distinctBy { it.type to it.targetId })
         }
     }
     var targetType by remember { mutableStateOf(PromotionTargetType.TAG) }
@@ -357,7 +357,7 @@ fun PromotionEditorScreen(
                         active = active,
                         daysOfWeek = daysOfWeek,
                         allDay = allDay,
-                        targets = targets.toList(),
+                        targets = targets.distinctBy { it.type to it.targetId },
                         benefit = benefit
                     )
                     viewModel.savePromotion(updatedPromotion)

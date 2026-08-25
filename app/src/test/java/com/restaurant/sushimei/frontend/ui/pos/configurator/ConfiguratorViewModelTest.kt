@@ -43,6 +43,7 @@ class ConfiguratorViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         menuRepository = mockk()
+        io.mockk.coEvery { menuRepository.getMenuItemComponents(any()) } returns emptyList()
         viewModel = ConfiguratorViewModel(menuRepository)
     }
 

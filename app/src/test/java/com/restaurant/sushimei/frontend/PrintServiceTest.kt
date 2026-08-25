@@ -6,6 +6,7 @@ import com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto
 import com.restaurant.sushimei.frontend.data.model.OperationalOrderLineDto
 import com.restaurant.sushimei.frontend.data.model.PaymentMethod
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 import io.mockk.mockk
 import java.math.BigDecimal
@@ -297,5 +298,95 @@ class PrintServiceTest {
         val outputString = String(PrintService(context).formatOperationalTicket(detail, isReprint = false))
 
         org.junit.Assert.assertFalse("Output should not contain REIMPRESION", outputString.contains("*** REIMPRESION ***"))
+    }
+
+
+    @Test
+    fun `test formatOperationalTicket includes omitted components and notes`() {
+        val detail = OperationalOrderDetailDto(
+            id = 104,
+            requestId = null,
+            orderSource = "POS",
+            createdByUserId = 1,
+            fulfillmentType = FulfillmentType.DELIVERY,
+            paymentMethod = PaymentMethod.CASH,
+            deliveryAddress = "Av. Siempre Viva 742",
+            pickupName = null,
+            cashDenomination = BigDecimal("500.00"),
+            phoneNumber = null,
+            status = "PENDING",
+            createdAt = Instant.now(),
+            total = BigDecimal("350.00"),
+            legacyOrderDetails = null,
+            paymentNotes = null,
+            transferReceiptPath = null,
+            lines = listOf(
+                OperationalOrderLineDto(
+                    id = 1,
+                    lineKind = "ITEM",
+                    lineKey = "key1",
+                    sourceMenuItemId = 1L,
+                    name = "California roll",
+                    quantity = 1,
+                    catalogBaseUnitPrice = BigDecimal("120.00"),
+                    chargedBaseUnitPrice = BigDecimal("120.00"),
+                    configurationAdjustmentAmount = BigDecimal.ZERO,
+                    finalUnitAmount = BigDecimal("120.00"),
+                    finalLineTotal = BigDecimal("120.00"),
+                    promotion = null,
+                    rewardOrdinal = null,
+                    sourcePaidLineId = null,
+                    omittedComponents = listOf(
+                        com.restaurant.sushimei.frontend.data.model.OrderComponentOmissionSnapshotDto(
+                            id = 2, sourceComponentId = 2L, code = "ALG", displayName = "Alga", detail = "Por fuera", displayOrder = 1
+                        ),
+                        com.restaurant.sushimei.frontend.data.model.OrderComponentOmissionSnapshotDto(
+                            id = 3, sourceComponentId = 3L, code = "SUR", displayName = "Surimi", detail = null, displayOrder = 2
+                        )
+                    ),
+                    note = "Poca salsa",
+                    configuration = listOf(
+                        com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                            id = 10L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 1, menuItemId = 2L,
+                            itemName = "Tampico", priceAdjustment = BigDecimal.ZERO, displayOnTicket = true, quantity = 1, catalogUnitPrice = BigDecimal.ZERO
+                        )
+                    )
+                ),
+                OperationalOrderLineDto(
+                    id = 2,
+                    lineKind = "ITEM",
+                    lineKey = "key2",
+                    sourceMenuItemId = 2L,
+                    name = "Agua",
+                    quantity = 1,
+                    catalogBaseUnitPrice = BigDecimal("20.00"),
+                    chargedBaseUnitPrice = BigDecimal("20.00"),
+                    configurationAdjustmentAmount = BigDecimal.ZERO,
+                    finalUnitAmount = BigDecimal("20.00"),
+                    finalLineTotal = BigDecimal("20.00"),
+                    promotion = null,
+                    rewardOrdinal = null,
+                    sourcePaidLineId = null,
+                    omittedComponents = emptyList(),
+                    note = null,
+                    configuration = emptyList()
+                )
+            )
+        )
+
+        val context = mockk<Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(detail))
+
+        org.junit.Assert.assertTrue(outputString.contains("SIN: Alga (Por fuera), Surimi"))
+        org.junit.Assert.assertTrue(outputString.contains("NOTA: Poca salsa"))
+        org.junit.Assert.assertTrue(outputString.contains("+ Tampico"))
+
+        // No empty labels
+        val secondItemIndex = outputString.indexOf("1x Agua")
+        val subsequentText = outputString.substring(secondItemIndex)
+        assertFalse(subsequentText.contains("SIN: \n"))
+        assertFalse(subsequentText.contains("NOTA: \n"))
+        assertFalse(subsequentText.contains("SIN: \r\n"))
+        assertFalse(subsequentText.contains("NOTA: \r\n"))
     }
 }

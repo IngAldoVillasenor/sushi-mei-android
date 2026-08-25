@@ -31,7 +31,7 @@ class RemotePromotionRepository(
                 targetId = it.targetId,
                 displayName = it.targetId.toString()
             )
-        },
+        }.distinctBy { it.type to it.targetId },
         benefit = when (benefitType) {
             PromotionBenefit.BuyXGetY.SAME_ITEM, PromotionBenefit.BuyXGetY.ELIGIBLE_ITEM ->
                 PromotionBenefit.BuyXGetY.validated(
@@ -63,7 +63,7 @@ class RemotePromotionRepository(
         validFrom = validFrom,
         validUntil = validUntil,
         daysOfWeek = schedule.daysOfWeek,
-        targets = targets.map {
+        targets = targets.distinctBy { it.type to it.targetId }.map {
             PromotionTargetRequest(
                 targetType = it.type.name,
                 targetId = it.targetId
@@ -86,7 +86,7 @@ class RemotePromotionRepository(
         validFrom = validFrom,
         validUntil = validUntil,
         daysOfWeek = schedule.daysOfWeek,
-        targets = targets.map {
+        targets = targets.distinctBy { it.type to it.targetId }.map {
             PromotionTargetRequest(
                 targetType = it.type.name,
                 targetId = it.targetId

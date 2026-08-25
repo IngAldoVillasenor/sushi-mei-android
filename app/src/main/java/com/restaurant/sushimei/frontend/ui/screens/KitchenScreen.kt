@@ -266,6 +266,35 @@ fun LocalOrderCard(
                         color = MaterialTheme.colorScheme.primary
                     )
                 }
+
+                if (configuredProduct.omittedComponents.isNotEmpty()) {
+                    val omissions = configuredProduct.omittedComponents.joinToString(", ") { comp ->
+                        if (!comp.detail.isNullOrBlank()) {
+                            "${comp.displayName} (${comp.detail})"
+                        } else {
+                            comp.displayName
+                        }
+                    }
+                    Text(
+                        text = "SIN: $omissions",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFFD32F2F)
+                    )
+                }
+
+                configuredProduct.groups.forEach { group ->
+                    group.selections.forEach { sel ->
+                        Text("   + ${sel.name}", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                    }
+                }
+
+                if (!configuredProduct.note.isNullOrBlank()) {
+                    Text(
+                        text = "NOTA: ${configuredProduct.note}",
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = Color(0xFFE65100)
+                    )
+                }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
@@ -424,9 +453,31 @@ fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: Operationa
 
                         Text("${line.quantity}x ${line.name} (${formatCurrency(line.finalLineTotal)})")
 
-                        line.configuration.forEach { config ->
+                        if (line.omittedComponents.isNotEmpty()) {
+                            val omissions = line.omittedComponents.joinToString(", ") { comp ->
+                                if (!comp.detail.isNullOrBlank()) {
+                                    "${comp.displayName} (${comp.detail})"
+                                } else {
+                                    comp.displayName
+                                }
+                            }
+                            Text(
+                                text = "SIN: $omissions",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFD32F2F) // Material Red 700
+                            )
+                        }
 
+                        line.configuration.forEach { config ->
                             Text("   + ${config.itemName}", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
+                        }
+
+                        if (!line.note.isNullOrBlank()) {
+                            Text(
+                                text = "NOTA: ${line.note}",
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = Color(0xFFE65100) // Material Orange 900
+                            )
                         }
                     }
                 } else if (!detail.legacyOrderDetails.isNullOrBlank()) {
