@@ -61,7 +61,7 @@ class ConfiguratorViewModel(
 
     private var quoteJob: Job? = null
 
-    fun loadConfiguration(menuItemId: Long) {
+    fun loadConfiguration(menuItemId: Long, existingConfig: com.restaurant.sushimei.frontend.data.model.ConfiguredProduct? = null) {
         quoteJob?.cancel()
         quoteJob = null
 
@@ -91,10 +91,51 @@ class ConfiguratorViewModel(
 
                     if (_uiState.value.generationToken != token) return@coroutineScope
 
+                    val initialRootSelections = mutableMapOf<Long, List<SelectionNode>>()
+                    val initialOmitted = existingConfig?.omittedComponents?.map { it.id }?.toSet() ?: emptySet()
+                    val initialNote = existingConfig?.note ?: ""
+
+                    if (existingConfig != null) {
+                        fun buildNodes(
+                            configuredGroups: List<com.restaurant.sushimei.frontend.data.model.ConfiguredGroup>,
+                            schemaGroups: List<ConfigurationGroupDto>
+                        ): Map<Long, List<SelectionNode>> {
+                            val resultMap = mutableMapOf<Long, List<SelectionNode>>()
+                            configuredGroups.forEach { confGroup ->
+                                val schemaGroup = schemaGroups.find { it.id == confGroup.groupId }
+                                if (schemaGroup != null) {
+                                    val nodes = confGroup.selections.mapNotNull { confSel ->
+                                        val option = schemaGroup.options.find { it.menuItemId == confSel.menuItemId }
+                                        if (option != null) {
+                                            val copies = mutableListOf<SelectionNode>()
+                                            repeat(confSel.quantity) {
+                                                copies.add(
+                                                    SelectionNode(
+                                                        option = option,
+                                                        nestedConfiguration = null,
+                                                        nestedSelections = confSel.groups?.let { buildNodes(it, emptyList()) } ?: emptyMap()
+                                                    )
+                                                )
+                                            }
+                                            copies
+                                        } else null
+                                    }.flatten()
+                                    resultMap[confGroup.groupId] = nodes
+                                }
+                            }
+                            return resultMap
+                        }
+
+                        initialRootSelections.putAll(buildNodes(existingConfig.groups, config.groups))
+                    }
+
                     _uiState.value = _uiState.value.copy(
                         isLoadingConfig = false,
                         configuration = config,
-                        defaultComponents = components
+                        defaultComponents = components,
+                        rootSelections = initialRootSelections,
+                        omittedComponentIds = initialOmitted,
+                        note = initialNote
                     )
                     validateAndQuote()
                 }
@@ -342,21 +383,15 @@ class ConfiguratorViewModel(
         return selections.toSortedMap().map { (groupId, nodes) ->
             val byItem = nodes.groupBy { it.option.menuItemId }
 
-            val mappedSelections = byItem.toSortedMap().map { (menuItemId, occurrences) ->
-                val occurrencesNested = occurrences.map { node ->
-                    buildRequestGroups(node.nestedSelections)
-                }
-
-                val firstNested = occurrencesNested.first()
-                if (occurrencesNested.any { it != firstNested }) {
-                    throw IllegalStateException("Opciones duplicadas configurables deben tener la misma configuración anidada.")
-                }
-
-                ItemQuoteRequestSelectionDto(
-                    menuItemId = menuItemId,
-                    quantity = occurrences.size,
-                    groups = firstNested
-                )
+                        val mappedSelections = byItem.toSortedMap().flatMap { (menuItemId, occurrences) ->
+                val groupedByConfig = occurrences.groupBy { buildRequestGroups(it.nestedSelections) }
+                groupedByConfig.map { (nested, sameConfigOccurrences) ->
+                    ItemQuoteRequestSelectionDto(
+                        menuItemId = menuItemId,
+                        quantity = sameConfigOccurrences.size,
+                        groups = nested
+                    )
+                }.sortedBy { it.menuItemId }
             }
 
             ItemQuoteRequestGroupDto(
