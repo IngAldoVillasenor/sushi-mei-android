@@ -50,7 +50,10 @@ data class PromotionLineSelection(
 data class ConfiguredRewardConfiguration(
     val rewardOrdinal: Int,
     val menuItemId: Long? = null,
-    val groups: List<ConfiguredGroup> = emptyList()
+    val groups: List<ConfiguredGroup> = emptyList(),
+    val omittedComponents: List<DefaultComponentResponse> = emptyList(),
+    val note: String? = null,
+    val id: String = java.util.UUID.randomUUID().toString()
 )
 
 /**
@@ -71,7 +74,10 @@ data class ConfiguredSelection(
     val quantity: Int,
     val catalogUnitPrice: BigDecimal,
     val priceAdjustment: BigDecimal,
-    val groups: List<ConfiguredGroup> = emptyList()
+    val groups: List<ConfiguredGroup> = emptyList(),
+    val omittedComponents: List<DefaultComponentResponse> = emptyList(),
+    val note: String? = null,
+    val id: String = java.util.UUID.randomUUID().toString()
 )
 
 /**
@@ -89,6 +95,19 @@ data class QuotedRewardItem(
     val configurationAdjustmentTotal: BigDecimal,
     val total: BigDecimal
 )
+
+
+/**
+ * Generic manual-priced cart line (Venta Libre)
+ */
+data class ManualCartLine(
+    val lineKey: String = java.util.UUID.randomUUID().toString(),
+    val description: String,
+    val quantity: Int = 1,
+    val unitAmount: BigDecimal
+) {
+    val total: BigDecimal get() = unitAmount * BigDecimal(quantity)
+}
 
 data class QuotedCartLine(
     val lineKey: String,

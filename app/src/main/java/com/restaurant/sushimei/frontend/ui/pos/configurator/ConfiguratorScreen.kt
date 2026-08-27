@@ -55,10 +55,6 @@ fun ConfiguratorScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(menuItemId) {
-        viewModel.loadConfiguration(menuItemId)
-    }
-
     if (uiState.isLoadingConfig) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator()
@@ -157,7 +153,7 @@ fun ConfiguratorScreen(
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
                 }
-                items(removableComponents, key = { it.id }) { component ->
+                items(removableComponents, key = { "comp-${it.id}" }) { component ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -194,7 +190,7 @@ fun ConfiguratorScreen(
                 }
             }
 
-            items(config.groups, key = { it.id }) { group ->
+            items(config.groups, key = { "group-${it.id}" }) { group ->
                 val selections = uiState.rootSelections[group.id] ?: emptyList()
                 ConfigurationGroupView(
                     group = group,

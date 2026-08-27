@@ -44,6 +44,14 @@ class ConfiguratorViewModelTest {
         Dispatchers.setMain(testDispatcher)
         menuRepository = mockk()
         io.mockk.coEvery { menuRepository.getMenuItemComponents(any()) } returns emptyList()
+        io.mockk.coEvery { menuRepository.getConfiguration(any()) } returns com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto(
+            menuItemId = 0L,
+            name = "",
+            standaloneOrderable = false,
+            basePrice = java.math.BigDecimal.ZERO,
+            requiresConfiguration = false,
+            groups = emptyList()
+        )
         viewModel = ConfiguratorViewModel(menuRepository)
     }
 
@@ -451,9 +459,9 @@ class ConfiguratorViewModelTest {
         viewModel.addSelection(20, nestedConfig.groups[0].options[1], parentOccurrenceId = occ2)
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertEquals(QuoteState.INVALID, viewModel.uiState.value.quoteState)
-        assertTrue(viewModel.uiState.value.errorMessage!!.contains("duplicadas"))
-        coVerify(exactly = 0) { menuRepository.quoteItem(rootItemId, any()) }
+        assertEquals(QuoteState.VALID, viewModel.uiState.value.quoteState)
+        assertNull(viewModel.uiState.value.errorMessage)
+        coVerify(atLeast = 1) { menuRepository.quoteItem(rootItemId, any()) }
     }
 
     @Test

@@ -413,6 +413,12 @@ class PrintService(private val context: Context) {
             if (child.displayOnTicket) {
                 val indent = "   ".repeat(indentLevel)
                 out.write("${indent}+ ${child.itemName}\n".toByteArray())
+                for (omission in child.omittedComponents) {
+                    out.write("${indent}   SIN: ${omission.displayName}\n".toByteArray())
+                }
+                if (!child.note.isNullOrBlank()) {
+                    out.write("${indent}   NOTA: ${child.note}\n".toByteArray())
+                }
                 printConfigurationTree(out, configList, child.id, indentLevel + 1)
             } else {
                 printConfigurationTree(out, configList, child.id, indentLevel)

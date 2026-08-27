@@ -56,4 +56,3 @@ interface OrderDao {
     """)
     fun observeDispatched(sinceTimestamp: Long): Flow<List<OrderEntity>>
 }
-

@@ -65,6 +65,7 @@ sealed interface PosUiState {
         val activePromotions: List<Promotion> = emptyList(),
         val promotionLoadError: String? = null,
         val currentCart: List<ConfiguredProduct> = emptyList(),
+        val manualCart: List<com.restaurant.sushimei.frontend.data.model.ManualCartLine> = emptyList(),
         val quoteState: QuoteState = QuoteState.Idle,
         val checkoutState: CheckoutState = CheckoutState.Idle,
         val fulfillmentType: FulfillmentType = FulfillmentType.PICKUP,
@@ -134,6 +135,7 @@ class PosViewModel(
     private val _selectedCategory = MutableStateFlow<String?>(null)
 
     private val _currentCart = MutableStateFlow<List<ConfiguredProduct>>(emptyList())
+    private val _manualCart = MutableStateFlow<List<com.restaurant.sushimei.frontend.data.model.ManualCartLine>>(emptyList())
 
     private val _activePromotions = MutableStateFlow<List<Promotion>>(emptyList())
 
@@ -171,9 +173,17 @@ class PosViewModel(
             _selectedCategory,
             _currentCart,
             _activePromotions,
-            _promotionLoadError
-        ) { all, category, cart, promotions, promotionError ->
-            CatalogState(all, category, cart, promotions, promotionError)
+            _promotionLoadError,
+            _manualCart
+        ) { args: Array<Any?> ->
+            CatalogState(
+                allProducts = args[0] as List<com.restaurant.sushimei.frontend.data.model.MenuItem>,
+                selectedCategory = args[1] as String?,
+                cart = args[2] as List<com.restaurant.sushimei.frontend.data.model.ConfiguredProduct>,
+                activePromotions = args[3] as List<com.restaurant.sushimei.frontend.data.model.Promotion>,
+                promotionLoadError = args[4] as String?,
+                manualCart = args[5] as List<com.restaurant.sushimei.frontend.data.model.ManualCartLine>
+            )
         },
         combine(_isLoading, _quoteState, _checkoutState, ::Triple),
         combine(_fulfillmentType, _paymentMethod, _pickupName, _deliveryAddress, _cashDenomination) { f, p, pn, da, cd ->
@@ -205,6 +215,7 @@ class PosViewModel(
                 activePromotions = catalog.activePromotions,
                 promotionLoadError = catalog.promotionLoadError,
                 currentCart = catalog.cart,
+                manualCart = catalog.manualCart,
                 quoteState = quote,
                 checkoutState = checkout,
                 fulfillmentType = metadata.fulfillmentType,
@@ -228,6 +239,7 @@ class PosViewModel(
         val allProducts: List<MenuItem>,
         val selectedCategory: String?,
         val cart: List<ConfiguredProduct>,
+        val manualCart: List<com.restaurant.sushimei.frontend.data.model.ManualCartLine>,
         val activePromotions: List<Promotion>,
         val promotionLoadError: String?
     )
@@ -387,6 +399,52 @@ class PosViewModel(
 
     fun selectCategory(category: String) {
         _selectedCategory.value = category
+    }
+
+    fun replaceConfiguredProduct(oldId: String, newProduct: ConfiguredProduct) {
+        val currentList = _currentCart.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == oldId }
+        if (index != -1) {
+            val oldProduct = currentList[index]
+            val preservedProduct = newProduct.copy(
+                id = oldProduct.id,
+                promotionSelection = oldProduct.promotionSelection
+            )
+            currentList[index] = preservedProduct
+            _currentCart.value = currentList
+            invalidateRequestId()
+        }
+    }
+
+    fun replaceConfiguredReward(rootProductId: String, rewardOrdinal: Int, configuredRewardData: ConfiguredProduct) {
+        val currentList = _currentCart.value.toMutableList()
+        val index = currentList.indexOfFirst { it.id == rootProductId }
+        if (index != -1) {
+            val oldProduct = currentList[index]
+            val oldPromo = oldProduct.promotionSelection ?: return
+
+            val updatedRewards = oldPromo.rewardConfigurations.map { rew ->
+                if (rew.rewardOrdinal == rewardOrdinal) {
+                    rew.copy(
+                        groups = configuredRewardData.groups,
+                        omittedComponents = configuredRewardData.omittedComponents,
+                        note = configuredRewardData.note
+                    )
+                } else {
+                    rew
+                }
+            }
+
+            val updatedPromo = oldPromo.copy(rewardConfigurations = updatedRewards)
+            val preservedProduct = oldProduct.copy(promotionSelection = updatedPromo)
+
+            currentList[index] = preservedProduct
+            _currentCart.value = currentList
+            invalidateRequestId()
+
+            // Re-quote the entire cart since reward configuration changed (which might affect its own catalog pricing validity though rewards are usually free, they can have paid additions)
+
+        }
     }
 
     fun addToCart(menuItem: MenuItem) {
@@ -684,10 +742,10 @@ class PosViewModel(
     }
 
     fun clearCart() {
-        if (_currentCart.value.isNotEmpty()) {
+        if (_currentCart.value.isNotEmpty() || _manualCart.value.isNotEmpty()) {
             _currentCart.value = emptyList()
-
-            invalidateRequestId()
+            _manualCart.value = emptyList()
+            pendingRequestId = null
         }
     }
 
@@ -731,7 +789,7 @@ class PosViewModel(
 
         // Synchronous guard against duplicate submit or empty cart
 
-        if (items.isEmpty() || _checkoutState.value == CheckoutState.Loading) return
+        if ((items.isEmpty() && _manualCart.value.isEmpty()) || _checkoutState.value == CheckoutState.Loading) return
 
         // Logical snapshot of the checkout metadata
 
@@ -762,6 +820,7 @@ class PosViewModel(
             pendingRequestId = UUID.randomUUID()
         }
 
+        val manualItems = _manualCart.value
         val requestSnapshot = ManualPosOrderRequest(
             requestId = pendingRequestId.toString(),
             fulfillmentType = fulfillment,
@@ -769,7 +828,15 @@ class PosViewModel(
             deliveryAddress = if (fulfillment == FulfillmentType.DELIVERY) address else null,
             pickupName = if (fulfillment == FulfillmentType.PICKUP) pickup else null,
             cashDenomination = if (fulfillment == FulfillmentType.DELIVERY && payment == PaymentMethod.CASH) denomination else null,
-            lines = items.map { buildRequestLine(it) }
+            lines = items.map { buildRequestLine(it) },
+            manualLines = manualItems.map {
+                com.restaurant.sushimei.frontend.data.model.ManualPricedLineRequest(
+                    lineKey = it.lineKey,
+                    description = it.description,
+                    quantity = it.quantity,
+                    unitAmount = it.unitAmount
+                )
+            }
         )
 
         viewModelScope.launch {
@@ -850,7 +917,9 @@ class PosViewModel(
                 QuoteRequestRewardConfigDto(
                     rewardOrdinal = reward.rewardOrdinal,
                     menuItemId = reward.menuItemId,
-                    groups = reward.groups.map { buildRequestGroup(it) }
+                    groups = reward.groups.map { buildRequestGroup(it) },
+                    omittedComponentIds = reward.omittedComponents.map { it.id },
+                    note = reward.note
                 )
             } ?: emptyList(),
             omittedComponentIds = product.omittedComponents.map { it.id },
@@ -869,7 +938,9 @@ class PosViewModel(
         return QuoteRequestSelectionDto(
             menuItemId = selection.menuItemId,
             quantity = selection.quantity,
-            groups = selection.groups.map { buildRequestGroup(it) }
+            groups = selection.groups.map { buildRequestGroup(it) },
+            omittedComponentIds = selection.omittedComponents.map { it.id },
+            note = selection.note
         )
     }
 
@@ -908,13 +979,29 @@ class PosViewModel(
         }
     }
 
+    fun addManualLine(description: String, unitAmount: java.math.BigDecimal) {
+        val newLine = com.restaurant.sushimei.frontend.data.model.ManualCartLine(
+            description = description,
+            unitAmount = unitAmount
+        )
+        _manualCart.value = _manualCart.value + newLine
+        pendingRequestId = null
+    }
+
+    fun removeManualLine(lineKey: String) {
+        _manualCart.value = _manualCart.value.filter { it.lineKey != lineKey }
+        pendingRequestId = null
+    }
+
     fun resetCheckoutState() {
         _checkoutState.value = CheckoutState.Idle
         _currentPrintJobId.value = null
     }
 
     fun getTotal(): BigDecimal {
-        return (_quoteState.value as? QuoteState.Valid)?.preview?.total ?: BigDecimal.ZERO
+        val quoteTotal = (_quoteState.value as? QuoteState.Valid)?.preview?.total ?: java.math.BigDecimal.ZERO
+        val manualTotal = _manualCart.value.sumOf { it.total }
+        return quoteTotal + manualTotal
     }
 
     companion object {
