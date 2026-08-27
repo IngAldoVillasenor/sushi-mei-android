@@ -39,6 +39,8 @@ sealed interface CheckoutState {
     data class ConfirmedWithPrintWarning(val response: ManualPosOrderResponse, val orderId: Long, val requestId: String, val message: String) : CheckoutState
 
     data class Error(val message: String) : CheckoutState
+    data class OpenSaleSuccess(val response: com.restaurant.sushimei.frontend.data.model.OpenSaleResponse) : CheckoutState
+    data class OpenSaleConfirmedWithPrintWarning(val response: com.restaurant.sushimei.frontend.data.model.OpenSaleResponse, val orderId: Long, val requestId: String, val message: String) : CheckoutState
 }
 
 
@@ -412,7 +414,9 @@ class PosViewModel(
                 val index = currentList.indexOfFirst {
                     it.promotionSelection == null &&
                         it.menuItemId == product.menuItemId &&
-                        it.groups.isEmpty()
+                        it.groups.isEmpty() &&
+                        it.omittedComponents.isEmpty() &&
+                        it.note.isNullOrBlank()
                 }
 
                 if (index >= 0) {
@@ -442,7 +446,9 @@ class PosViewModel(
             it.promotionSelection == null &&
                 configuredProduct.promotionSelection == null &&
                 it.menuItemId == configuredProduct.menuItemId &&
-                it.groups == configuredProduct.groups
+                it.groups == configuredProduct.groups &&
+                it.omittedComponents == configuredProduct.omittedComponents &&
+                it.note == configuredProduct.note
         }
 
         if (index >= 0) {
@@ -846,7 +852,9 @@ class PosViewModel(
                     menuItemId = reward.menuItemId,
                     groups = reward.groups.map { buildRequestGroup(it) }
                 )
-            } ?: emptyList()
+            } ?: emptyList(),
+            omittedComponentIds = product.omittedComponents.map { it.id },
+            note = product.note
         )
     }
 
@@ -883,6 +891,23 @@ class PosViewModel(
         }
     }
 
+    fun retryOpenSalePrintRegistration(orderId: Long, requestId: String, response: com.restaurant.sushimei.frontend.data.model.OpenSaleResponse) {
+        viewModelScope.launch {
+            try {
+                val job = printManager.enqueuePrintJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, orderId, requestId)
+                _currentPrintJobId.value = job.id
+                _checkoutState.value = CheckoutState.OpenSaleSuccess(response)
+            } catch (e: Exception) {
+                _checkoutState.value = CheckoutState.OpenSaleConfirmedWithPrintWarning(
+                    response = response,
+                    orderId = orderId,
+                    requestId = requestId,
+                    message = "La orden se confirmó exitosamente, pero aún no se puede registrar la impresión: ${e.message}"
+                )
+            }
+        }
+    }
+
     fun resetCheckoutState() {
         _checkoutState.value = CheckoutState.Idle
         _currentPrintJobId.value = null
@@ -908,5 +933,66 @@ class PosViewModel(
                     return PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository) as T
                 }
             }
+    }
+
+
+    private var pendingOpenSaleRequestId: java.util.UUID? = null
+    private var pendingOpenSaleFingerprint: String? = null
+
+    fun submitOpenSale(
+        description: String,
+        amount: java.math.BigDecimal,
+        paymentMethod: com.restaurant.sushimei.frontend.data.model.PaymentMethod,
+        cashDenomination: java.math.BigDecimal?
+    ) {
+        if (_checkoutState.value == CheckoutState.Loading) return
+        _checkoutState.value = CheckoutState.Loading
+
+        val normalizedDesc = description.trim().lowercase()
+        val finalDenom = if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) cashDenomination else null
+        val fingerprint = "$normalizedDesc|${amount.toPlainString()}|${paymentMethod.name}|${finalDenom?.toPlainString() ?: "null"}"
+
+        if (pendingOpenSaleRequestId == null || pendingOpenSaleFingerprint != fingerprint) {
+            pendingOpenSaleRequestId = java.util.UUID.randomUUID()
+            pendingOpenSaleFingerprint = fingerprint
+        }
+
+        val requestId = pendingOpenSaleRequestId!!.toString()
+
+        viewModelScope.launch {
+            try {
+                val request = com.restaurant.sushimei.frontend.data.model.OpenSaleRequest(
+                    requestId = requestId,
+                    description = description,
+                    amount = amount,
+                    paymentMethod = paymentMethod,
+                    cashDenomination = finalDenom
+                )
+                val response = manualPosOrderRepository.createOpenSale(request)
+                if (response.result == "CREATED" || response.result == "ALREADY_CREATED") {
+                    pendingOpenSaleRequestId = null
+                    pendingOpenSaleFingerprint = null
+                    try {
+                        val job = printManager.enqueuePrintJob(
+                            com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER,
+                            response.id,
+                            request.requestId
+                        )
+                        _currentPrintJobId.value = job.id
+                        _checkoutState.value = CheckoutState.OpenSaleSuccess(response)
+                    } catch (e: Exception) {
+                        _checkoutState.value = CheckoutState.OpenSaleConfirmedWithPrintWarning(
+                            response, response.id, request.requestId, "Venta registrada, pero error al imprimir: ${e.message}"
+                        )
+                    }
+                } else {
+                    _checkoutState.value = CheckoutState.Error("Fallo inesperado del servidor: ${response.result}")
+                }
+            } catch (e: ApiException) {
+                _checkoutState.value = CheckoutState.Error(mapApiError(e))
+            } catch (e: Exception) {
+                _checkoutState.value = CheckoutState.Error("Error inesperado al procesar la orden. Intenta de nuevo.")
+            }
+        }
     }
 }

@@ -691,4 +691,75 @@ class PosViewModelTest {
         assertEquals("sourceLineKey links reward to purchased line", "cart-line-abc", reward.sourceLineKey)
         assertEquals("configurationAdjustmentTotal is ajuste", BigDecimal("15.00"), reward.configurationAdjustmentTotal)
     }
+
+    @Test
+    fun `OpenSale first attempt throws network error, retry SAME payload captures same requestId`() = runTest {
+        val requests = mutableListOf<com.restaurant.sushimei.frontend.data.model.OpenSaleRequest>()
+        io.mockk.coEvery { manualPosOrderRepository.createOpenSale(capture(requests)) } throws RuntimeException("Network error")
+
+        viewModel.submitOpenSale("Test Item", BigDecimal("150.00"), PaymentMethod.CASH, BigDecimal("200.00"))
+        advanceUntilIdle()
+
+        val state1 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(state1 is CheckoutState.Error)
+        assertEquals(1, requests.size)
+        val firstRequestId = requests[0].requestId
+
+        io.mockk.coEvery { manualPosOrderRepository.createOpenSale(capture(requests)) } returns OpenSaleResponse(
+            100L, firstRequestId, "CREATED", "POS", 1L, "Test Item", 1, BigDecimal("150.00"), BigDecimal("150.00"), PaymentMethod.CASH, BigDecimal("200.00"), "COMPLETED", "2024"
+        )
+
+        viewModel.submitOpenSale("Test Item", BigDecimal("150.00"), PaymentMethod.CASH, BigDecimal("200.00"))
+        advanceUntilIdle()
+
+        val state2 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(state2 is CheckoutState.OpenSaleSuccess)
+        assertEquals(2, requests.size)
+        val secondRequestId = requests[1].requestId
+
+        assertEquals(firstRequestId, secondRequestId)
+    }
+
+    @Test
+    fun `OpenSale first request fails, change payload, retry captures different requestId`() = runTest {
+        val requests = mutableListOf<com.restaurant.sushimei.frontend.data.model.OpenSaleRequest>()
+        io.mockk.coEvery { manualPosOrderRepository.createOpenSale(capture(requests)) } throws RuntimeException("Network error")
+
+        viewModel.submitOpenSale("Test Item", BigDecimal("150.00"), PaymentMethod.CASH, BigDecimal("200.00"))
+        advanceUntilIdle()
+
+        viewModel.submitOpenSale("Test Item", BigDecimal("160.00"), PaymentMethod.CASH, BigDecimal("200.00"))
+        advanceUntilIdle()
+
+        assertEquals(2, requests.size)
+        val firstRequestId = requests[0].requestId
+        val secondRequestId = requests[1].requestId
+
+        assertTrue(firstRequestId != secondRequestId)
+    }
+
+    @Test
+    fun `OpenSale CREATED response captures currentPrintJobId`() = runTest {
+        val requests = mutableListOf<com.restaurant.sushimei.frontend.data.model.OpenSaleRequest>()
+        io.mockk.coEvery { manualPosOrderRepository.createOpenSale(capture(requests)) } returns OpenSaleResponse(
+            100L, "req-1", "CREATED", "POS", 1L, "Test Item", 1, BigDecimal("150.00"), BigDecimal("150.00"), PaymentMethod.CARD, null, "COMPLETED", "2024"
+        )
+
+        io.mockk.coEvery { printJobRepository.getPendingJobs() } returns emptyList()
+
+        val job = com.restaurant.sushimei.frontend.data.local.PrintJobEntity("job-123", "req-1", PrintDocumentType.ORDER, 100L, null, PrintJobStatus.PENDING, null, 1L, 1L, null, null)
+        io.mockk.coEvery { printManager.enqueuePrintJob(any(), any(), any(), any()) } returns job
+
+        viewModel.submitOpenSale("Test Item", BigDecimal("150.00"), PaymentMethod.CARD, null)
+        advanceUntilIdle()
+
+        val state = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(state is CheckoutState.OpenSaleSuccess)
+
+        val currentPrintJobIdField = PosViewModel::class.java.getDeclaredField("_currentPrintJobId")
+        currentPrintJobIdField.isAccessible = true
+        val stateFlow = currentPrintJobIdField.get(viewModel) as kotlinx.coroutines.flow.MutableStateFlow<String?>
+        assertEquals("job-123", stateFlow.value)
+
+    }
 }

@@ -52,6 +52,11 @@ import com.restaurant.sushimei.frontend.ui.dashboard.DateRangeOption
 
 import com.restaurant.sushimei.frontend.data.model.HistoricalOrderSummaryDto
 
+import kotlinx.coroutines.launch
+import com.restaurant.sushimei.frontend.data.local.providePrintManager
+import com.restaurant.sushimei.frontend.data.local.providePrintJobRepository
+
+
 import java.time.format.DateTimeFormatter
 
 import java.time.ZoneId
@@ -83,6 +88,10 @@ fun DashboardScreen(
     }
 
 ) {
+
+    val context = LocalContext.current
+    val printManager = androidx.compose.runtime.remember { providePrintManager(context) }
+    val printJobRepository = androidx.compose.runtime.remember { providePrintJobRepository(context) }
 
     val uiState by viewModel.uiState.collectAsState()
 
@@ -130,6 +139,8 @@ fun DashboardScreen(
 
             DashboardContent(
 
+                printManager = printManager,
+                printJobRepository = printJobRepository,
                 state = state,
 
                 onDateRangeSelected = { viewModel.setDateRange(it) },
@@ -151,6 +162,8 @@ fun DashboardScreen(
 @Composable
 
 private fun DashboardContent(
+    printManager: com.restaurant.sushimei.frontend.PrintManager,
+    printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository,
 
     state: DashboardUiState.Content,
 
@@ -368,7 +381,7 @@ private fun DashboardContent(
 
         items(state.orders) { order ->
 
-            HistoricalOrderRow(order)
+            HistoricalOrderRow(order, printManager, printJobRepository)
 
         }
 
@@ -667,79 +680,174 @@ private fun SalesBySourceCard(
 
 
 @Composable
-
-private fun HistoricalOrderRow(order: HistoricalOrderSummaryDto) {
-
+private fun HistoricalOrderRow(
+    order: HistoricalOrderSummaryDto,
+    printManager: com.restaurant.sushimei.frontend.PrintManager,
+    printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository
+) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm").withZone(ZoneId.of("America/Mexico_City")) }
-
     val formattedDate = order.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
 
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    var orchestrationError by remember { mutableStateOf<String?>(null) }
+    var orchestrationInfo by remember { mutableStateOf<String?>(null) }
 
+    val coroutineScope = rememberCoroutineScope()
+    val requireBluetoothPermission = com.restaurant.sushimei.frontend.ui.util.rememberBluetoothPermissionGateway()
 
-    Card(
+    val jobState by printJobRepository.observeJobByDocument(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, order.id).collectAsState(initial = null)
+    val jobId = jobState?.id
 
-        modifier = Modifier.fillMaxWidth(),
+    val attempts by (if (jobId != null) printJobRepository.observeAttemptsForJob(jobId) else kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
+    val activeAttempt = attempts.firstOrNull { it.id == jobState?.activeAttemptId }
+    val latestReprint = DashboardAttemptSelector.latestReprintAttempt(attempts)
 
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    val isReprinting = activeAttempt?.type == com.restaurant.sushimei.frontend.data.model.PrintAttemptType.REPRINT
+    val isOriginalPrinting = activeAttempt?.type == com.restaurant.sushimei.frontend.data.model.PrintAttemptType.ORIGINAL
+    val isOriginalRetry = activeAttempt?.type == com.restaurant.sushimei.frontend.data.model.PrintAttemptType.RETRY
 
-        elevation = CardDefaults.cardElevation(2.dp)
-
-    ) {
-
-        Row(
-
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-
-            horizontalArrangement = Arrangement.SpaceBetween,
-
-            verticalAlignment = Alignment.CenterVertically
-
-        ) {
-
-            Column(modifier = Modifier.weight(1f)) {
-
-                Text("Orden #${order.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-
-                if (order.externalOrderId != null) {
-
-                    Text("Ref Ext: ${order.externalOrderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("Reimprimir ticket") },
+            text = { Text("Orden #${order.id} - Reimprimir ticket?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmDialog = false
+                    requireBluetoothPermission {
+                        coroutineScope.launch {
+                            val result = printManager.reprintOrder(order.id)
+                            when (result) {
+                                is com.restaurant.sushimei.frontend.ReprintStartResult.Error -> orchestrationError = result.message
+                                is com.restaurant.sushimei.frontend.ReprintStartResult.AlreadyProcessing -> orchestrationInfo = "La reimpresión ya está en proceso."
+                                is com.restaurant.sushimei.frontend.ReprintStartResult.RetryingOriginal -> orchestrationInfo = "Reintentando impresión original..."
+                                else -> {}
+                            }
+                        }
+                    }
+                }) {
+                    Text("Confirmar")
                 }
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(formattedDate, style = MaterialTheme.typography.bodyMedium)
-
-                Text("Origen: ${order.orderSource ?: "N/A"}", style = MaterialTheme.typography.bodySmall)
-
-            }
-
-            Column(horizontalAlignment = Alignment.End) {
-
-                Text(
-
-                    text = "${formatCurrency(order.total ?: java.math.BigDecimal.ZERO)}",
-
-                    style = MaterialTheme.typography.titleMedium,
-
-                    fontWeight = FontWeight.Bold,
-
-                    color = if (order.status == "COMPLETED") ColorSuccess else MaterialTheme.colorScheme.onSurface
-
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Badge(containerColor = if (order.status == "COMPLETED") ColorSuccess else if (order.status == "VOIDED") ColorError else ColorPrimary) {
-
-                    Text(order.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDialog = false }) {
+                    Text("Cancelar")
                 }
-
             }
-
-        }
-
+        )
     }
 
+    if (orchestrationError != null) {
+        AlertDialog(
+            onDismissRequest = { orchestrationError = null },
+            title = { Text("Error de orquestación") },
+            text = { Text(orchestrationError ?: "") },
+            confirmButton = {
+                TextButton(onClick = { orchestrationError = null }) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
+
+    if (orchestrationInfo != null) {
+        AlertDialog(
+            onDismissRequest = { orchestrationInfo = null },
+            title = { Text("Información") },
+            text = { Text(orchestrationInfo ?: "") },
+            confirmButton = {
+                TextButton(onClick = { orchestrationInfo = null }) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Orden #${order.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (order.externalOrderId != null) {
+                    Text("Ref Ext: ${order.externalOrderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(formattedDate, style = MaterialTheme.typography.bodyMedium)
+                Text("Origen: ${order.orderSource ?: "N/A"}", style = MaterialTheme.typography.bodySmall)
+
+                val currentState = jobState
+                if (currentState != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (isReprinting) {
+                        Text("Reimprimiendo...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (isOriginalPrinting) {
+                        Text("Impresión original en proceso", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (isOriginalRetry) {
+                        Text("Reintentando impresión original...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (latestReprint != null) {
+                        when (latestReprint.status) {
+                            com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.SUCCEEDED -> {
+                                Text("Reimpresión completada", style = MaterialTheme.typography.labelSmall, color = ColorSuccess)
+                            }
+                            com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.FAILED -> {
+                                Text("Error al reimprimir: ${latestReprint.error ?: "Desconocido"}", style = MaterialTheme.typography.labelSmall, color = ColorError)
+                            }
+                            com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.INTERRUPTED -> {
+                                Text("La reimpresión fue interrumpida", style = MaterialTheme.typography.labelSmall, color = ColorError)
+                            }
+                            com.restaurant.sushimei.frontend.data.model.PrintAttemptStatus.PRINTING -> {
+                                Text("Reimprimiendo...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    } else {
+                        if (currentState.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.FAILED || currentState.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.INTERRUPTED) {
+                            Text("Impresión original fallida", style = MaterialTheme.typography.labelSmall, color = ColorError)
+                        } else if (currentState.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.REPRINT_READY) {
+                            Text("Listo para reimprimir", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else if (currentState.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PRINTING || currentState.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PENDING) {
+                            Text("Impresión original en proceso", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text("Estado original: ${currentState.status}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "${formatCurrency(order.total ?: java.math.BigDecimal.ZERO)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (order.status == "COMPLETED") ColorSuccess else MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Badge(containerColor = if (order.status == "COMPLETED") ColorSuccess else if (order.status == "VOIDED") ColorError else ColorPrimary) {
+                    Text(order.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val btnText = if (jobState != null && latestReprint == null && (jobState!!.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.FAILED || jobState!!.status == com.restaurant.sushimei.frontend.data.model.PrintJobStatus.INTERRUPTED)) {
+                    "Reintentar impresión"
+                } else {
+                    "Reimprimir"
+                }
+
+                val isBusy = jobState?.activeAttemptId != null
+
+                OutlinedButton(
+                    onClick = { showConfirmDialog = true },
+                    enabled = !isBusy
+                ) {
+                    Text(btnText)
+                }
+            }
+        }
+    }
 }

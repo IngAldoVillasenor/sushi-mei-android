@@ -27,6 +27,8 @@ data class ConfiguredProduct(
     val quantity: Int,
     val baseUnitPrice: BigDecimal,
     val groups: List<ConfiguredGroup> = emptyList(),
+    val omittedComponents: List<DefaultComponentResponse> = emptyList(),
+    val note: String? = null,
 
     // El precio total ajustado devuelto por la cotización del backend
     val unitTotal: BigDecimal = baseUnitPrice,

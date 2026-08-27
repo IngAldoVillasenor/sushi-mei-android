@@ -155,7 +155,9 @@ data class QuoteRequestLineDto(
     val menuItemId: Long,
     val quantity: Int,
     val groups: List<QuoteRequestGroupDto> = emptyList(),
-    val rewardConfigurations: List<QuoteRequestRewardConfigDto> = emptyList()
+    val rewardConfigurations: List<QuoteRequestRewardConfigDto> = emptyList(),
+    val omittedComponentIds: List<Long> = emptyList(),
+    val note: String? = null
 )
 
 data class QuoteRequestGroupDto(
@@ -240,7 +242,9 @@ data class PromotionSummaryDto(
 
 data class ItemQuoteRequestDto(
     val quantity: Int,
-    val groups: List<ItemQuoteRequestGroupDto> = emptyList()
+    val groups: List<ItemQuoteRequestGroupDto> = emptyList(),
+    val omittedComponentIds: List<Long> = emptyList(),
+    val note: String? = null
 )
 
 data class ItemQuoteRequestGroupDto(
@@ -309,7 +313,9 @@ data class PosOrderRequestLineDto(
     val menuItemId: Long,
     val quantity: Int,
     val groups: List<QuoteRequestGroupDto> = emptyList(),
-    val rewardConfigurations: List<QuoteRequestRewardConfigDto> = emptyList()
+    val rewardConfigurations: List<QuoteRequestRewardConfigDto> = emptyList(),
+    val omittedComponentIds: List<Long> = emptyList(),
+    val note: String? = null
 )
 
 data class ManualPosOrderResponse(
@@ -344,6 +350,8 @@ data class PosOrderResponseLineDto(
     val promotion: OrderPromotionSnapshotDto?,
     val rewardOrdinal: Int?,
     val configuration: List<OrderConfigurationSnapshotDto> = emptyList(),
+    val omittedComponents: List<OrderComponentOmissionSnapshotDto> = emptyList(),
+    val note: String? = null,
     val rewards: List<PosOrderResponseLineDto> = emptyList()
 )
 
@@ -418,7 +426,9 @@ data class OperationalOrderLineDto(
     val promotion: OrderPromotionSnapshotDto?,
     val rewardOrdinal: Int?,
     val sourcePaidLineId: Long?,
-    val configuration: List<OrderConfigurationSnapshotDto> = emptyList()
+    val configuration: List<OrderConfigurationSnapshotDto> = emptyList(),
+    val omittedComponents: List<OrderComponentOmissionSnapshotDto> = emptyList(),
+    val note: String? = null
 )
 
 
@@ -497,4 +507,53 @@ data class OpenBusinessDayRequest(
 
 data class CloseBusinessDayRequest(
     val actualClosingCashAmount: java.math.BigDecimal
+)
+
+
+// ============================================================================
+// PHASE MVP-2: Generic Customization & Open Sale
+// ============================================================================
+
+data class DefaultComponentResponse(
+    val id: Long,
+    val code: String,
+    val displayName: String,
+    val detail: String?,
+    val includedByDefault: Boolean,
+    val removable: Boolean,
+    val displayOrder: Int,
+    val active: Boolean
+)
+
+data class OpenSaleRequest(
+    val requestId: String,
+    val description: String,
+    val amount: BigDecimal,
+    val paymentMethod: PaymentMethod,
+    val cashDenomination: BigDecimal?
+)
+
+data class OpenSaleResponse(
+    val id: Long,
+    val requestId: String,
+    val result: String,
+    val orderSource: String,
+    val createdByUserId: Long,
+    val description: String,
+    val quantity: Int,
+    val unitAmount: BigDecimal,
+    val total: BigDecimal,
+    val paymentMethod: PaymentMethod,
+    val cashDenomination: BigDecimal?,
+    val status: String,
+    val createdAt: String
+)
+
+data class OrderComponentOmissionSnapshotDto(
+    val id: Long,
+    val sourceComponentId: Long,
+    val code: String,
+    val displayName: String,
+    val detail: String?,
+    val displayOrder: Int
 )

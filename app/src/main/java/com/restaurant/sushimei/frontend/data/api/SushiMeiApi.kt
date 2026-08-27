@@ -109,6 +109,11 @@ interface SushiMeiApi {
         @Body request: ManualPosOrderRequest
     ): Response<ManualPosOrderResponse>
 
+    @POST("/api/v1/open-sales")
+    suspend fun createOpenSale(
+        @Body request: com.restaurant.sushimei.frontend.data.model.OpenSaleRequest
+    ): Response<com.restaurant.sushimei.frontend.data.model.OpenSaleResponse>
+
     // ============================================================================
     // FASE 6A2: Operational Catalog & Configuration
     // ============================================================================
@@ -132,6 +137,9 @@ interface SushiMeiApi {
 
     @DELETE("/api/v1/menu/items/{id}")
     suspend fun deleteMenuItem(@Path("id") id: Long): Response<Unit>
+
+    @GET("/api/v1/menu/items/{id}/components")
+    suspend fun getMenuItemComponents(@Path("id") id: Long): Response<List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse>>
 
     @GET("/api/v1/menu/items/{id}/configuration")
     suspend fun getMenuItemConfiguration(@Path("id") id: Long): Response<ConfigurationResponseDto>

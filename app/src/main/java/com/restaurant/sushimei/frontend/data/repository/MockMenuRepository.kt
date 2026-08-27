@@ -130,4 +130,6 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
         val type = object : TypeToken<List<MenuItem>>() {}.type
         return gson.fromJson(json, type)
     }
+
+    override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList()
 }

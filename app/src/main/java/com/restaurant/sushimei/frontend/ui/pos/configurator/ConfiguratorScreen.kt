@@ -11,6 +11,9 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.*
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -124,7 +127,9 @@ fun ConfiguratorScreen(
                                     baseUnitPrice = quote.baseUnitPrice,
                                     unitTotal = quote.unitTotal,
                                     total = quote.total,
-                                    groups = quote.groups.map { it.toDomain() }
+                                    groups = quote.groups.map { it.toDomain() },
+                                    omittedComponents = uiState.defaultComponents.filter { it.id in uiState.omittedComponentIds },
+                                    note = uiState.note.takeIf { it.isNotBlank() }
                                 )
                                 onAddToCart(product)
                             }
@@ -141,6 +146,54 @@ fun ConfiguratorScreen(
             contentPadding = padding,
             modifier = Modifier.fillMaxSize()
         ) {
+
+            // Ingredientes / Default Components
+            val removableComponents = uiState.defaultComponents.filter { it.removable }.sortedBy { it.displayOrder }
+            if (removableComponents.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Ingredientes",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+                items(removableComponents, key = { it.id }) { component ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.toggleComponentOmission(component.id) }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = !uiState.omittedComponentIds.contains(component.id),
+                            onCheckedChange = { viewModel.toggleComponentOmission(component.id) }
+                        )
+                        Column(modifier = Modifier.padding(start = 8.dp)) {
+                            Text(text = component.displayName, style = MaterialTheme.typography.bodyLarge)
+                            if (!component.detail.isNullOrBlank()) {
+                                Text(
+                                    text = component.detail,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Toppings / Selections
+            if (config.groups.isNotEmpty()) {
+                item {
+                    Text(
+                        text = "Toppings / Opciones",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                    )
+                }
+            }
+
             items(config.groups, key = { it.id }) { group ->
                 val selections = uiState.rootSelections[group.id] ?: emptyList()
                 ConfigurationGroupView(
@@ -152,6 +205,22 @@ fun ConfiguratorScreen(
                     onRemove = { occurrenceId ->
                         viewModel.removeSelection(occurrenceId)
                     }
+                )
+            }
+
+            // Notas
+            item {
+                Text(
+                    text = "Notas adicionales",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                )
+                OutlinedTextField(
+                    value = uiState.note,
+                    onValueChange = { if (it.length <= 500) viewModel.updateNote(it) },
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                    maxLines = 3,
+                    placeholder = { Text("Sin ajonjolí, poca salsa...") }
                 )
             }
         }

@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.Flow
 
 interface IPrintJobRepository {
     suspend fun getJobByRequestId(requestId: String): PrintJobEntity?
+    suspend fun getJobByDocument(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long): PrintJobEntity?
+    fun observeJobByDocument(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long): Flow<PrintJobEntity?>
     fun observeAllJobs(): Flow<List<PrintJobEntity>>
     fun observeJobById(id: String): Flow<PrintJobEntity?>
     fun observeAllAttempts(): Flow<List<PrintAttemptEntity>>
@@ -15,6 +17,7 @@ interface IPrintJobRepository {
     suspend fun getJobById(id: String): PrintJobEntity?
     suspend fun getPendingJobs(): List<PrintJobEntity>
     suspend fun getAttemptsForJob(jobId: String): List<PrintAttemptEntity>
+    suspend fun ensureReprintReadyJob(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long, requestId: String): PrintJobEntity
     suspend fun enqueuePrint(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long, requestId: String, snapshotPayload: String? = null): PrintJobEntity
     suspend fun markJobPrinted(jobId: String)
     suspend fun markJobFailed(jobId: String, error: String?)

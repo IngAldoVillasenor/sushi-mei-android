@@ -11,6 +11,8 @@ import java.util.UUID
 
 class RoomPrintJobRepository(private val dao: PrintJobDao) : IPrintJobRepository {
     override fun observeAllJobs(): Flow<List<PrintJobEntity>> = dao.observeAllJobs()
+    override fun observeJobByDocument(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long): Flow<PrintJobEntity?> = dao.observeJobByDocument(documentType, documentId)
+
     override fun observeJobById(id: String): Flow<PrintJobEntity?> = dao.observeJobById(id)
     override fun observeAllAttempts(): Flow<List<PrintAttemptEntity>> = dao.observeAllAttempts()
     override fun observeAttemptsForJob(jobId: String): Flow<List<PrintAttemptEntity>> = dao.observeAttemptsForJob(jobId)
@@ -22,6 +24,36 @@ class RoomPrintJobRepository(private val dao: PrintJobDao) : IPrintJobRepository
     override suspend fun getAttemptsForJob(jobId: String): List<PrintAttemptEntity> = dao.getAttemptsForJob(jobId)
 
     override suspend fun getJobByRequestId(requestId: String): PrintJobEntity? = dao.getJobByRequestId(requestId)
+    override suspend fun getJobByDocument(documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType, documentId: Long): PrintJobEntity? = dao.getJobByDocument(documentType, documentId)
+
+    override suspend fun ensureReprintReadyJob(
+        documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType,
+        documentId: Long,
+        requestId: String
+    ): PrintJobEntity {
+        val existingJob = dao.getJobByDocument(documentType, documentId)
+        if (existingJob != null) {
+            return existingJob
+        }
+        val newJob = PrintJobEntity(
+            id = java.util.UUID.randomUUID().toString(),
+            requestId = requestId,
+            documentType = documentType,
+            documentId = documentId,
+            snapshotPayload = null,
+            status = com.restaurant.sushimei.frontend.data.model.PrintJobStatus.REPRINT_READY,
+            lastError = null,
+            createdAt = System.currentTimeMillis(),
+            updatedAt = System.currentTimeMillis(),
+            printedAt = null,
+            activeAttemptId = null
+        )
+        val rowId = dao.insertJob(newJob)
+        if (rowId == -1L) {
+            return dao.getJobByDocument(documentType, documentId) ?: throw IllegalStateException("Failed to retrieve persisted job.")
+        }
+        return dao.getJobByDocument(documentType, documentId) ?: throw IllegalStateException("Failed to retrieve persisted job.")
+    }
 
     override suspend fun enqueuePrint(
         documentType: com.restaurant.sushimei.frontend.data.model.PrintDocumentType,

@@ -250,6 +250,31 @@ class PrintService(private val context: Context) {
                     "  ${formatCurrency(configuredProduct.total)}\n"
 
             out.write(linea.toByteArray())
+
+            if (configuredProduct.omittedComponents.isNotEmpty()) {
+                val omissions = configuredProduct.omittedComponents.joinToString(", ") { comp ->
+                    if (!comp.detail.isNullOrBlank()) {
+                        "${comp.displayName} (${comp.detail})"
+                    } else {
+                        comp.displayName
+                    }
+                }
+                out.write(boldOn)
+                out.write("   SIN: $omissions\n".toByteArray())
+                out.write(boldOff)
+            }
+
+            configuredProduct.groups.forEach { group ->
+                group.selections.forEach { sel ->
+                    out.write("   + ${sel.name}\n".toByteArray())
+                }
+            }
+
+            if (!configuredProduct.note.isNullOrBlank()) {
+                out.write(boldOn)
+                out.write("   NOTA: ${configuredProduct.note}\n".toByteArray())
+                out.write(boldOff)
+            }
         }
 
         out.write("================================\n".toByteArray())
@@ -476,12 +501,29 @@ class PrintService(private val context: Context) {
 
         if (order.lines.isNotEmpty()) {
             order.lines.forEach { line ->
-
                 val lineText = "${line.quantity}x ${line.name}  ${formatCurrency(line.finalLineTotal)}\n"
-
                 out.write(lineText.toByteArray())
 
+                if (line.omittedComponents.isNotEmpty()) {
+                    val omissions = line.omittedComponents.joinToString(", ") { comp ->
+                        if (!comp.detail.isNullOrBlank()) {
+                            "${comp.displayName} (${comp.detail})"
+                        } else {
+                            comp.displayName
+                        }
+                    }
+                    out.write(boldOn)
+                    out.write("   SIN: $omissions\n".toByteArray())
+                    out.write(boldOff)
+                }
+
                 printConfigurationTree(out, line.configuration, null, 1)
+
+                if (!line.note.isNullOrBlank()) {
+                    out.write(boldOn)
+                    out.write("   NOTA: ${line.note}\n".toByteArray())
+                    out.write(boldOff)
+                }
             }
         } else if (!order.legacyOrderDetails.isNullOrBlank()) {
             out.write("${order.legacyOrderDetails}\n".toByteArray())

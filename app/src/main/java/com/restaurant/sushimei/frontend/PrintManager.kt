@@ -8,6 +8,14 @@ import kotlinx.coroutines.Dispatchers
 
 import kotlinx.coroutines.launch
 
+
+sealed class ReprintStartResult {
+    data class Started(val jobId: String) : ReprintStartResult()
+    data class AlreadyProcessing(val jobId: String) : ReprintStartResult()
+    data class RetryingOriginal(val jobId: String) : ReprintStartResult()
+    data class Error(val message: String) : ReprintStartResult()
+}
+
 class PrintManager(
     private val printJobRepository: IPrintJobRepository,
     private val operationalOrderRepository: IOperationalOrderRepository,
@@ -65,6 +73,44 @@ class PrintManager(
     fun reprintJob(jobId: String) {
         coroutineScope.launch {
             processPrintJob(jobId, PrintAttemptType.REPRINT)
+        }
+    }
+
+    suspend fun reprintOrder(orderId: Long): ReprintStartResult {
+        return try {
+            val existingJob = printJobRepository.getJobByDocument(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, orderId)
+            if (existingJob != null) {
+                if (existingJob.activeAttemptId != null) {
+                    return ReprintStartResult.AlreadyProcessing(existingJob.id)
+                }
+                when (existingJob.status) {
+                    com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PRINTED,
+                    com.restaurant.sushimei.frontend.data.model.PrintJobStatus.REPRINT_READY -> {
+                        coroutineScope.launch { processPrintJob(existingJob.id, PrintAttemptType.REPRINT) }
+                        ReprintStartResult.Started(existingJob.id)
+                    }
+                    com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PENDING,
+                    com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PRINTING -> {
+                        ReprintStartResult.AlreadyProcessing(existingJob.id)
+                    }
+                    com.restaurant.sushimei.frontend.data.model.PrintJobStatus.FAILED,
+                    com.restaurant.sushimei.frontend.data.model.PrintJobStatus.INTERRUPTED -> {
+                        coroutineScope.launch { processPrintJob(existingJob.id, PrintAttemptType.RETRY) }
+                        ReprintStartResult.RetryingOriginal(existingJob.id)
+                    }
+                }
+            } else {
+                val fakeRequestId = "historical-reprint:ORDER:${orderId}"
+                val newJob = printJobRepository.ensureReprintReadyJob(
+                    com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER,
+                    orderId,
+                    fakeRequestId
+                )
+                coroutineScope.launch { processPrintJob(newJob.id, PrintAttemptType.REPRINT) }
+                ReprintStartResult.Started(newJob.id)
+            }
+        } catch (e: Exception) {
+            ReprintStartResult.Error(e.message ?: "Unknown error orchestrating reprint")
         }
     }
 
