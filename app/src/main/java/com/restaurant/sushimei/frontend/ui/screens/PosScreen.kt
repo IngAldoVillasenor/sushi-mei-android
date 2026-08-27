@@ -90,6 +90,12 @@ private data class PromotionConfigurationFlow(
 
 
 @OptIn(ExperimentalMaterial3Api::class)
+sealed interface ConfigurationEditTarget {
+    data class NewItem(val menuItem: com.restaurant.sushimei.frontend.data.model.MenuItem) : ConfigurationEditTarget
+    data class Root(val product: com.restaurant.sushimei.frontend.data.model.ConfiguredProduct) : ConfigurationEditTarget
+    data class Reward(val product: com.restaurant.sushimei.frontend.data.model.ConfiguredProduct, val rewardOrdinal: Int) : ConfigurationEditTarget
+}
+
 @Composable
 fun PosScreen() {
     val context = LocalContext.current
@@ -109,9 +115,13 @@ fun PosScreen() {
 
     val selectedCategory = stateSuccess?.selectedCategory
     val cart = stateSuccess?.currentCart ?: emptyList()
+    val manualCart = stateSuccess?.manualCart ?: emptyList()
     val quoteState = stateSuccess?.quoteState ?: QuoteState.Idle
     val checkoutState = stateSuccess?.checkoutState ?: CheckoutState.Idle
     val pricingPreview = if (quoteState is QuoteState.Valid) quoteState.preview else com.restaurant.sushimei.frontend.data.model.OrderPricingPreview(subtotal = BigDecimal.ZERO, total = BigDecimal.ZERO)
+    val manualTotal = manualCart.fold(java.math.BigDecimal.ZERO) { acc, line -> acc + line.total }
+    val displaySubtotal = pricingPreview.subtotal + manualTotal
+    val displayTotal = pricingPreview.total + manualTotal
 
     val filteredMenuItems = stateSuccess?.filteredProducts ?: emptyList()
     val categories = stateSuccess?.categories ?: listOf("Todos")
@@ -122,7 +132,7 @@ fun PosScreen() {
     var showCheckoutDialog by remember { mutableStateOf(false) }
     var selectedPromotion by remember { mutableStateOf<Promotion?>(null) }
     var promotionConfigurationFlow by remember { mutableStateOf<PromotionConfigurationFlow?>(null) }
-    var configuringItemId by remember { mutableStateOf<Long?>(null) }
+    var configurationEditTarget by remember { mutableStateOf<ConfigurationEditTarget?>(null) }
 
     LaunchedEffect(Unit) {
         viewModel.refreshActivePromotions()
@@ -484,13 +494,13 @@ fun PosScreen() {
                         cartQuantity = cartQuantity,
                         onAddToCart = {
                             if (item.requiresConfiguration) {
-                                configuringItemId = item.id
+                                configurationEditTarget = ConfigurationEditTarget.NewItem(item)
                             } else {
                                 viewModel.addToCart(item)
                             }
                         },
                         onLongPress = {
-                            configuringItemId = item.id
+                            configurationEditTarget = ConfigurationEditTarget.NewItem(item)
                         }
                     )
                 }
@@ -545,19 +555,17 @@ fun PosScreen() {
                 }
             }
 
-            OpenSaleEntryPoint(
-                checkoutState = checkoutState,
-                onSubmit = { desc, amt, pay, denom ->
-                    viewModel.submitOpenSale(desc, amt, pay, denom)
-                },
-                onCancel = {
-                    viewModel.resetCheckoutState()
+            ManualSaleEntryPoint(
+                onSubmit = { desc, amt ->
+                    viewModel.addManualLine(desc, amt)
                 }
             )
 
             HorizontalDivider(modifier = Modifier.padding(bottom = 12.dp))
 
-            if (cart.isEmpty()) {
+            val hasCatalog = cart.isNotEmpty()
+            val hasManual = manualCart.isNotEmpty()
+            if (!hasCatalog && !hasManual) {
                 Box(
                     modifier = Modifier
                         .weight(1f)
@@ -594,19 +602,37 @@ fun PosScreen() {
                             },
                             onIncrement = {
                                 viewModel.incrementCartItem(configuredProduct) {
-                                    configuringItemId = configuredProduct.menuItemId
+                                    // if it requires configuration, we could spawn it, but the prompt says
+                                    // "Tap = default add. Cart must expose [Configurar] for items with backend configurability"
+                                    // so increment just adds. Wait, incrementCartItem in PosViewModel takes a lambda.
+                                    // PosViewModel handles if requiresConfiguration.
                                 }
+                            },
+                            onEdit = {
+                                configurationEditTarget = ConfigurationEditTarget.Root(configuredProduct)
+                            },
+                            onEditReward = { ordinal ->
+                                configurationEditTarget = ConfigurationEditTarget.Reward(configuredProduct, ordinal)
                             },
                             onDecrement = { viewModel.removeFromCart(configuredProduct) },
                             onDelete = { viewModel.deleteFromCart(configuredProduct) }
                         )
+                    }
+                    if (stateSuccess != null) {
+                        items(stateSuccess.manualCart, key = { it.lineKey }) { manualLine ->
+                            ManualCartItemRow(
+                                manualLine = manualLine,
+                                onRemove = { viewModel.removeManualLine(it) }
+                            )
+                        }
                     }
                 }
             }
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 12.dp))
 
-            val isCobrarEnabled = cart.isNotEmpty() && quoteState is QuoteState.Valid && checkoutState !is CheckoutState.Loading
+            val pricingReady = (!hasCatalog && hasManual) || (hasCatalog && quoteState is QuoteState.Valid)
+            val isCobrarEnabled = (hasCatalog || hasManual) && pricingReady && checkoutState !is CheckoutState.Loading
 
             Card(
                 modifier = Modifier
@@ -631,7 +657,7 @@ fun PosScreen() {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "${formatCurrency(pricingPreview.subtotal)}",
+                            text = "${formatCurrency(displaySubtotal)}",
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onPrimaryContainer
@@ -688,7 +714,7 @@ fun PosScreen() {
                             color = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                         Text(
-                            text = "${formatCurrency(pricingPreview.total)}",
+                            text = "${formatCurrency(displayTotal)}",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.primary
@@ -846,31 +872,75 @@ fun PosScreen() {
         }
     }
 
-    configuringItemId?.let { itemId ->
+    configurationEditTarget?.let { target ->
+        val configViewModel: ConfiguratorViewModel = androidx.lifecycle.viewmodel.compose.viewModel(
+            key = target.hashCode().toString(),
+            factory = ConfiguratorViewModel.factory(menuRepository)
+        )
+
+        val targetMenuItemId = when(target) {
+            is ConfigurationEditTarget.NewItem -> target.menuItem.id
+            is ConfigurationEditTarget.Root -> target.product.menuItemId
+            is ConfigurationEditTarget.Reward -> {
+                val reward = target.product.promotionSelection?.rewardConfigurations?.find { it.rewardOrdinal == target.rewardOrdinal }
+                reward?.menuItemId ?: target.product.menuItemId
+            }
+        }
+
+        val existingConfig = when(target) {
+            is ConfigurationEditTarget.NewItem -> null
+            is ConfigurationEditTarget.Root -> target.product
+            is ConfigurationEditTarget.Reward -> {
+                val reward = target.product.promotionSelection?.rewardConfigurations?.find { it.rewardOrdinal == target.rewardOrdinal }
+                if (reward != null) {
+                    com.restaurant.sushimei.frontend.data.model.ConfiguredProduct(
+                        menuItemId = targetMenuItemId,
+                        name = "",
+                        quantity = 1,
+                        baseUnitPrice = java.math.BigDecimal.ZERO,
+                        groups = reward.groups,
+                        omittedComponents = reward.omittedComponents,
+                        note = reward.note
+                    )
+                } else null
+            }
+        }
+
+        LaunchedEffect(target) {
+            configViewModel.loadConfiguration(
+                menuItemId = targetMenuItemId,
+                existingConfig = existingConfig
+            )
+        }
+
         androidx.compose.ui.window.Dialog(
-            onDismissRequest = { configuringItemId = null },
+            onDismissRequest = { configurationEditTarget = null },
             properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)
         ) {
             Surface(
-                modifier = Modifier
+                modifier = androidx.compose.ui.Modifier
                     .fillMaxWidth(0.85f)
-                    .fillMaxHeight(0.9f)
-                    .clip(MaterialTheme.shapes.large),
-                color = MaterialTheme.colorScheme.background
+                    .fillMaxHeight(0.9f),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surface
             ) {
-                val configViewModel: com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel =
-                    viewModel(
-                        key = "pos-configurator-$itemId",
-                        factory = com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel.factory(menuRepository)
-                    )
-
                 com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen(
-                    menuItemId = itemId,
+                    menuItemId = targetMenuItemId,
                     viewModel = configViewModel,
-                    onDismiss = { configuringItemId = null },
+                    onDismiss = { configurationEditTarget = null },
                     onAddToCart = { configuredProduct ->
-                        viewModel.addConfiguredProduct(configuredProduct)
-                        configuringItemId = null
+                        when(target) {
+                            is ConfigurationEditTarget.NewItem -> {
+                                viewModel.addConfiguredProduct(configuredProduct)
+                            }
+                            is ConfigurationEditTarget.Root -> {
+                                viewModel.replaceConfiguredProduct(target.product.id, configuredProduct)
+                            }
+                            is ConfigurationEditTarget.Reward -> {
+                                viewModel.replaceConfiguredReward(target.product.id, target.rewardOrdinal, configuredProduct)
+                            }
+                        }
+                        configurationEditTarget = null
                     }
                 )
             }
@@ -1294,13 +1364,60 @@ fun MenuItemCard(
 }
 
 @Composable
+fun ManualCartItemRow(
+    manualLine: com.restaurant.sushimei.frontend.data.model.ManualCartLine,
+    onRemove: (String) -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+    ) {
+        Row(
+            modifier = Modifier.padding(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "Venta libre: ${manualLine.description}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "${manualLine.quantity}x ${com.restaurant.sushimei.frontend.ui.util.formatCurrency(manualLine.unitAmount)}",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+            Text(
+                text = com.restaurant.sushimei.frontend.ui.util.formatCurrency(manualLine.total),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(end = 8.dp)
+            )
+            IconButton(onClick = { onRemove(manualLine.lineKey) }) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "Eliminar",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
 fun CartItemRow(
     configuredProduct: ConfiguredProduct,
     quotedLine: com.restaurant.sushimei.frontend.data.model.QuotedCartLine? = null,
     quotedRewards: List<QuotedRewardItem> = emptyList(),
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
-    onDelete: () -> Unit
+    onDelete: () -> Unit,
+    onEdit: () -> Unit = {},
+    onEditReward: (Int) -> Unit = {}
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -1374,6 +1491,9 @@ fun CartItemRow(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.tertiary
                         )
+                        TextButton(onClick = { onEditReward(reward.rewardOrdinal) }) {
+                            Text("Configurar", style = MaterialTheme.typography.labelSmall)
+                        }
                     }
                     if (reward.configurationAdjustmentTotal.compareTo(java.math.BigDecimal.ZERO) != 0) {
                         Row(
@@ -1447,6 +1567,9 @@ fun CartItemRow(
                         }
                     }
 
+                    TextButton(onClick = onEdit) {
+                        Text("Configurar", style = MaterialTheme.typography.labelSmall)
+                    }
                     IconButton(
                         onClick = onDelete,
                         modifier = Modifier.size(28.dp)
@@ -1466,19 +1589,16 @@ fun CartItemRow(
 
 
 @Composable
-fun OpenSaleEntryPoint(
-    checkoutState: com.restaurant.sushimei.frontend.ui.pos.CheckoutState,
-    onSubmit: (String, java.math.BigDecimal, com.restaurant.sushimei.frontend.data.model.PaymentMethod, java.math.BigDecimal?) -> Unit,
-    onCancel: () -> Unit
+fun ManualSaleEntryPoint(
+    onSubmit: (String, java.math.BigDecimal) -> Unit
 ) {
-    var showOpenSaleDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    var showManualSaleDialog by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
 
     OutlinedButton(
-        onClick = { showOpenSaleDialog = true },
+        onClick = { showManualSaleDialog = true },
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp),
-        enabled = checkoutState != com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
+            .padding(bottom = 12.dp)
     ) {
         Icon(
             imageVector = Icons.Default.Add,
@@ -1488,59 +1608,35 @@ fun OpenSaleEntryPoint(
         Text("Registrar venta libre")
     }
 
-    if (showOpenSaleDialog) {
-        OpenSaleDialog(
-            checkoutState = checkoutState,
-            onCancel = {
-                showOpenSaleDialog = false
-                onCancel()
-            },
-            onSuccessfulSubmissionClosed = {
-                showOpenSaleDialog = false
-            },
-            onSubmit = onSubmit
+    if (showManualSaleDialog) {
+        ManualSaleDialog(
+            onCancel = { showManualSaleDialog = false },
+            onSubmit = { desc, amt ->
+                onSubmit(desc, amt)
+                showManualSaleDialog = false
+            }
         )
     }
 }
 
 @Composable
-fun OpenSaleDialog(
-    checkoutState: com.restaurant.sushimei.frontend.ui.pos.CheckoutState,
+fun ManualSaleDialog(
     onCancel: () -> Unit,
-    onSuccessfulSubmissionClosed: () -> Unit,
-    onSubmit: (String, java.math.BigDecimal, com.restaurant.sushimei.frontend.data.model.PaymentMethod, java.math.BigDecimal?) -> Unit
+    onSubmit: (String, java.math.BigDecimal) -> Unit
 ) {
     var description by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     var amountStr by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
-    var paymentMethod by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) }
-    var cashDenominationStr by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
 
     val amount = amountStr.toBigDecimalOrNull()
-    val cashDenomination = cashDenominationStr.toBigDecimalOrNull()
+    val isFormValid = description.isNotBlank() && amount != null && amount > java.math.BigDecimal.ZERO
 
-    val change = if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH && amount != null && cashDenomination != null && cashDenomination >= amount) {
-        cashDenomination.subtract(amount)
-    } else null
-
-    val isFormValid = description.isNotBlank() &&
-                      amount != null && amount > java.math.BigDecimal.ZERO &&
-                      (paymentMethod != com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH || (cashDenomination != null && cashDenomination >= amount))
-
-    val isLoading = checkoutState == com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
-
-    // Handle success states gracefully
-    androidx.compose.runtime.LaunchedEffect(checkoutState) {
-        if (checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleSuccess ||
-            checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleConfirmedWithPrintWarning) {
-            onSuccessfulSubmissionClosed()
-        }
-    }
+    val isLoading = false
 
     AlertDialog(
         onDismissRequest = {
             if (!isLoading) onCancel()
         },
-        title = { Text("Venta Libre") },
+        title = { Text("Registrar venta libre") },
         text = {
             Column(modifier = Modifier.fillMaxWidth().padding(8.dp)) {
                 OutlinedTextField(
@@ -1562,55 +1658,18 @@ fun OpenSaleDialog(
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                    com.restaurant.sushimei.frontend.data.model.PaymentMethod.values().forEach { method ->
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            RadioButton(
-                                selected = paymentMethod == method,
-                                onClick = { if (!isLoading) paymentMethod = method }
-                            )
-                            Text(method.name)
-                        }
-                    }
-                }
-
-                if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    OutlinedTextField(
-                        value = cashDenominationStr,
-                        onValueChange = { cashDenominationStr = it },
-                        label = { Text("Efectivo Recibido") },
-                        singleLine = true,
-                        enabled = !isLoading,
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    if (change != null) {
-                        Text("Cambio: ${com.restaurant.sushimei.frontend.ui.util.formatCurrency(change)}", color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-
-                if (checkoutState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Error) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = checkoutState.message,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall
-                    )
-                }
             }
         },
         confirmButton = {
             Button(
                 onClick = {
                     if (isFormValid && !isLoading) {
-                        onSubmit(description, amount!!, paymentMethod, if (paymentMethod == com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH) cashDenomination else null)
+                        onSubmit(description, amount!!)
                     }
                 },
                 enabled = isFormValid && !isLoading
             ) {
-                Text(if (isLoading) "Procesando..." else "Registrar")
+                Text(if (isLoading) "Procesando..." else "Agregar al carrito")
             }
         },
         dismissButton = {

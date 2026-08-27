@@ -168,13 +168,17 @@ data class QuoteRequestGroupDto(
 data class QuoteRequestSelectionDto(
     val menuItemId: Long,
     val quantity: Int,
-    val groups: List<QuoteRequestGroupDto> = emptyList()
+    val groups: List<QuoteRequestGroupDto> = emptyList(),
+    val omittedComponentIds: List<Long> = emptyList(),
+    val note: String? = null
 )
 
 data class QuoteRequestRewardConfigDto(
     val rewardOrdinal: Int,
     val menuItemId: Long? = null,
-    val groups: List<QuoteRequestGroupDto> = emptyList()
+    val groups: List<QuoteRequestGroupDto> = emptyList(),
+    val omittedComponentIds: List<Long> = emptyList(),
+    val note: String? = null
 )
 
 data class QuoteResponseDto(
@@ -213,7 +217,8 @@ data class QuoteResponseSelectionDto(
     val quantity: Int,
     val catalogUnitPrice: BigDecimal,
     val priceAdjustment: BigDecimal,
-    val groups: List<QuoteResponseGroupDto> = emptyList()
+    val groups: List<QuoteResponseGroupDto> = emptyList(),    val omittedComponents: List<DefaultComponentResponse> = emptyList(),
+    val note: String? = null
 )
 
 data class QuoteResponseRewardDto(
@@ -225,8 +230,9 @@ data class QuoteResponseRewardDto(
     val catalogBaseUnitPrice: BigDecimal,
     val chargedBaseUnitPrice: BigDecimal,
     val configuration: ItemQuoteResponseDto,
-    val configurationAdjustmentTotal: BigDecimal,
-    val total: BigDecimal
+    val configurationAdjustmentTotal: BigDecimal,    val total: BigDecimal,
+    val omittedComponents: List<DefaultComponentResponse> = emptyList(),
+    val note: String? = null
 )
 
 data class PromotionSummaryDto(
@@ -255,7 +261,9 @@ data class ItemQuoteRequestGroupDto(
 data class ItemQuoteRequestSelectionDto(
     val menuItemId: Long,
     val quantity: Int,
-    val groups: List<ItemQuoteRequestGroupDto> = emptyList()
+    val groups: List<ItemQuoteRequestGroupDto> = emptyList(),
+    val omittedComponentIds: List<Long> = emptyList(),
+    val note: String? = null
 )
 
 data class ItemQuoteResponseDto(
@@ -283,7 +291,8 @@ data class ItemQuoteResponseSelectionDto(
     val displayOnTicket: Boolean = true,
     val catalogUnitPrice: BigDecimal,
     val priceAdjustment: BigDecimal,
-    val groups: List<ItemQuoteResponseGroupDto> = emptyList()
+    val groups: List<ItemQuoteResponseGroupDto> = emptyList(),    val omittedComponents: List<DefaultComponentResponse> = emptyList(),
+    val note: String? = null
 )
 
 // ============================================================================
@@ -298,6 +307,13 @@ enum class PaymentMethod { CASH, TRANSFER, CARD }
 
 enum class OrderResult { CREATED, ALREADY_CREATED }
 
+data class ManualPricedLineRequest(
+    val lineKey: String,
+    val description: String,
+    val quantity: Int,
+    val unitAmount: BigDecimal
+)
+
 data class ManualPosOrderRequest(
     val requestId: String,
     val fulfillmentType: FulfillmentType,
@@ -305,7 +321,8 @@ data class ManualPosOrderRequest(
     val deliveryAddress: String?,
     val pickupName: String?,
     val cashDenomination: BigDecimal?,
-    val lines: List<PosOrderRequestLineDto>
+    val lines: List<PosOrderRequestLineDto>,
+    val manualLines: List<ManualPricedLineRequest> = emptyList()
 )
 
 data class PosOrderRequestLineDto(
@@ -339,7 +356,7 @@ data class PosOrderResponseLineDto(
     val id: Long,
     val lineKind: String,
     val lineKey: String?,
-    val sourceMenuItemId: Long,
+    val sourceMenuItemId: Long?,
     val name: String,
     val quantity: Int,
     val catalogBaseUnitPrice: BigDecimal,
@@ -366,7 +383,9 @@ data class OrderConfigurationSnapshotDto(
     val displayOnTicket: Boolean = true,
     val quantity: Int,
     val catalogUnitPrice: BigDecimal,
-    val priceAdjustment: BigDecimal
+    val priceAdjustment: BigDecimal,
+    val omittedComponents: List<OrderComponentOmissionSnapshotDto> = emptyList(),
+    val note: String? = null
 )
 
 data class OrderPromotionSnapshotDto(

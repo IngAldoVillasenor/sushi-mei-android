@@ -1,4 +1,4 @@
-﻿package com.restaurant.sushimei.frontend.ui.pos
+package com.restaurant.sushimei.frontend.ui.pos
 
 import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse

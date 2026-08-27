@@ -23,7 +23,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.restaurant.sushimei.frontend.data.model.MenuItem
 import com.restaurant.sushimei.frontend.data.model.ItemPricingMode
 import com.restaurant.sushimei.frontend.ui.screens.MenuItemCard
-import com.restaurant.sushimei.frontend.ui.screens.OpenSaleDialog
+import com.restaurant.sushimei.frontend.ui.screens.ManualSaleDialog
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -76,20 +76,16 @@ class Mvp2ComposeSmokeTest {
     }
 
     @Test
-    fun testOpenSaleEntryPointFlow() {
+    fun testManualSaleEntryPointFlow() {
         var submittedDesc: String? = null
         var submittedAmt: java.math.BigDecimal? = null
-        var canceled = false
-        var currentState by androidx.compose.runtime.mutableStateOf<com.restaurant.sushimei.frontend.ui.pos.CheckoutState>(com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Idle)
 
         composeTestRule.setContent {
-            com.restaurant.sushimei.frontend.ui.screens.OpenSaleEntryPoint(
-                checkoutState = currentState,
-                onSubmit = { desc, amt, _, _ ->
+            com.restaurant.sushimei.frontend.ui.screens.ManualSaleEntryPoint(
+                onSubmit = { desc, amt ->
                     submittedDesc = desc
                     submittedAmt = amt
-                },
-                onCancel = { canceled = true }
+                }
             )
         }
 
@@ -99,36 +95,29 @@ class Mvp2ComposeSmokeTest {
         // Click button to show dialog
         composeTestRule.onNodeWithText("Registrar venta libre").performClick()
 
-        // Verify dialog fields
-        composeTestRule.onNodeWithText("Venta Libre").assertIsDisplayed()
+        // Dialog fields:
+        composeTestRule.onNode(androidx.compose.ui.test.hasText("Descripcin").or(androidx.compose.ui.test.hasText("Descripci\u00F3n")).or(androidx.compose.ui.test.hasText("Descripcin")).or(androidx.compose.ui.test.hasText("Descripción"))).assertIsDisplayed()
+        composeTestRule.onNodeWithText("Monto").assertIsDisplayed()
+
+        // Ensure legacy elements do NOT exist
+        composeTestRule.onNodeWithText("Venta Libre").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Efectivo Recibido").assertDoesNotExist()
+        composeTestRule.onNodeWithText("Registrar").assertDoesNotExist()
 
         // 2. Fill values
-        composeTestRule.onNode(androidx.compose.ui.test.hasText("Descripción").or(androidx.compose.ui.test.hasText("Descripcin"))).performTextInput("Misc item")
+        composeTestRule.onNode(androidx.compose.ui.test.hasText("Descripcin").or(androidx.compose.ui.test.hasText("Descripci\u00F3n")).or(androidx.compose.ui.test.hasText("Descripcin")).or(androidx.compose.ui.test.hasText("Descripción"))).performTextInput("Misc item")
         composeTestRule.onNodeWithText("Monto").performTextInput("150.50")
-        composeTestRule.onNodeWithText("Efectivo Recibido").performTextInput("200.00")
 
         // 3. Submit
-        composeTestRule.onNodeWithText("Registrar").performClick()
-        assertEquals("Misc item", submittedDesc)
-        assertEquals(java.math.BigDecimal("150.50"), submittedAmt)
-
-        // 4. Loading state: form remains mounted, registrar disabled
-        currentState = com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Loading
-        composeTestRule.onNodeWithText("Venta Libre").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Procesando...").assertIsNotEnabled()
-
-        // 5. Error state: previous values remain, error text visible
-        currentState = com.restaurant.sushimei.frontend.ui.pos.CheckoutState.Error("Network error")
-        composeTestRule.onNodeWithText("Venta Libre").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Misc item").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Network error").assertIsDisplayed()
-
-        // 6. Success state: OpenSaleDialog disappears, confirmed CheckoutState NOT reset by component
-        currentState = com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleSuccess(com.restaurant.sushimei.frontend.data.model.OpenSaleResponse(100L, "req-1", "CREATED", "POS", 1L, "TEST", 1, java.math.BigDecimal.TEN, java.math.BigDecimal.TEN, com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH, null, "COMPLETED", "2024"))
+        composeTestRule.onNodeWithText("Agregar al carrito").performClick()
         composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithText("Venta Libre").assertDoesNotExist()
-        assertFalse(canceled) // onCancel was NOT called!
-        assertTrue(currentState is com.restaurant.sushimei.frontend.ui.pos.CheckoutState.OpenSaleSuccess)
+
+        // Assert callback
+        org.junit.Assert.assertEquals("Misc item", submittedDesc)
+        org.junit.Assert.assertEquals(java.math.BigDecimal("150.50"), submittedAmt)
+
+        // Assert dialog closes (the form fields will disappear)
+        composeTestRule.onNodeWithText("Monto").assertDoesNotExist()
     }
 
     @Test
@@ -162,6 +151,7 @@ class Mvp2ComposeSmokeTest {
         }
 
         val vm = com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel(repo)
+        vm.loadConfiguration(1L)
 
         composeTestRule.setContent {
             com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen(
@@ -299,5 +289,93 @@ class Mvp2ComposeSmokeTest {
         // Line 2 has no omissions or notes, so "SIN:" and "NOTA:" should only appear exactly once
         composeTestRule.onAllNodesWithText("SIN:", substring = true).assertCountEquals(1)
         composeTestRule.onAllNodesWithText("NOTA:", substring = true).assertCountEquals(1)
+    }
+    @Test
+    fun testConfiguratorDuplicateKeyCrashPrevention() {
+        // Reproduce the scenario for menuItemId = 24 where a Component and a Group both share ID = 36.
+        val collidingId = 36L
+
+        // Component with id = 36
+        val collidingComponent = com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse(
+            id = collidingId, code = "C36", displayName = "Component 36", detail = null,
+            includedByDefault = true, removable = true, displayOrder = 1, active = true
+        )
+
+        // Group with id = 36
+        val collidingGroup = com.restaurant.sushimei.frontend.data.model.ConfigurationGroupDto(
+            id = collidingId, name = "Group 36", minSelections = 0, maxSelections = 1, allowDuplicates = false,
+            options = listOf(
+                com.restaurant.sushimei.frontend.data.model.ConfigurationOptionDto(
+                    menuItemId = 99L, name = "Option 99", requiresConfiguration = false,
+                    catalogPrice = java.math.BigDecimal.ZERO, category = "", available = true,
+                    priceAdjustment = java.math.BigDecimal.ZERO
+                )
+            )
+        )
+
+        val testConfig = com.restaurant.sushimei.frontend.data.model.ConfigurationResponseDto(
+            menuItemId = 24L, name = "Promoted Roll", standaloneOrderable = true, basePrice = java.math.BigDecimal.TEN,
+            requiresConfiguration = false, groups = listOf(collidingGroup)
+        )
+
+        val repo = object : com.restaurant.sushimei.frontend.data.repository.IMenuRepository {
+            override fun observeAll() = kotlinx.coroutines.flow.flowOf<List<com.restaurant.sushimei.frontend.data.model.MenuItem>>(emptyList())
+            override fun observeActive() = kotlinx.coroutines.flow.flowOf<List<com.restaurant.sushimei.frontend.data.model.MenuItem>>(emptyList())
+            override fun observeActiveCategories() = kotlinx.coroutines.flow.flowOf<List<String>>(emptyList())
+            override suspend fun refreshCatalog(standaloneOnly: Boolean?) {}
+            override suspend fun getCategories() = emptyList<String>()
+            override suspend fun getProducts() = emptyList<com.restaurant.sushimei.frontend.data.model.MenuItem>()
+            override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse = TODO()
+            override suspend fun updateProduct(id: Long, request: com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse = TODO()
+            override suspend fun deleteProduct(id: Long) {}
+            override suspend fun setActive(id: Long, activo: Boolean) {}
+            override suspend fun getTags() = emptyList<com.restaurant.sushimei.frontend.data.model.CatalogTagDto>()
+            override suspend fun createTag(tag: com.restaurant.sushimei.frontend.data.model.TagCreateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto = TODO()
+            override suspend fun updateTag(id: Long, tag: com.restaurant.sushimei.frontend.data.model.TagUpdateRequestDto): com.restaurant.sushimei.frontend.data.model.CatalogTagDto = TODO()
+            override suspend fun deleteTag(id: Long) {}
+            override suspend fun getConfiguration(menuItemId: Long) = testConfig
+            override suspend fun getMenuItemComponents(menuItemId: Long) = listOf(collidingComponent)
+            override suspend fun quoteItem(menuItemId: Long, request: com.restaurant.sushimei.frontend.data.model.ItemQuoteRequestDto) =
+                com.restaurant.sushimei.frontend.data.model.ItemQuoteResponseDto(1L, "Promoted Roll", 1, java.math.BigDecimal.TEN, java.math.BigDecimal.TEN, emptyList(), java.math.BigDecimal.ZERO, java.math.BigDecimal.TEN, java.math.BigDecimal.TEN)
+        }
+
+        val vm = com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorViewModel(repo)
+
+        // Initialize as a promoted Root item
+        val promotedConfiguredProduct = com.restaurant.sushimei.frontend.data.model.ConfiguredProduct(
+            id = "cart-1",
+            menuItemId = 24L,
+            name = "Promoted Roll",
+            quantity = 1,
+            baseUnitPrice = java.math.BigDecimal.TEN,
+            unitTotal = java.math.BigDecimal.TEN,
+            total = java.math.BigDecimal.TEN,
+            groups = emptyList(), // Provide empty or mapped groups to simulate existing config
+            omittedComponents = emptyList(),
+            note = "",
+            promotionSelection = com.restaurant.sushimei.frontend.data.model.PromotionLineSelection(
+                promotionId = 100L,
+                promotionName = "$69 Promo"
+            )
+        )
+
+        vm.loadConfiguration(24L, promotedConfiguredProduct)
+
+        composeTestRule.setContent {
+            com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen(
+                menuItemId = 24L,
+                viewModel = vm,
+                onDismiss = { },
+                onAddToCart = { }
+            )
+        }
+
+        composeTestRule.waitForIdle()
+
+        // If keys collided, composeTestRule.setContent would throw IllegalArgumentException: Key "36" was already used
+        // Since we reach here, it successfully mounted. Now verify the UI rows exist:
+        composeTestRule.onNodeWithText("Component 36", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("Group 36", substring = true).assertIsDisplayed()
+        composeTestRule.onNodeWithText("Option 99", substring = true).assertIsDisplayed()
     }
 }

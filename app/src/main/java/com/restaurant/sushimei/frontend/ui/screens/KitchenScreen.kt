@@ -43,7 +43,38 @@ data class OrderUI(
 )
 
 @Composable
+fun RecursiveConfigurationList(
+    configList: List<com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto>,
+    parentId: Long?,
+    indentLevel: Int = 1
+) {
+    val children = configList.filter { it.parentSelectionSnapshotId == parentId }
+    for (child in children) {
+        val indent = "   ".repeat(indentLevel)
+        androidx.compose.material3.Text(
+            "$indent+ ${child.itemName}",
+            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+            color = androidx.compose.ui.graphics.Color.DarkGray
+        )
+        for (omission in child.omittedComponents) {
+            androidx.compose.material3.Text(
+                "$indent   SIN: ${omission.displayName}",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = androidx.compose.ui.graphics.Color.DarkGray
+            )
+        }
+        if (!child.note.isNullOrBlank()) {
+            androidx.compose.material3.Text(
+                "$indent   NOTA: ${child.note}",
+                style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
+                color = androidx.compose.ui.graphics.Color(0xFFE65100)
+            )
+        }
+        RecursiveConfigurationList(configList, child.id, indentLevel + 1)
+    }
+}
 
+@Composable
 fun KitchenScreen(viewModel: KitchenViewModel = run {
     val context = LocalContext.current
 
@@ -468,9 +499,7 @@ fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: Operationa
                             )
                         }
 
-                        line.configuration.forEach { config ->
-                            Text("   + ${config.itemName}", style = MaterialTheme.typography.bodySmall, color = Color.DarkGray)
-                        }
+                        RecursiveConfigurationList(line.configuration, null)
 
                         if (!line.note.isNullOrBlank()) {
                             Text(
