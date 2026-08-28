@@ -187,7 +187,17 @@ class RoomMenuRepository(
         return Gson().fromJson(json, type)
     }
 
+
     override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList()
+
+    override suspend fun getMenuItemConfigurationDefinitionResponse(id: Long): com.restaurant.sushimei.frontend.data.model.MenuItemConfigurationDefinitionResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun createSelectionGroup(itemId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun updateSelectionGroup(itemId: Long, groupId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun deleteSelectionGroup(itemId: Long, groupId: Long) = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun createSelectionRule(groupId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun updateSelectionRule(groupId: Long, ruleId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun deleteSelectionRule(groupId: Long, ruleId: Long) = throw UnsupportedOperationException("Admin operations not supported in this repository")
+
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

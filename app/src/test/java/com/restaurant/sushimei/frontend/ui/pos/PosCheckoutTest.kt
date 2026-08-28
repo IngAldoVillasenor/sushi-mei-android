@@ -692,6 +692,15 @@ class FakeMenuRepository : IMenuRepository {
     override suspend fun quoteItem(menuItemId: Long, request: ItemQuoteRequestDto): ItemQuoteResponseDto {
         return ItemQuoteResponseDto(menuItemId, "Mock", request.quantity, BigDecimal.ZERO, BigDecimal.ZERO, emptyList(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
     }
+
+    override suspend fun getMenuItemConfigurationDefinitionResponse(id: Long): com.restaurant.sushimei.frontend.data.model.MenuItemConfigurationDefinitionResponse = TODO()
+    override suspend fun createSelectionGroup(itemId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse = TODO()
+    override suspend fun updateSelectionGroup(itemId: Long, groupId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse = TODO()
+    override suspend fun deleteSelectionGroup(itemId: Long, groupId: Long) = TODO()
+    override suspend fun createSelectionRule(groupId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse = TODO()
+    override suspend fun updateSelectionRule(groupId: Long, ruleId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse = TODO()
+    override suspend fun deleteSelectionRule(groupId: Long, ruleId: Long) = TODO()
+
 }
 
 class FakePromotionRepository : IPromotionRepository {

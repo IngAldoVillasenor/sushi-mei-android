@@ -576,3 +576,103 @@ data class OrderComponentOmissionSnapshotDto(
     val detail: String?,
     val displayOrder: Int
 )
+
+
+// ============================================================================
+// ============================================================================
+// FASE 6A2: Configuration Definition (Admin)
+// ============================================================================
+
+enum class SelectionRuleTargetType {
+    ITEM,
+    TAG
+}
+
+enum class PricingPolicy {
+    INCLUDED,
+    PRICE_DIFFERENCE,
+    FULL_ITEM_PRICE,
+    FIXED_SURCHARGE
+}
+
+data class MenuSelectionRuleResponse(
+    val id: Long,
+    val selectionGroupId: Long,
+    val targetType: SelectionRuleTargetType,
+    val targetId: Long,
+    val pricingPolicy: PricingPolicy,
+    val referencePrice: BigDecimal?,
+    val fixedSurcharge: BigDecimal?,
+    val priority: Int,
+    val active: Boolean,
+    val version: Long,
+    val createdAt: java.time.Instant?,
+    val updatedAt: java.time.Instant?
+)
+
+data class MenuSelectionGroupResponse(
+    val id: Long,
+    val parentMenuItemId: Long,
+    val name: String,
+    val minSelections: Int,
+    val maxSelections: Int,
+    val allowDuplicates: Boolean,
+    val displayOrder: Int,
+    val active: Boolean,
+    val version: Long,
+    val createdAt: java.time.Instant?,
+    val updatedAt: java.time.Instant?
+)
+
+data class MenuSelectionGroupDefinitionResponse(
+    val group: MenuSelectionGroupResponse,
+    val rules: List<MenuSelectionRuleResponse>
+)
+
+
+
+data class MenuItemConfigurationDefinitionResponse(
+    val menuItemId: Long,
+    val name: String,
+    val version: Long,
+    val tags: List<CatalogTagSummary>,
+    val groups: List<MenuSelectionGroupDefinitionResponse>
+)
+
+data class CreateMenuSelectionGroupRequest(
+    val name: String,
+    val minSelections: Int,
+    val maxSelections: Int,
+    val allowDuplicates: Boolean,
+    val displayOrder: Int
+)
+
+data class UpdateMenuSelectionGroupRequest(
+    val name: String,
+    val minSelections: Int,
+    val maxSelections: Int,
+    val allowDuplicates: Boolean,
+    val displayOrder: Int,
+    val active: Boolean,
+    val version: Long
+)
+
+data class CreateMenuSelectionRuleRequest(
+    val targetType: SelectionRuleTargetType,
+    val targetId: Long,
+    val pricingPolicy: PricingPolicy,
+    val referencePrice: BigDecimal?,
+    val fixedSurcharge: BigDecimal?,
+    val priority: Int
+)
+
+data class UpdateMenuSelectionRuleRequest(
+    val targetType: SelectionRuleTargetType,
+    val targetId: Long,
+    val pricingPolicy: PricingPolicy,
+    val referencePrice: BigDecimal?,
+    val fixedSurcharge: BigDecimal?,
+    val priority: Int,
+    val active: Boolean,
+    val version: Long
+)

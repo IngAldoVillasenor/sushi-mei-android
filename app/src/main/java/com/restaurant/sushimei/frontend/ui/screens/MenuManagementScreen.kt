@@ -520,7 +520,7 @@ private fun ProductFormPanel(
                 onClick = onOpenConfigurator,
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Text("Configurar Opciones (Fase 6A2)")
+                Text("Configurar opciones")
             }
             Spacer(modifier = Modifier.height(16.dp))
         }
