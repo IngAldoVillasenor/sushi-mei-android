@@ -36,6 +36,45 @@ private fun formatDate(isoDate: String): String {
 class PrintService(private val context: Context) {
     private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
+    private fun writeSafelyToPrinter(
+        outputStream: OutputStream,
+        data: ByteArray
+    ) {
+        val chunkSize = 256
+        var offset = 0
+
+        while (offset < data.size) {
+            val length = minOf(chunkSize, data.size - offset)
+
+            outputStream.write(data, offset, length)
+            outputStream.flush()
+
+            offset += length
+
+            if (offset < data.size) {
+                Thread.sleep(25L)
+            }
+        }
+
+        Thread.sleep(500L)
+    }
+
+    private fun openCashDrawer(outputStream: OutputStream) {
+        val drawerPulse = byteArrayOf(
+            0x1B,             // ESC
+            0x70,             // p
+            0x00,             // m = pin 2
+            0x19,             // 25 * 2 ms = 50 ms ON
+            0xFA.toByte()     // 250 * 2 ms = 500 ms OFF
+        )
+
+        outputStream.write(drawerPulse)
+        outputStream.flush()
+
+        // Le damos tiempo a la impresora para ejecutar físicamente el pulso.
+        Thread.sleep(200L)
+    }
+
     @SuppressLint("MissingPermission")
 
     fun printTicket(order: OrderRecord): Boolean {
@@ -352,8 +391,7 @@ class PrintService(private val context: Context) {
             out.write("\n\n\n\n".toByteArray())
             out.write(cut)
 
-            outputStream.write(out.toByteArray())
-            outputStream.flush()
+            writeSafelyToPrinter(outputStream, out.toByteArray())
             socket.close()
 
             true
@@ -390,9 +428,11 @@ class PrintService(private val context: Context) {
 
             val formattedText = formatOperationalTicket(order, isReprint, isInternalCopy)
 
-            outputStream.write(formattedText)
+            writeSafelyToPrinter(outputStream, formattedText)
 
-            outputStream.flush()
+            if (!isReprint && !isInternalCopy) {
+                openCashDrawer(outputStream)
+            }
 
             socket.close()
 

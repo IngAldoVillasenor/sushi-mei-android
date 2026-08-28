@@ -517,7 +517,7 @@ class PosCheckoutTest {
     }
 
     @Test
-    fun `test CREATED and ALREADY_CREATED states clear cart`() = runTest {
+    fun `test CREATED and ALREADY_CREATED states clear cart and reset checkout metadata`() = runTest {
         // ALREADY_CREATED
         fillCart()
         viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
@@ -529,15 +529,45 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isEmpty())
-        assertEquals(OrderResult.ALREADY_CREATED, ((viewModel.uiState.value as PosUiState.Success).checkoutState as CheckoutState.Success).response.result)
+        var state = viewModel.uiState.value as PosUiState.Success
 
-        // CREATED
+        assertTrue(state.currentCart.isEmpty())
+        assertEquals(
+            OrderResult.ALREADY_CREATED,
+            (state.checkoutState as CheckoutState.Success).response.result
+        )
+
+        // Checkout metadata must be clean for the next order.
+        assertEquals(FulfillmentType.PICKUP, state.fulfillmentType)
+        assertEquals(PaymentMethod.CASH, state.paymentMethod)
+        assertEquals("", state.pickupName)
+        assertEquals("", state.deliveryAddress)
+        assertNull(state.cashDenomination)
+
+        // CREATED - new order must provide its own checkout metadata.
         fillCart()
+        viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Nueva Orden")
+        viewModel.updatePaymentMethod(PaymentMethod.CASH)
+        testDispatcher.scheduler.advanceUntilIdle()
+
         fakeManualRepo.mockedResult = OrderResult.CREATED
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isEmpty())
+
+        state = viewModel.uiState.value as PosUiState.Success
+
+        assertTrue(state.currentCart.isEmpty())
+        assertEquals(
+            OrderResult.CREATED,
+            (state.checkoutState as CheckoutState.Success).response.result
+        )
+
+        assertEquals(FulfillmentType.PICKUP, state.fulfillmentType)
+        assertEquals(PaymentMethod.CASH, state.paymentMethod)
+        assertEquals("", state.pickupName)
+        assertEquals("", state.deliveryAddress)
+        assertNull(state.cashDenomination)
     }
 
 
