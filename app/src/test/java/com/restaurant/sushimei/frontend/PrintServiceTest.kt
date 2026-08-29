@@ -241,7 +241,7 @@ class PrintServiceTest {
         val outputString = String(PrintService(context).formatOperationalTicket(detail))
 
         assertTrue(!outputString.contains("Virtual Box (Hidden)"))
-        assertTrue(outputString.contains("   + Coke")) // Level 1 indentation because parent was level 1
+        assertTrue(outputString.contains("   1x Coke")) // Level 1 indentation because parent was level 1
     }
 
     @Test
@@ -379,7 +379,7 @@ class PrintServiceTest {
 
         org.junit.Assert.assertTrue(outputString.contains("SIN: Alga (Por fuera), Surimi"))
         org.junit.Assert.assertTrue(outputString.contains("NOTA: Poca salsa"))
-        org.junit.Assert.assertTrue(outputString.contains("+ Tampico"))
+        org.junit.Assert.assertTrue(outputString.contains("1x Tampico"))
 
         // No empty labels
         val secondItemIndex = outputString.indexOf("1x Agua")
@@ -388,5 +388,309 @@ class PrintServiceTest {
         assertFalse(subsequentText.contains("NOTA: \n"))
         assertFalse(subsequentText.contains("SIN: \r\n"))
         assertFalse(subsequentText.contains("NOTA: \r\n"))
+    }
+
+    private fun createBaseOrder(configList: List<com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto>): OperationalOrderDetailDto {
+        return OperationalOrderDetailDto(
+            id = 1,
+            requestId = "req-1",
+            orderSource = "POS",
+            createdByUserId = 1,
+            fulfillmentType = FulfillmentType.DELIVERY,
+            paymentMethod = PaymentMethod.CASH,
+            deliveryAddress = null,
+            pickupName = null,
+            cashDenomination = null,
+            phoneNumber = null,
+            status = "PENDING",
+            createdAt = java.time.Instant.now(),
+            total = java.math.BigDecimal("100.00"),
+            legacyOrderDetails = null,
+            paymentNotes = null,
+            transferReceiptPath = null,
+            lines = listOf(
+                OperationalOrderLineDto(
+                    id = 1,
+                    lineKind = "ITEM",
+                    lineKey = "key1",
+                    sourceMenuItemId = 1L,
+                    name = "Charola Supreme",
+                    quantity = 1,
+                    catalogBaseUnitPrice = java.math.BigDecimal("100.00"),
+                    chargedBaseUnitPrice = java.math.BigDecimal("100.00"),
+                    configurationAdjustmentAmount = java.math.BigDecimal.ZERO,
+                    finalUnitAmount = java.math.BigDecimal("100.00"),
+                    finalLineTotal = java.math.BigDecimal("100.00"),
+                    promotion = null,
+                    rewardOrdinal = null,
+                    sourcePaidLineId = null,
+                    omittedComponents = emptyList(),
+                    note = null,
+                    configuration = configList
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `TEST 1 - ticket formatting aggregates configurations with distinct quantities`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 1L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 1, menuItemId = 101L,
+                itemName = "California", quantity = 2, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 2L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 2, menuItemId = 102L,
+                itemName = "Empanizado", quantity = 2, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 3L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 3, menuItemId = 103L,
+                itemName = "Banana Roll", quantity = 1, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO
+            )
+        )
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(order))
+
+        org.junit.Assert.assertTrue(outputString.contains("2x California"))
+        org.junit.Assert.assertTrue(outputString.contains("2x Empanizado"))
+        org.junit.Assert.assertTrue(outputString.contains("1x Banana Roll"))
+    }
+
+    @Test
+    fun `TEST 2 - single configured selection explicitly displays 1x`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 1L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 1, menuItemId = 101L,
+                itemName = "California", quantity = 1, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO
+            )
+        )
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(order))
+
+        org.junit.Assert.assertTrue(outputString.contains("1x California"))
+    }
+
+    @Test
+    fun `TEST 3 - duplicate equivalent snapshots are aggregated for presentation`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 1L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 1, menuItemId = 101L,
+                itemName = "California", quantity = 1, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 2L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 2, menuItemId = 101L,
+                itemName = "California", quantity = 1, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO
+            )
+        )
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(order))
+
+        org.junit.Assert.assertTrue(outputString.contains("2x California"))
+    }
+
+    @Test
+    fun `TEST 4 - selections with identical menu item but distinct notes are not aggregated`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 1L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 1, menuItemId = 101L,
+                itemName = "California", quantity = 1, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                note = null
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 2L, parentSelectionSnapshotId = null, groupId = 1L, groupName = "Group", selectionPosition = 2, menuItemId = 101L,
+                itemName = "California", quantity = 1, displayOnTicket = true, catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                note = "Sin aguacate"
+            )
+        )
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(order))
+
+        val count = outputString.split("1x California").size - 1
+        org.junit.Assert.assertEquals("Should output 1x California twice independently", 2, count)
+        org.junit.Assert.assertTrue(outputString.contains("NOTA: Sin aguacate"))
+    }
+
+    @Test
+    fun `TEST 5 - selections with same omission sourceComponentId but different detail are not aggregated`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 1L,
+                parentSelectionSnapshotId = null,
+                groupId = 1L,
+                groupName = "Base",
+                selectionPosition = 1,
+                menuItemId = 10L,
+                itemName = "Tampico",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = listOf(
+                    com.restaurant.sushimei.frontend.data.model.OrderComponentOmissionSnapshotDto(
+                        id = 100L,
+                        sourceComponentId = 99L,
+                        code = "MAYONNAISE",
+                        displayName = "Mayonnaise",
+                        detail = "Spicy",
+                        displayOrder = 1
+                    )
+                ),
+                note = null
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 2L,
+                parentSelectionSnapshotId = null,
+                groupId = 1L,
+                groupName = "Base",
+                selectionPosition = 2,
+                menuItemId = 10L,
+                itemName = "Tampico",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = listOf(
+                    com.restaurant.sushimei.frontend.data.model.OrderComponentOmissionSnapshotDto(
+                        id = 101L,
+                        sourceComponentId = 99L,
+                        code = "MAYONNAISE",
+                        displayName = "Mayonnaise",
+                        detail = "Mild",
+                        displayOrder = 1
+                    )
+                ),
+                note = null
+            )
+        )
+
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(order))
+
+        org.junit.Assert.assertTrue(outputString.contains("1x Tampico"))
+        org.junit.Assert.assertFalse(outputString.contains("2x Tampico"))
+        org.junit.Assert.assertTrue(outputString.contains("SIN: Mayonnaise (Spicy)"))
+        org.junit.Assert.assertTrue(outputString.contains("SIN: Mayonnaise (Mild)"))
+    }
+
+    @Test
+    fun `TEST 6 - parent selections with identical details but different child configuration are not aggregated`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 10L,
+                parentSelectionSnapshotId = null,
+                groupId = 1L,
+                groupName = "Rolls",
+                selectionPosition = 1,
+                menuItemId = 100L,
+                itemName = "California",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = emptyList(),
+                note = null
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 11L,
+                parentSelectionSnapshotId = 10L, // Child of first California
+                groupId = 2L,
+                groupName = "Extras",
+                selectionPosition = 1,
+                menuItemId = 200L,
+                itemName = "Extra Cheese",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = emptyList(),
+                note = null
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 20L,
+                parentSelectionSnapshotId = null,
+                groupId = 1L,
+                groupName = "Rolls",
+                selectionPosition = 2,
+                menuItemId = 100L,
+                itemName = "California",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = emptyList(),
+                note = null
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 21L,
+                parentSelectionSnapshotId = 20L, // Child of second California
+                groupId = 2L,
+                groupName = "Extras",
+                selectionPosition = 1,
+                menuItemId = 201L,
+                itemName = "Extra Avocado",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = emptyList(),
+                note = null
+            )
+        )
+
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+        val outputString = String(PrintService(context).formatOperationalTicket(order))
+
+        org.junit.Assert.assertTrue(outputString.contains("1x California"))
+        org.junit.Assert.assertFalse(outputString.contains("2x California"))
+        org.junit.Assert.assertTrue(outputString.contains("1x Extra Cheese"))
+        org.junit.Assert.assertTrue(outputString.contains("1x Extra Avocado"))
+    }
+
+    @Test
+    fun `TEST 7 - quantity rendering is identical in normal and reprint tickets apart from REIMPRESION header`() {
+        val configList = listOf(
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 1L,
+                parentSelectionSnapshotId = null,
+                groupId = 1L,
+                groupName = "Rolls",
+                selectionPosition = 1,
+                menuItemId = 100L,
+                itemName = "California",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = emptyList(),
+                note = null
+            ),
+            com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto(
+                id = 2L,
+                parentSelectionSnapshotId = null,
+                groupId = 1L,
+                groupName = "Rolls",
+                selectionPosition = 2,
+                menuItemId = 100L,
+                itemName = "California",
+                quantity = 1,
+                catalogUnitPrice = java.math.BigDecimal.ZERO, priceAdjustment = java.math.BigDecimal.ZERO,
+                displayOnTicket = true,
+                omittedComponents = emptyList(),
+                note = null
+            )
+        )
+
+        val order = createBaseOrder(configList)
+        val context = io.mockk.mockk<android.content.Context>(relaxed = true)
+
+        val normalOutput = String(PrintService(context).formatOperationalTicket(order))
+        val reprintOutput = String(PrintService(context).formatOperationalTicket(order, isReprint = true))
+
+        val normalBody = normalOutput.substringAfter("Ticket: ")
+        val reprintBody = reprintOutput.substringAfter("Ticket: ")
+
+        org.junit.Assert.assertTrue(normalOutput.contains("2x California"))
+        org.junit.Assert.assertTrue(reprintOutput.contains("2x California"))
+        org.junit.Assert.assertTrue(reprintOutput.contains("*** REIMPRESION ***"))
+        org.junit.Assert.assertEquals(normalBody, reprintBody)
     }
 }
