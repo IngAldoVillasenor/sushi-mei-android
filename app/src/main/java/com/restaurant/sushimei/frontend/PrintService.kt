@@ -34,6 +34,14 @@ private fun formatDate(isoDate: String): String {
 }
 
 class PrintService(private val context: Context) {
+
+    private fun formatOmission(displayName: String, detail: String?): String {
+        return if (!detail.isNullOrBlank()) {
+            "$displayName ($detail)"
+        } else {
+            displayName
+        }
+    }
     private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
 
     private fun writeSafelyToPrinter(
@@ -292,11 +300,7 @@ class PrintService(private val context: Context) {
 
             if (configuredProduct.omittedComponents.isNotEmpty()) {
                 val omissions = configuredProduct.omittedComponents.joinToString(", ") { comp ->
-                    if (!comp.detail.isNullOrBlank()) {
-                        "${comp.displayName} (${comp.detail})"
-                    } else {
-                        comp.displayName
-                    }
+                    formatOmission(comp.displayName, comp.detail)
                 }
                 out.write(boldOn)
                 out.write("   SIN: $omissions\n".toByteArray())
@@ -442,26 +446,79 @@ class PrintService(private val context: Context) {
         }
     }
 
+    private data class OmissionIdentity(
+        val sourceComponentId: Long,
+        val code: String,
+        val displayName: String,
+        val detail: String?,
+        val displayOrder: Int
+    )
+
+    private data class PresentationConfigKey(
+        val groupId: Long,
+        val menuItemId: Long,
+        val itemName: String,
+        val displayOnTicket: Boolean,
+        val note: String?,
+        val omissions: Set<OmissionIdentity>,
+        val uniqueParentId: Long?
+    )
+
     private fun printConfigurationTree(
         out: OutputStream,
         configList: List<com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto>,
-        parentId: Long?,
+        parentIds: List<Long?>,
         indentLevel: Int
     ) {
-        val children = configList.filter { it.parentSelectionSnapshotId == parentId }
+        val children = configList.filter { it.parentSelectionSnapshotId in parentIds }
+
+        val groupedChildren = mutableListOf<Pair<PresentationConfigKey, MutableList<com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto>>>()
+
         for (child in children) {
-            if (child.displayOnTicket) {
-                val indent = "   ".repeat(indentLevel)
-                out.write("${indent}+ ${child.itemName}\n".toByteArray())
-                for (omission in child.omittedComponents) {
-                    out.write("${indent}   SIN: ${omission.displayName}\n".toByteArray())
-                }
-                if (!child.note.isNullOrBlank()) {
-                    out.write("${indent}   NOTA: ${child.note}\n".toByteArray())
-                }
-                printConfigurationTree(out, configList, child.id, indentLevel + 1)
+            val hasChildren = configList.any { it.parentSelectionSnapshotId == child.id }
+            val key = PresentationConfigKey(
+                groupId = child.groupId,
+                menuItemId = child.menuItemId,
+                itemName = child.itemName,
+                displayOnTicket = child.displayOnTicket,
+                note = child.note?.trim()?.takeIf { it.isNotEmpty() },
+                omissions = child.omittedComponents.map {
+                    OmissionIdentity(
+                        sourceComponentId = it.sourceComponentId,
+                        code = it.code,
+                        displayName = it.displayName,
+                        detail = it.detail?.trim()?.takeIf { d -> d.isNotEmpty() },
+                        displayOrder = it.displayOrder
+                    )
+                }.toSet(),
+                uniqueParentId = if (hasChildren) child.id else null
+            )
+
+            val existing = groupedChildren.find { it.first == key }
+            if (existing != null) {
+                existing.second.add(child)
             } else {
-                printConfigurationTree(out, configList, child.id, indentLevel)
+                groupedChildren.add(key to mutableListOf(child))
+            }
+        }
+
+        for ((key, snapshots) in groupedChildren) {
+            val first = snapshots.first()
+            if (first.displayOnTicket) {
+                val indent = "   ".repeat(indentLevel)
+                val totalQuantity = snapshots.sumOf { it.quantity }
+
+                out.write("${indent}${totalQuantity}x ${first.itemName}\n".toByteArray())
+                for (omission in first.omittedComponents) {
+                    val omissionText = formatOmission(omission.displayName, omission.detail)
+                    out.write("${indent}   SIN: ${omissionText}\n".toByteArray())
+                }
+                if (!first.note.isNullOrBlank()) {
+                    out.write("${indent}   NOTA: ${first.note}\n".toByteArray())
+                }
+                printConfigurationTree(out, configList, snapshots.map { it.id }, indentLevel + 1)
+            } else {
+                printConfigurationTree(out, configList, snapshots.map { it.id }, indentLevel)
             }
         }
     }
@@ -552,18 +609,14 @@ class PrintService(private val context: Context) {
 
                 if (line.omittedComponents.isNotEmpty()) {
                     val omissions = line.omittedComponents.joinToString(", ") { comp ->
-                        if (!comp.detail.isNullOrBlank()) {
-                            "${comp.displayName} (${comp.detail})"
-                        } else {
-                            comp.displayName
-                        }
+                        formatOmission(comp.displayName, comp.detail)
                     }
                     out.write(boldOn)
                     out.write("   SIN: $omissions\n".toByteArray())
                     out.write(boldOff)
                 }
 
-                printConfigurationTree(out, line.configuration, null, 1)
+                printConfigurationTree(out, line.configuration, listOf<Long?>(null), 1)
 
                 if (!line.note.isNullOrBlank()) {
                     out.write(boldOn)
