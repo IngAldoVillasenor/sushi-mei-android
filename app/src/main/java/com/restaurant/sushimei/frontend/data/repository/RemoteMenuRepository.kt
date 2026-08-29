@@ -158,4 +158,44 @@ class RemoteMenuRepository(
             throw Exception("Error : ")
         }
     }
+
+    override suspend fun getMenuItemConfigurationDefinitionResponse(id: Long): com.restaurant.sushimei.frontend.data.model.MenuItemConfigurationDefinitionResponse {
+        val response = api.getMenuItemConfigurationDefinitionResponse(id)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun createSelectionGroup(itemId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse {
+        val response = api.createSelectionGroup(itemId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun updateSelectionGroup(itemId: Long, groupId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse {
+        val response = api.updateSelectionGroup(itemId, groupId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun deleteSelectionGroup(itemId: Long, groupId: Long) {
+        val response = api.deleteSelectionGroup(itemId, groupId)
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun createSelectionRule(groupId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse {
+        val response = api.createSelectionRule(groupId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun updateSelectionRule(groupId: Long, ruleId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse {
+        val response = api.updateSelectionRule(groupId, ruleId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun deleteSelectionRule(groupId: Long, ruleId: Long) {
+        val response = api.deleteSelectionRule(groupId, ruleId)
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+    }
 }

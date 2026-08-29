@@ -517,7 +517,7 @@ class PosCheckoutTest {
     }
 
     @Test
-    fun `test CREATED and ALREADY_CREATED states clear cart`() = runTest {
+    fun `test CREATED and ALREADY_CREATED states clear cart and reset checkout metadata`() = runTest {
         // ALREADY_CREATED
         fillCart()
         viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
@@ -529,15 +529,45 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
-        assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isEmpty())
-        assertEquals(OrderResult.ALREADY_CREATED, ((viewModel.uiState.value as PosUiState.Success).checkoutState as CheckoutState.Success).response.result)
+        var state = viewModel.uiState.value as PosUiState.Success
 
-        // CREATED
+        assertTrue(state.currentCart.isEmpty())
+        assertEquals(
+            OrderResult.ALREADY_CREATED,
+            (state.checkoutState as CheckoutState.Success).response.result
+        )
+
+        // Checkout metadata must be clean for the next order.
+        assertEquals(FulfillmentType.PICKUP, state.fulfillmentType)
+        assertEquals(PaymentMethod.CASH, state.paymentMethod)
+        assertEquals("", state.pickupName)
+        assertEquals("", state.deliveryAddress)
+        assertNull(state.cashDenomination)
+
+        // CREATED - new order must provide its own checkout metadata.
         fillCart()
+        viewModel.updateFulfillmentType(FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Nueva Orden")
+        viewModel.updatePaymentMethod(PaymentMethod.CASH)
+        testDispatcher.scheduler.advanceUntilIdle()
+
         fakeManualRepo.mockedResult = OrderResult.CREATED
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
-        assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isEmpty())
+
+        state = viewModel.uiState.value as PosUiState.Success
+
+        assertTrue(state.currentCart.isEmpty())
+        assertEquals(
+            OrderResult.CREATED,
+            (state.checkoutState as CheckoutState.Success).response.result
+        )
+
+        assertEquals(FulfillmentType.PICKUP, state.fulfillmentType)
+        assertEquals(PaymentMethod.CASH, state.paymentMethod)
+        assertEquals("", state.pickupName)
+        assertEquals("", state.deliveryAddress)
+        assertNull(state.cashDenomination)
     }
 
 
@@ -662,6 +692,15 @@ class FakeMenuRepository : IMenuRepository {
     override suspend fun quoteItem(menuItemId: Long, request: ItemQuoteRequestDto): ItemQuoteResponseDto {
         return ItemQuoteResponseDto(menuItemId, "Mock", request.quantity, BigDecimal.ZERO, BigDecimal.ZERO, emptyList(), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO)
     }
+
+    override suspend fun getMenuItemConfigurationDefinitionResponse(id: Long): com.restaurant.sushimei.frontend.data.model.MenuItemConfigurationDefinitionResponse = TODO()
+    override suspend fun createSelectionGroup(itemId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse = TODO()
+    override suspend fun updateSelectionGroup(itemId: Long, groupId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionGroupRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse = TODO()
+    override suspend fun deleteSelectionGroup(itemId: Long, groupId: Long) = TODO()
+    override suspend fun createSelectionRule(groupId: Long, request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse = TODO()
+    override suspend fun updateSelectionRule(groupId: Long, ruleId: Long, request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionRuleRequest): com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse = TODO()
+    override suspend fun deleteSelectionRule(groupId: Long, ruleId: Long) = TODO()
+
 }
 
 class FakePromotionRepository : IPromotionRepository {

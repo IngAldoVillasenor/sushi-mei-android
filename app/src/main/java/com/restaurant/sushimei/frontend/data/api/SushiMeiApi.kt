@@ -181,8 +181,46 @@ interface SushiMeiApi {
     // FASE 6A2: Configuration Definition (Admin)
     // ============================================================================
 
-    // TODO: Add these DTOs to ApiModels if not present yet, or use generic ones
-    // For now we assume they return generic objects or we can define them later as needed by Admin
+    @GET("/api/v1/menu/items/{id}/configuration-definition")
+    suspend fun getMenuItemConfigurationDefinitionResponse(@Path("id") id: Long): Response<com.restaurant.sushimei.frontend.data.model.MenuItemConfigurationDefinitionResponse>
+
+    @POST("/api/v1/menu/items/{id}/selection-groups")
+    suspend fun createSelectionGroup(
+        @Path("id") itemId: Long,
+        @Body request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionGroupRequest
+    ): Response<com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse>
+
+    @PUT("/api/v1/menu/items/{id}/selection-groups/{groupId}")
+    suspend fun updateSelectionGroup(
+        @Path("id") itemId: Long,
+        @Path("groupId") groupId: Long,
+        @Body request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionGroupRequest
+    ): Response<com.restaurant.sushimei.frontend.data.model.MenuSelectionGroupResponse>
+
+    @DELETE("/api/v1/menu/items/{id}/selection-groups/{groupId}")
+    suspend fun deleteSelectionGroup(
+        @Path("id") itemId: Long,
+        @Path("groupId") groupId: Long
+    ): Response<Unit>
+
+    @POST("/api/v1/menu/selection-groups/{groupId}/rules")
+    suspend fun createSelectionRule(
+        @Path("groupId") groupId: Long,
+        @Body request: com.restaurant.sushimei.frontend.data.model.CreateMenuSelectionRuleRequest
+    ): Response<com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse>
+
+    @PUT("/api/v1/menu/selection-groups/{groupId}/rules/{ruleId}")
+    suspend fun updateSelectionRule(
+        @Path("groupId") groupId: Long,
+        @Path("ruleId") ruleId: Long,
+        @Body request: com.restaurant.sushimei.frontend.data.model.UpdateMenuSelectionRuleRequest
+    ): Response<com.restaurant.sushimei.frontend.data.model.MenuSelectionRuleResponse>
+
+    @DELETE("/api/v1/menu/selection-groups/{groupId}/rules/{ruleId}")
+    suspend fun deleteSelectionRule(
+        @Path("groupId") groupId: Long,
+        @Path("ruleId") ruleId: Long
+    ): Response<Unit>
 
     // ============================================================================
     // FASE 6A3: Temporal Promotion Engine

@@ -749,6 +749,16 @@ class PosViewModel(
         }
     }
 
+    private fun resetCheckoutMetadata() {
+        _fulfillmentType.value = FulfillmentType.PICKUP
+        _paymentMethod.value = PaymentMethod.CASH
+        _pickupName.value = ""
+        _deliveryAddress.value = ""
+        _cashDenomination.value = null
+
+        invalidateRequestId()
+    }
+
     private fun validateCheckout(
         fulfillment: FulfillmentType,
         payment: PaymentMethod,
@@ -848,11 +858,11 @@ class PosViewModel(
                         val job = printManager.enqueuePrintJob(com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, response.id, response.requestId)
                         _currentPrintJobId.value = job.id
                         clearCart()
-                        invalidateRequestId()
+                        resetCheckoutMetadata()
                         _checkoutState.value = CheckoutState.Success(response)
                     } catch (e: Exception) {
                         clearCart()
-                        invalidateRequestId()
+                        resetCheckoutMetadata()
                         _checkoutState.value = CheckoutState.ConfirmedWithPrintWarning(
                             response = response,
                             orderId = response.id,
