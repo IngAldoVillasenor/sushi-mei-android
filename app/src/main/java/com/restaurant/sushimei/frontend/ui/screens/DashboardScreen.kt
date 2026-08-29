@@ -1,5 +1,8 @@
 package com.restaurant.sushimei.frontend.ui.screens
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+
 import com.restaurant.sushimei.frontend.ui.util.formatCurrency
 
 
@@ -79,7 +82,7 @@ private val ColorError     = Color(0xFFD32F2F)
 
 fun DashboardScreen(
 
-    viewModel: DashboardViewModel = run {
+    dashboardViewModel: DashboardViewModel = run {
 
         val context = LocalContext.current
 
@@ -93,7 +96,8 @@ fun DashboardScreen(
     val printManager = androidx.compose.runtime.remember { providePrintManager(context) }
     val printJobRepository = androidx.compose.runtime.remember { providePrintJobRepository(context) }
 
-    val uiState by viewModel.uiState.collectAsState()
+    val uiState by dashboardViewModel.uiState.collectAsState()
+    val detailState by dashboardViewModel.detailState.collectAsState()
 
 
 
@@ -123,7 +127,7 @@ fun DashboardScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    Button(onClick = { viewModel.refresh() }) {
+                    Button(onClick = { dashboardViewModel.refresh() }) {
 
                         Text("Reintentar")
 
@@ -143,18 +147,30 @@ fun DashboardScreen(
                 printJobRepository = printJobRepository,
                 state = state,
 
-                onDateRangeSelected = { viewModel.setDateRange(it) },
+                onDateRangeSelected = { dashboardViewModel.setDateRange(it) },
 
-                onLoadMore = { viewModel.loadMore() },
+                onLoadMore = { dashboardViewModel.loadMore() },
 
-                onRefresh = { viewModel.refresh() }
-
+                onRefresh = { dashboardViewModel.refresh() },
+                                onViewDetail = { id -> dashboardViewModel.loadOrderDetail(id) }
             )
-
         }
-
     }
 
+    if (detailState !is com.restaurant.sushimei.frontend.ui.dashboard.OrderDetailState.Idle) {
+        OrderDetailDialog(
+            state = detailState,
+            onClose = {
+                dashboardViewModel.closeOrderDetail()
+            },
+            onRetry = {
+                val errorState = detailState as? com.restaurant.sushimei.frontend.ui.dashboard.OrderDetailState.Error
+                if (errorState != null) {
+                    dashboardViewModel.loadOrderDetail(errorState.orderId)
+                }
+            }
+        )
+    }
 }
 
 
@@ -171,8 +187,8 @@ private fun DashboardContent(
 
     onLoadMore: () -> Unit,
 
-    onRefresh: () -> Unit
-
+    onRefresh: () -> Unit,
+    onViewDetail: (Long) -> Unit
 ) {
 
     val metrics = state.metrics
@@ -380,9 +396,12 @@ private fun DashboardContent(
 
 
         items(state.orders) { order ->
-
-            HistoricalOrderRow(order, printManager, printJobRepository)
-
+            HistoricalOrderRow(
+                order = order,
+                printManager = printManager,
+                printJobRepository = printJobRepository,
+                onViewDetail = { id -> onViewDetail(id) }
+            )
         }
 
 
@@ -683,7 +702,8 @@ private fun SalesBySourceCard(
 private fun HistoricalOrderRow(
     order: HistoricalOrderSummaryDto,
     printManager: com.restaurant.sushimei.frontend.PrintManager,
-    printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository
+    printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository,
+    onViewDetail: (Long) -> Unit
 ) {
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm").withZone(ZoneId.of("America/Mexico_City")) }
     val formattedDate = order.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
@@ -841,13 +861,179 @@ private fun HistoricalOrderRow(
 
                 val isBusy = jobState?.activeAttemptId != null
 
-                OutlinedButton(
-                    onClick = { showConfirmDialog = true },
-                    enabled = !isBusy
-                ) {
-                    Text(btnText)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { onViewDetail(order.id) }
+                    ) {
+                        Text("Ver pedido")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = { showConfirmDialog = true },
+                        enabled = !isBusy
+                    ) {
+                        Text(btnText)
+                    }
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun OrderDetailDialog(
+    state: com.restaurant.sushimei.frontend.ui.dashboard.OrderDetailState,
+    onClose: () -> Unit,
+    onRetry: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Detalle del Pedido", style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    }
+                }
+                HorizontalDivider()
+
+                // Content
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (state) {
+                        is com.restaurant.sushimei.frontend.ui.dashboard.OrderDetailState.Loading -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        }
+                        is com.restaurant.sushimei.frontend.ui.dashboard.OrderDetailState.Error -> {
+                            Column(modifier = Modifier.align(Alignment.Center).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(state.message, color = MaterialTheme.colorScheme.error)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(onClick = onRetry) {
+                                    Text("Reintentar")
+                                }
+                            }
+                        }
+                        is com.restaurant.sushimei.frontend.ui.dashboard.OrderDetailState.Loaded -> {
+                            OrderDetailContent(state.detail)
+                        }
+                        else -> {}
+                    }
+                }
+
+                // Footer
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onClose) {
+                        Text("Cerrar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OrderDetailContent(detail: com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto) {
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm").withZone(ZoneId.of("America/Mexico_City")) }
+    val dateStr = detail.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
+
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+        item {
+            Text("Orden #${detail.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Estado: ${detail.status}", style = MaterialTheme.typography.bodyMedium)
+            Text("Fecha: $dateStr", style = MaterialTheme.typography.bodyMedium)
+            detail.orderSource?.let { Text("Origen: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.fulfillmentType?.let { Text("Tipo: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.paymentMethod?.let { Text("Pago: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.pickupName?.takeIf { it.isNotBlank() }?.let { Text("Recoge: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.deliveryAddress?.takeIf { it.isNotBlank() }?.let { Text("Dirección: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.phoneNumber?.takeIf { it.isNotBlank() }?.let { Text("Teléfono: $it", style = MaterialTheme.typography.bodyMedium) }
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (detail.lines.isNotEmpty()) {
+            items(detail.lines) { line ->
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${line.quantity}x ${line.name}", fontWeight = FontWeight.Bold)
+                        Text(formatCurrency(line.finalLineTotal), fontWeight = FontWeight.Bold)
+                    }
+                    if (line.omittedComponents.isNotEmpty()) {
+                        line.omittedComponents.forEach { omission ->
+                            val text = if (!omission.detail.isNullOrBlank()) "${omission.displayName} (${omission.detail})" else omission.displayName
+                            Text("SIN: $text", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp))
+                        }
+                    }
+
+                    if (line.configuration.isNotEmpty()) {
+                        DashboardOrderConfigurationTree(configList = line.configuration, parentIds = listOf(null), indentLevel = 1)
+                    }
+                    if (!line.note.isNullOrBlank()) {
+                        Text("NOTA: ${line.note}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+            }
+        } else if (!detail.legacyOrderDetails.isNullOrBlank()) {
+            item {
+                Text(detail.legacyOrderDetails, style = MaterialTheme.typography.bodyMedium)
+            }
+        } else {
+            item {
+                Text("No hay detalle disponible para esta orden.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Total:", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(detail.total?.let { formatCurrency(it) } ?: "No disponible", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardOrderConfigurationTree(
+    configList: List<com.restaurant.sushimei.frontend.data.model.OrderConfigurationSnapshotDto>,
+    parentIds: List<Long?>,
+    indentLevel: Int
+) {
+    val children = configList.filter { it.parentSelectionSnapshotId in parentIds }
+
+    children.forEach { child ->
+        if (child.displayOnTicket) {
+            val indent = 16.dp * indentLevel
+            Column(modifier = Modifier.fillMaxWidth().padding(start = indent, top = 2.dp, bottom = 2.dp)) {
+                Text("${child.quantity}x ${child.itemName}", style = MaterialTheme.typography.bodySmall)
+                if (child.omittedComponents.isNotEmpty()) {
+                    child.omittedComponents.forEach { omission ->
+                        val text = if (!omission.detail.isNullOrBlank()) "${omission.displayName} (${omission.detail})" else omission.displayName
+                        Text("SIN: $text", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                if (!child.note.isNullOrBlank()) {
+                    Text("NOTA: ${child.note}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            DashboardOrderConfigurationTree(configList, listOf(child.id), indentLevel + 1)
+        } else {
+            DashboardOrderConfigurationTree(configList, listOf(child.id), indentLevel)
         }
     }
 }

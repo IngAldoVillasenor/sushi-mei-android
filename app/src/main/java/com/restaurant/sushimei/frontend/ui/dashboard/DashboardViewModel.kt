@@ -74,6 +74,13 @@ data class DashboardMetrics(
 
 
 
+sealed class OrderDetailState {
+    object Idle : OrderDetailState()
+    data class Loading(val orderId: Long) : OrderDetailState()
+    data class Loaded(val orderId: Long, val detail: com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto) : OrderDetailState()
+    data class Error(val orderId: Long, val message: String) : OrderDetailState()
+}
+
 sealed class DashboardUiState {
 
     object Loading : DashboardUiState()
@@ -114,9 +121,40 @@ class DashboardViewModel(
 
 
 
-    private val _uiState = MutableStateFlow<DashboardUiState>(DashboardUiState.Loading)
-
+        private val _uiState = MutableStateFlow<DashboardUiState>(DashboardUiState.Loading)
     val uiState: StateFlow<DashboardUiState> = _uiState.asStateFlow()
+
+    private val detailCache = mutableMapOf<Long, com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto>()
+
+    private val _detailState = MutableStateFlow<OrderDetailState>(OrderDetailState.Idle)
+    val detailState: StateFlow<OrderDetailState> = _detailState.asStateFlow()
+
+    fun loadOrderDetail(orderId: Long) {
+        val cached = detailCache[orderId]
+        if (cached != null) {
+            _detailState.value = OrderDetailState.Loaded(orderId, cached)
+            return
+        }
+
+        _detailState.value = OrderDetailState.Loading(orderId)
+        viewModelScope.launch {
+            try {
+                val detail = operationalOrderRepository.getOperationalOrderDetail(orderId)
+                detailCache[orderId] = detail
+                if (_detailState.value is OrderDetailState.Loading && (_detailState.value as OrderDetailState.Loading).orderId == orderId) {
+                    _detailState.value = OrderDetailState.Loaded(orderId, detail)
+                }
+            } catch (e: Exception) {
+                if (_detailState.value is OrderDetailState.Loading && (_detailState.value as OrderDetailState.Loading).orderId == orderId) {
+                    _detailState.value = OrderDetailState.Error(orderId, e.message ?: "Error al cargar detalle")
+                }
+            }
+        }
+    }
+
+    fun closeOrderDetail() {
+        _detailState.value = OrderDetailState.Idle
+    }
 
 
 
