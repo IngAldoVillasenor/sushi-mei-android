@@ -462,4 +462,118 @@ class DashboardViewModelTest {
 
     }
 
+
+    @Test
+    fun `TEST 1 - Calling the new detail-load action for an order invokes repository and exposes Loaded state`() = runTest {
+        val detail = mockk<com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto>(relaxed = true)
+        coEvery { repository.getOperationalOrderDetail(42L) } returns detail
+
+        viewModel = DashboardViewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+
+        io.mockk.coVerify(exactly = 1) { repository.getOperationalOrderDetail(42L) }
+        val detailState = viewModel.detailState.value
+        assertTrue(detailState is OrderDetailState.Loaded)
+        assertEquals(42L, (detailState as OrderDetailState.Loaded).orderId)
+    }
+
+    @Test
+    fun `TEST 2 - Opening an already successfully loaded order again does NOT trigger another repository request`() = runTest {
+        val detail = mockk<com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto>(relaxed = true)
+        coEvery { repository.getOperationalOrderDetail(42L) } returns detail
+
+        viewModel = DashboardViewModel(repository)
+        advanceUntilIdle()
+
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+
+        viewModel.closeOrderDetail()
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+
+        // Should only be called once because it is cached
+        io.mockk.coVerify(exactly = 1) { repository.getOperationalOrderDetail(42L) }
+        val detailState = viewModel.detailState.value
+        assertTrue(detailState is OrderDetailState.Loaded)
+    }
+
+    @Test
+    fun `TEST 3 - A repository exception produces a recoverable detail Error state without changing the main Dashboard Content state`() = runTest {
+        coEvery { repository.getOperationalActiveOrders() } returns emptyList()
+        coEvery { repository.getHistoricalOrders(any(), any(), any(), any(), any(), any()) } returns HistoricalOrdersPageDto(
+            content = emptyList(), page = 0, size = 100, totalElements = 0, totalPages = 0
+        )
+
+        viewModel = DashboardViewModel(repository)
+        advanceUntilIdle()
+
+        coEvery { repository.getOperationalOrderDetail(42L) } throws RuntimeException("Detail load failed")
+
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+
+        val detailState = viewModel.detailState.value
+        assertTrue(detailState is OrderDetailState.Error)
+        assertEquals("Detail load failed", (detailState as OrderDetailState.Error).message)
+
+        // Main content state remains unaffected
+        assertTrue(viewModel.uiState.value is DashboardUiState.Content)
+    }
+
+    @Test
+    fun `TEST 4 - Retrying after an Error calls the repository again and can transition to Loaded`() = runTest {
+        var callCount = 0
+        val detail = mockk<com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto>(relaxed = true)
+        coEvery { repository.getOperationalOrderDetail(42L) } answers {
+            if (callCount++ == 0) throw RuntimeException("Temporary Error")
+            detail
+        }
+
+        viewModel = DashboardViewModel(repository)
+        advanceUntilIdle()
+
+        // First try -> Error
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+        assertTrue(viewModel.detailState.value is OrderDetailState.Error)
+
+        // Retry -> Loaded
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.detailState.value is OrderDetailState.Loaded)
+        io.mockk.coVerify(exactly = 2) { repository.getOperationalOrderDetail(42L) }
+    }
+
+    @Test
+    fun `TEST 5 - Loading order detail does not discard current historical orders, existing financial metrics, or pagination state`() = runTest {
+        coEvery { repository.getOperationalActiveOrders() } returns emptyList()
+        val pageDto = HistoricalOrdersPageDto(
+            content = listOf(mockk(relaxed = true)), page = 0, size = 100, totalElements = 200, totalPages = 2
+        )
+        coEvery { repository.getHistoricalOrders(any(), any(), any(), any(), 0, any()) } returns pageDto
+
+        viewModel = DashboardViewModel(repository)
+        advanceUntilIdle()
+
+        val initialState = viewModel.uiState.value as DashboardUiState.Content
+        val initialMetrics = initialState.metrics
+        val initialOrders = initialState.orders
+        val initialHasMore = initialState.hasMore
+
+        // Load order detail
+        coEvery { repository.getOperationalOrderDetail(42L) } returns mockk(relaxed = true)
+        viewModel.loadOrderDetail(42L)
+        advanceUntilIdle()
+
+        val postState = viewModel.uiState.value as DashboardUiState.Content
+        assertEquals(initialMetrics, postState.metrics)
+        assertEquals(initialOrders, postState.orders)
+        assertEquals(initialHasMore, postState.hasMore)
+    }
+
 }
