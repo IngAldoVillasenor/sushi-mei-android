@@ -17,4 +17,8 @@ interface IOperationalOrderRepository {
         size: Int? = null
     ): com.restaurant.sushimei.frontend.data.model.HistoricalOrdersPageDto
 
+    suspend fun voidOrder(
+        orderId: Long,
+        reason: String
+    ): com.restaurant.sushimei.frontend.data.model.VoidOrderResponse
 }

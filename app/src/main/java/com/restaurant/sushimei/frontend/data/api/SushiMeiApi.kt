@@ -114,6 +114,13 @@ interface SushiMeiApi {
         @Body request: com.restaurant.sushimei.frontend.data.model.OpenSaleRequest
     ): Response<com.restaurant.sushimei.frontend.data.model.OpenSaleResponse>
 
+
+    @PUT("/api/orders/{id}/void")
+    suspend fun voidOrder(
+        @Path("id") orderId: Long,
+        @Body request: VoidOrderRequest
+    ): Response<VoidOrderResponse>
+
     // ============================================================================
     // FASE 6A2: Operational Catalog & Configuration
     // ============================================================================

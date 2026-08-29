@@ -3,10 +3,13 @@ package com.restaurant.sushimei.frontend.ui.pos
 import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.model.*
 import com.restaurant.sushimei.frontend.data.repository.IManualPosOrderRepository
+import com.restaurant.sushimei.frontend.data.repository.IOperationalOrderRepository
 import com.restaurant.sushimei.frontend.data.repository.IMenuRepository
 import com.restaurant.sushimei.frontend.data.repository.IPromotionRepository
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
@@ -14,6 +17,7 @@ import kotlinx.coroutines.test.*
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -28,6 +32,7 @@ class PosViewModelTest {
     private lateinit var promotionRepository: IPromotionRepository
     private lateinit var printManager: com.restaurant.sushimei.frontend.PrintManager
     private lateinit var printJobRepository: com.restaurant.sushimei.frontend.data.repository.IPrintJobRepository
+    private lateinit var operationalOrderRepository: IOperationalOrderRepository
     private lateinit var viewModel: PosViewModel
 
     @Before
@@ -38,6 +43,7 @@ class PosViewModelTest {
         promotionRepository = mockk()
         printManager = mockk(relaxed = true)
         printJobRepository = mockk(relaxed = true)
+        operationalOrderRepository = mockk()
         io.mockk.coEvery { printJobRepository.observeAllJobs() } returns kotlinx.coroutines.flow.flowOf(emptyList())
 
         val catalogItemSimple = MenuItem(
@@ -72,7 +78,7 @@ class PosViewModelTest {
             groups = emptyList()
         )
 
-        viewModel = PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository)
+        viewModel = PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository, operationalOrderRepository)
     }
 
     @After
@@ -762,4 +768,467 @@ class PosViewModelTest {
         assertEquals("job-123", stateFlow.value)
 
     }
+
+    // =========================================================================
+    // TEST 11: Stale response protection - Close during load
+    // =========================================================================
+    @Test
+    fun `stale response protection - close during load keeps state Idle`() = runTest {
+        val initialLoad = CompletableDeferred<List<OperationalOrderSummaryDto>>()
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } coAnswers { initialLoad.await() }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.runCurrent()
+        viewModel.closeActiveOrderManagement()
+        initialLoad.complete(listOf(makePosOrder(id = 1)))
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.activeOrderManagementState.value is ActiveOrderManagementState.Idle)
+    }
+
+    // =========================================================================
+    // TEST 12: Stale response protection - Close during refresh
+    // =========================================================================
+    @Test
+    fun `stale response protection - close during refresh keeps state Idle`() = runTest {
+        val refreshLoad = CompletableDeferred<List<OperationalOrderSummaryDto>>()
+        var calls = 0
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } coAnswers {
+            calls++
+            if (calls == 1) listOf(makePosOrder(id = 1)) else refreshLoad.await()
+        }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.refreshActiveOrders()
+        testScheduler.runCurrent()
+        viewModel.closeActiveOrderManagement()
+        refreshLoad.complete(listOf(makePosOrder(id = 2)))
+        testScheduler.advanceUntilIdle()
+
+        assertTrue(viewModel.activeOrderManagementState.value is ActiveOrderManagementState.Idle)
+    }
+
+    // =========================================================================
+    // TEST 13: Stale response protection - Close during void
+    // =========================================================================
+    @Test
+    fun `stale response protection - close during in-flight void keeps state Idle`() = runTest {
+        val orders = listOf(makePosOrder(id = 2))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        val voidResponse = CompletableDeferred<VoidOrderResponse>()
+        coEvery { operationalOrderRepository.voidOrder(2L, "reason") } coAnswers { voidResponse.await() }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(2L)
+        viewModel.submitVoidOrder(2L, "reason")
+
+        testScheduler.runCurrent()
+        viewModel.closeActiveOrderManagement()
+        voidResponse.complete(makeVoidResponse(2L))
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { operationalOrderRepository.voidOrder(2L, "reason") }
+        assertTrue(viewModel.activeOrderManagementState.value is ActiveOrderManagementState.Idle)
+    }
+
+    // =========================================================================
+    // TEST 14: Stale response protection - Old session cannot overwrite new session
+    // =========================================================================
+    @Test
+    fun `stale response protection - old session result does not overwrite newly reopened session`() = runTest {
+        val sessionOneLoad = CompletableDeferred<List<OperationalOrderSummaryDto>>()
+        var calls = 0
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } coAnswers {
+            calls++
+            if (calls == 1) sessionOneLoad.await() else listOf(makePosOrder(id = 4))
+        }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.runCurrent()
+        viewModel.closeActiveOrderManagement()
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        val reopenedState = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals(4L, reopenedState.orders.single().id)
+
+        sessionOneLoad.complete(listOf(makePosOrder(id = 3)))
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals(1, state.orders.size)
+        assertEquals(4L, state.orders.first().id)
+    }
+
+    // =========================================================================
+    // TEST 15: Failed void + failed refresh preserves known orders
+    // =========================================================================
+    @Test
+    fun `failed void and failed refresh preserves known orders`() = runTest {
+        val orders = listOf(makePosOrder(id = 5))
+        // first call returns list
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        coEvery { operationalOrderRepository.voidOrder(5L, "reason") } throws Exception("void fail")
+        // second call throws
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } throws Exception("refresh fail")
+
+        viewModel.requestVoidConfirmation(5L)
+        viewModel.submitVoidOrder(5L, "reason")
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNotNull(state.voidError)
+        assertEquals(1, state.orders.size)
+        assertEquals(5L, state.orders.first().id)
+        assertNull(state.submittingVoidFor)
+    }
+
+    // =========================================================================
+    // TEST 16: Successful void + failed refresh removes voided order based on VoidOrderResponse
+    // =========================================================================
+    @Test
+    fun `successful void and failed refresh removes voided order based on authoritative response`() = runTest {
+        val orders = listOf(makePosOrder(id = 6), makePosOrder(id = 7))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        coEvery { operationalOrderRepository.voidOrder(6L, "reason") } returns makeVoidResponse(6L)
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } throws Exception("refresh fail")
+
+        viewModel.requestVoidConfirmation(6L)
+        viewModel.submitVoidOrder(6L, "reason")
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNotNull(state.voidSuccessMessage)
+        assertTrue(state.voidSuccessMessage!!.contains("No se pudo actualizar la lista"))
+        assertEquals(1, state.orders.size)
+        assertEquals(7L, state.orders.first().id)
+        assertNull(state.submittingVoidFor)
+        assertNull(state.confirmingVoid)
+    }
+
+    // =========================================================================
+    // Helpers for cancellation tests
+    // =========================================================================
+
+    private fun makePosOrder(
+        id: Long,
+        orderSource: String = "ANDROID_MANUAL",
+        status: String = "PENDING"
+    ) = com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto(
+        id = id,
+        orderSource = orderSource,
+        status = status,
+        fulfillmentType = com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP,
+        paymentMethod = null,
+        deliveryAddress = null,
+        pickupName = "Test",
+        cashDenomination = null,
+        phoneNumber = null,
+        total = java.math.BigDecimal("150.00"),
+        createdAt = java.time.Instant.now(),
+        requiresPaymentValidation = false,
+        structuredLinesAvailable = true
+    )
+
+    private fun makeVoidResponse(orderId: Long) =
+        com.restaurant.sushimei.frontend.data.model.VoidOrderResponse(
+            orderId = orderId,
+            previousStatus = "PENDING",
+            currentStatus = "VOIDED",
+            voidReason = "Test reason",
+            voidedAt = java.time.Instant.now(),
+            voidedByUserId = 1L
+        )
+
+    // =========================================================================
+    // TEST 1: Opening active-order management calls getOperationalActiveOrders
+    // =========================================================================
+
+    @Test
+    fun `openActiveOrderManagement calls getOperationalActiveOrders`() = runTest {
+        val orders = listOf(makePosOrder(id = 10))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { operationalOrderRepository.getOperationalActiveOrders() }
+        val state = viewModel.activeOrderManagementState.value
+        assertTrue("State must be Content after load", state is ActiveOrderManagementState.Content)
+    }
+
+    // =========================================================================
+    // TEST 2: Only ANDROID_MANUAL / COUNTER active orders are exposed
+    // =========================================================================
+
+    @Test
+    fun `openActiveOrderManagement exposes only ANDROID_MANUAL and COUNTER sources`() = runTest {
+        val orders = listOf(
+            makePosOrder(id = 1, orderSource = "ANDROID_MANUAL", status = "PENDING"),
+            makePosOrder(id = 2, orderSource = "COUNTER", status = "PREPARING"),
+            makePosOrder(id = 3, orderSource = "WHATSAPP", status = "PENDING"),
+            makePosOrder(id = 4, orderSource = "AI", status = "READY"),
+            makePosOrder(id = 5, orderSource = "ANDROID_MANUAL", status = "READY")
+        )
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        val ids = state.orders.map { it.id }
+        assertTrue("Must contain order 1 (ANDROID_MANUAL)", 1L in ids)
+        assertTrue("Must contain order 2 (COUNTER)", 2L in ids)
+        assertTrue("Must contain order 5 (ANDROID_MANUAL / READY)", 5L in ids)
+        assertEquals("Must expose exactly 3 eligible POS orders", 3, ids.size)
+    }
+
+    // =========================================================================
+    // TEST 3: Unsupported sources are not exposed as cancellable
+    // =========================================================================
+
+    @Test
+    fun `openActiveOrderManagement does not expose WHATSAPP or AI orders as cancellable`() = runTest {
+        val orders = listOf(
+            makePosOrder(id = 1, orderSource = "WHATSAPP", status = "PENDING"),
+            makePosOrder(id = 2, orderSource = "AI", status = "PREPARING"),
+            makePosOrder(id = 3, orderSource = "VENDIS", status = "READY")
+        )
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertTrue("No non-POS orders should appear as cancellable", state.orders.isEmpty())
+    }
+
+    // =========================================================================
+    // TEST 4: Blank reason is rejected without calling repository void
+    // =========================================================================
+
+    @Test
+    fun `submitVoidOrder with blank reason is rejected without calling repository`() = runTest {
+        val orders = listOf(makePosOrder(id = 42))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(42L)
+
+        viewModel.submitVoidOrder(42L, "   ")
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { operationalOrderRepository.voidOrder(any(), any()) }
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNotNull("Error message must be set for blank reason", state.voidError)
+    }
+
+    // =========================================================================
+    // TEST 5: Reason > 500 chars is rejected without calling repository void
+    // =========================================================================
+
+    @Test
+    fun `submitVoidOrder with reason over 500 chars is rejected without calling repository`() = runTest {
+        val orders = listOf(makePosOrder(id = 42))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(42L)
+
+        val longReason = "a".repeat(501)
+        viewModel.submitVoidOrder(42L, longReason)
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 0) { operationalOrderRepository.voidOrder(any(), any()) }
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNotNull("Error message must be set for too-long reason", state.voidError)
+    }
+
+    // =========================================================================
+    // TEST 6: Successful cancellation calls repository with correct orderId + reason
+    // =========================================================================
+
+    @Test
+    fun `submitVoidOrder calls repository with correct orderId and normalized reason`() = runTest {
+        val orders = listOf(makePosOrder(id = 55))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+        coEvery { operationalOrderRepository.voidOrder(55L, "Cliente canceló el pedido") } returns makeVoidResponse(55L)
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(55L)
+
+        // Leading/trailing whitespace is normalized by ViewModel before sending
+        viewModel.submitVoidOrder(55L, "  Cliente canceló el pedido  ")
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { operationalOrderRepository.voidOrder(55L, "Cliente canceló el pedido") }
+    }
+
+    // =========================================================================
+    // TEST 7: Successful cancellation refreshes active order list
+    // =========================================================================
+
+    @Test
+    fun `submitVoidOrder on success refreshes active order list`() = runTest {
+        val initialOrders = listOf(makePosOrder(id = 55), makePosOrder(id = 66))
+        val refreshedOrders = listOf(makePosOrder(id = 66)) // 55 gone after void
+
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returnsMany listOf(
+            initialOrders,
+            refreshedOrders
+        )
+        coEvery { operationalOrderRepository.voidOrder(55L, "Motivo valido") } returns makeVoidResponse(55L)
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(55L)
+        viewModel.submitVoidOrder(55L, "Motivo valido")
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals("After void, list must be refreshed to 1 order", 1, state.orders.size)
+        assertEquals("Remaining order must be #66", 66L, state.orders.first().id)
+        assertNotNull("Success message must be present", state.voidSuccessMessage)
+        assertTrue("Confirmation dialog must be closed", state.confirmingVoid == null)
+    }
+
+    // =========================================================================
+    // TEST 8: Failed cancellation keeps order and exposes recoverable error
+    // =========================================================================
+
+    @Test
+    fun `submitVoidOrder on failure keeps order in list and exposes recoverable error`() = runTest {
+        val orders = listOf(makePosOrder(id = 77))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+        coEvery { operationalOrderRepository.voidOrder(77L, "Error reason") } throws
+            com.restaurant.sushimei.frontend.data.api.ApiException("ORDER_INVALID_TRANSITION", "Cannot void")
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(77L)
+        viewModel.submitVoidOrder(77L, "Error reason")
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNotNull("Error message must be set after failure", state.voidError)
+        assertEquals("Order must remain in list after failure", 1, state.orders.size)
+        assertEquals("Remaining order must still be #77", 77L, state.orders.first().id)
+        assertTrue("Submission guard must be cleared", state.submittingVoidFor == null)
+    }
+
+    // =========================================================================
+    // TEST 9: Duplicate submission while same request is in-flight is ignored
+    // =========================================================================
+
+    @Test
+    fun `submitVoidOrder duplicate tap while in-flight is ignored`() = runTest {
+        val orders = listOf(makePosOrder(id = 88))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+
+        var callCount = 0
+        coEvery { operationalOrderRepository.voidOrder(88L, "First call") } coAnswers {
+            callCount++
+            // simulate slow network — never returns during this test
+            kotlinx.coroutines.delay(10_000)
+            makeVoidResponse(88L)
+        }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(88L)
+
+        // First call
+        viewModel.submitVoidOrder(88L, "First call")
+        testScheduler.advanceTimeBy(100) // partially advance but don't finish
+
+        // Second call — should be a no-op because submittingVoidFor == 88
+        viewModel.submitVoidOrder(88L, "First call")
+        testScheduler.advanceTimeBy(100)
+
+        // Only one call must have reached repository
+        assertEquals("Repository must be called exactly once despite duplicate tap", 1, callCount)
+    }
+
+    // =========================================================================
+    // TEST 10: Cancellation operations do NOT modify cart, checkout, promotions, or print state
+    // =========================================================================
+
+    @Test
+    fun `void management operations do not touch cart checkout promotion or print state`() = runTest {
+        val orders = listOf(makePosOrder(id = 99))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns orders
+        coEvery { operationalOrderRepository.voidOrder(99L, "Test cancel") } returns makeVoidResponse(99L)
+
+        // Place a cart item first
+        testScheduler.advanceUntilIdle()
+        viewModel.addToCart(MenuItem(id = 1, nombre = "Simple Item", categoria = "Rolls", precio = java.math.BigDecimal("100.00")))
+        viewModel.addManualLine("Bebida", java.math.BigDecimal("30.00"))
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY)
+        viewModel.updatePaymentMethod(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH)
+        viewModel.updateCashDenomination(java.math.BigDecimal("500.00"))
+        viewModel.updateDeliveryAddress("Calle Falsa 123")
+        viewModel.updatePickupName("Juan Perez")
+        testScheduler.advanceUntilIdle()
+
+        val successStateBefore = viewModel.uiState.value as PosUiState.Success
+        val cartBefore = successStateBefore.currentCart.toList()
+        val checkoutBefore = successStateBefore.checkoutState
+        val promotionsBefore = successStateBefore.activePromotions.toList()
+        val manualCartBefore = successStateBefore.manualCart.toList()
+        val fulfillmentBefore = successStateBefore.fulfillmentType
+        val paymentBefore = successStateBefore.paymentMethod
+        val pickupBefore = successStateBefore.pickupName
+        val addressBefore = successStateBefore.deliveryAddress
+        val denomBefore = successStateBefore.cashDenomination
+        val printStateBefore = viewModel.currentPrintState.value
+
+        // Perform void management flow
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+        viewModel.requestVoidConfirmation(99L)
+        viewModel.submitVoidOrder(99L, "Test cancel")
+        testScheduler.advanceUntilIdle()
+        viewModel.closeActiveOrderManagement()
+
+        val successStateAfter = viewModel.uiState.value as PosUiState.Success
+        val cartAfter = successStateAfter.currentCart
+        val checkoutAfter = successStateAfter.checkoutState
+        val promotionsAfter = successStateAfter.activePromotions
+        val manualCartAfter = successStateAfter.manualCart
+        val fulfillmentAfter = successStateAfter.fulfillmentType
+        val paymentAfter = successStateAfter.paymentMethod
+        val pickupAfter = successStateAfter.pickupName
+        val addressAfter = successStateAfter.deliveryAddress
+        val denomAfter = successStateAfter.cashDenomination
+        val printStateAfter = viewModel.currentPrintState.value
+
+        assertEquals("Cart must be unchanged after void management", cartBefore, cartAfter)
+        assertEquals("CheckoutState must be unchanged after void management", checkoutBefore, checkoutAfter)
+        assertEquals("Promotions must be unchanged after void management", promotionsBefore, promotionsAfter)
+        assertEquals("ManualCart must be unchanged", manualCartBefore, manualCartAfter)
+        assertEquals("FulfillmentType must be unchanged", fulfillmentBefore, fulfillmentAfter)
+        assertEquals("PaymentMethod must be unchanged", paymentBefore, paymentAfter)
+        assertEquals("PickupName must be unchanged", pickupBefore, pickupAfter)
+        assertEquals("DeliveryAddress must be unchanged", addressBefore, addressAfter)
+        assertEquals("CashDenomination must be unchanged", denomBefore, denomAfter)
+        assertEquals("PrintState must be unchanged", printStateBefore, printStateAfter)
+
+        assertTrue("activeOrderManagementState must return to Idle", viewModel.activeOrderManagementState.value is ActiveOrderManagementState.Idle)
+    }
+
 }

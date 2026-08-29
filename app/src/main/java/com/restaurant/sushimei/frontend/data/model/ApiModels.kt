@@ -676,3 +676,21 @@ data class UpdateMenuSelectionRuleRequest(
     val active: Boolean,
     val version: Long
 )
+
+
+// ============================================================================
+// POS ORDER VOID (feat/pos-order-cancellation-ui)
+// ============================================================================
+
+data class VoidOrderRequest(
+    val reason: String
+)
+
+data class VoidOrderResponse(
+    val orderId: Long,
+    val previousStatus: String,
+    val currentStatus: String,
+    val voidReason: String,
+    val voidedAt: java.time.Instant,
+    val voidedByUserId: Long
+)
