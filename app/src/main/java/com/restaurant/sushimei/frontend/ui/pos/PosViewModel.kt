@@ -14,6 +14,7 @@ import com.restaurant.sushimei.frontend.data.api.ApiException
 import com.restaurant.sushimei.frontend.data.model.*
 import com.restaurant.sushimei.frontend.data.repository.IMenuRepository
 import com.restaurant.sushimei.frontend.data.repository.IManualPosOrderRepository
+import com.restaurant.sushimei.frontend.data.repository.IOperationalOrderRepository
 import com.restaurant.sushimei.frontend.data.repository.IPromotionRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -54,6 +55,35 @@ sealed interface CurrentPrintUiState {
     object InternalCopyPrinted : CurrentPrintUiState
 }
 
+
+// ============================================================================
+// Active POS Order Management State (feat/pos-order-cancellation-ui)
+// ============================================================================
+
+// The statuses the backend allows voiding (only physical POS sources matter here,
+// but the backend remains authoritative; Android filtering is presentation safety only).
+internal val POS_VOIDABLE_SOURCES = setOf("ANDROID_MANUAL", "COUNTER")
+internal val POS_ACTIVE_STATUSES = setOf("PENDING_VALIDATION", "PENDING", "PREPARING", "READY")
+
+sealed interface ActiveOrderManagementState {
+    /** Surface is closed. */
+    object Idle : ActiveOrderManagementState
+
+    /** Loading the first page / after refresh. */
+    object LoadingOrders : ActiveOrderManagementState
+
+    /** Orders loaded and displayed. confirmingVoid contains the order the user wants to cancel. */
+    data class Content(
+        val orders: List<com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto>,
+        val confirmingVoid: Long? = null,   // orderId of the order being confirmed
+        val submittingVoidFor: Long? = null, // orderId currently in-flight
+        val voidError: String? = null,       // transient error from last void attempt
+        val voidSuccessMessage: String? = null
+    ) : ActiveOrderManagementState
+
+    data class Error(val message: String) : ActiveOrderManagementState
+}
+
 sealed interface PosUiState {
     object Loading : PosUiState
 
@@ -81,7 +111,8 @@ class PosViewModel(
     private val manualPosOrderRepository: IManualPosOrderRepository,
     private val promotionRepository: IPromotionRepository,
     private val printManager: PrintManager,
-    private val printJobRepository: IPrintJobRepository
+    private val printJobRepository: IPrintJobRepository,
+    private val operationalOrderRepository: IOperationalOrderRepository? = null
 ) : ViewModel() {
     // --- Estado interno ---
 
@@ -150,6 +181,11 @@ class PosViewModel(
 
 
     private val _checkoutState = MutableStateFlow<CheckoutState>(CheckoutState.Idle)
+
+    // --- Active Order Management ---
+    private val _activeOrderManagementState = MutableStateFlow<ActiveOrderManagementState>(ActiveOrderManagementState.Idle)
+    private var activeOrderSessionGeneration: Long = 0L
+    val activeOrderManagementState: StateFlow<ActiveOrderManagementState> = _activeOrderManagementState.asStateFlow()
 
     private val _fulfillmentType = MutableStateFlow(FulfillmentType.PICKUP)
 
@@ -1020,14 +1056,15 @@ class PosViewModel(
             manualPosOrderRepository: IManualPosOrderRepository,
             promotionRepository: IPromotionRepository,
             printManager: PrintManager,
-            printJobRepository: IPrintJobRepository
+            printJobRepository: IPrintJobRepository,
+            operationalOrderRepository: IOperationalOrderRepository? = null
         ): ViewModelProvider.Factory =
 
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
 
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository) as T
+                    return PosViewModel(menuRepository, manualPosOrderRepository, promotionRepository, printManager, printJobRepository, operationalOrderRepository) as T
                 }
             }
     }
@@ -1092,4 +1129,217 @@ class PosViewModel(
             }
         }
     }
+    // ============================================================================
+    // Active POS Order Management (feat/pos-order-cancellation-ui)
+    // ============================================================================
+
+    /** Open the active-order management surface and lazily load orders from backend. */
+    fun openActiveOrderManagement() {
+        val repo = operationalOrderRepository ?: return
+        val currentSession = ++activeOrderSessionGeneration
+        _activeOrderManagementState.value = ActiveOrderManagementState.LoadingOrders
+        viewModelScope.launch {
+            try {
+                val raw = repo.getOperationalActiveOrders()
+                val filtered = raw.filter { order ->
+                    order.orderSource in POS_VOIDABLE_SOURCES && order.status in POS_ACTIVE_STATUSES
+                }
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                _activeOrderManagementState.value = ActiveOrderManagementState.Content(orders = filtered)
+            } catch (e: Exception) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                _activeOrderManagementState.value = ActiveOrderManagementState.Error(
+                    message = "No se pudieron cargar los pedidos activos: ${e.message ?: "Error desconocido"}"
+                )
+            }
+        }
+    }
+
+    /** Refresh the active-order list while remaining in Content state. */
+    fun refreshActiveOrders() {
+        val repo = operationalOrderRepository ?: return
+        if (_activeOrderManagementState.value !is ActiveOrderManagementState.Content &&
+            _activeOrderManagementState.value !is ActiveOrderManagementState.Error
+        ) return
+        val currentSession = activeOrderSessionGeneration
+        // Maintain the existing Content if present, just reload data
+        viewModelScope.launch {
+            try {
+                val raw = repo.getOperationalActiveOrders()
+                val filtered = raw.filter { order ->
+                    order.orderSource in POS_VOIDABLE_SOURCES && order.status in POS_ACTIVE_STATUSES
+                }
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                val existing = _activeOrderManagementState.value
+                if (existing is ActiveOrderManagementState.Content) {
+                    _activeOrderManagementState.value = existing.copy(
+                        orders = filtered,
+                        voidError = null
+                    )
+                } else {
+                    _activeOrderManagementState.value = ActiveOrderManagementState.Content(orders = filtered)
+                }
+            } catch (e: Exception) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                val existing = _activeOrderManagementState.value
+                if (existing is ActiveOrderManagementState.Content) {
+                    _activeOrderManagementState.value = existing.copy(
+                        voidError = "Error al actualizar pedidos: ${e.message ?: "Error desconocido"}"
+                    )
+                } else {
+                    _activeOrderManagementState.value = ActiveOrderManagementState.Error(
+                        message = "Error al actualizar pedidos: ${e.message ?: "Error desconocido"}"
+                    )
+                }
+            }
+        }
+    }
+
+    /** Close the active-order management surface without touching cart or checkout. */
+    fun closeActiveOrderManagement() {
+        activeOrderSessionGeneration++
+        _activeOrderManagementState.value = ActiveOrderManagementState.Idle
+    }
+
+    /** Ask for confirmation before voiding. Does NOT call the backend. */
+    fun requestVoidConfirmation(orderId: Long) {
+        val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        // Don't allow requesting confirmation while another void is in-flight
+        if (current.submittingVoidFor != null) return
+        _activeOrderManagementState.value = current.copy(
+            confirmingVoid = orderId,
+            voidError = null,
+            voidSuccessMessage = null
+        )
+    }
+
+    /** Cancel the pending confirmation dialog without any network call. */
+    fun cancelVoidConfirmation() {
+        val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        _activeOrderManagementState.value = current.copy(confirmingVoid = null, voidError = null)
+    }
+
+    /**
+     * Submit the void to the backend.
+     *
+     * Android validation:
+     * - reason must not be blank after trimming
+     * - reason must not exceed 500 characters
+     *
+     * Does NOT call repository if validation fails.
+     * Prevents duplicate submission by checking submittingVoidFor.
+     */
+    fun submitVoidOrder(orderId: Long, rawReason: String) {
+        val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        val repo = operationalOrderRepository ?: return
+        val currentSession = activeOrderSessionGeneration
+
+        // Duplicate-tap guard
+        if (current.submittingVoidFor == orderId) return
+
+        val reason = rawReason.trim()
+        if (reason.isBlank()) {
+            _activeOrderManagementState.value = current.copy(
+                voidError = "El motivo de cancelación no puede estar vacío."
+            )
+            return
+        }
+        if (reason.length > 500) {
+            _activeOrderManagementState.value = current.copy(
+                voidError = "El motivo no puede exceder 500 caracteres (actual: ${reason.length})."
+            )
+            return
+        }
+
+        _activeOrderManagementState.value = current.copy(
+            submittingVoidFor = orderId,
+            voidError = null,
+            voidSuccessMessage = null
+        )
+
+        val oldSnapshot = current.orders
+        viewModelScope.launch {
+            try {
+                val voidResponse = repo.voidOrder(orderId, reason)
+                // On success: refresh list and close confirmation dialog
+                try {
+                    val raw = repo.getOperationalActiveOrders()
+                    val filtered = raw.filter { order ->
+                        order.orderSource in POS_VOIDABLE_SOURCES && order.status in POS_ACTIVE_STATUSES
+                    }
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                        orders = filtered,
+                        confirmingVoid = null,
+                        submittingVoidFor = null,
+                        voidError = null,
+                        voidSuccessMessage = "Pedido #${voidResponse.orderId} cancelado exitosamente."
+                    )
+                } catch (refreshEx: Exception) {
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    // Void succeeded but refresh failed — authoritatively update last known orders based on response
+                    val updatedOrders = if (voidResponse.currentStatus == "VOIDED") {
+                        oldSnapshot.filter { it.id != voidResponse.orderId }
+                    } else {
+                        oldSnapshot
+                    }
+                    _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                        orders = updatedOrders,
+                        confirmingVoid = null,
+                        submittingVoidFor = null,
+                        voidError = null,
+                        voidSuccessMessage = "Pedido #${voidResponse.orderId} cancelado. No se pudo actualizar la lista."
+                    )
+                }
+            } catch (e: com.restaurant.sushimei.frontend.data.api.ApiException) {
+                // Backend rejected — refresh to reconcile state
+                val errorMsg = when (e.code) {
+                    "ORDER_INVALID_TRANSITION" ->
+                        "La orden ya no puede cancelarse (estado cambiado).${e.referenceSuffix()}"
+                    "ORDER_OPERATION_NOT_SUPPORTED" ->
+                        "Esta orden o su origen no admiten cancelación en POS.${e.referenceSuffix()}"
+                    "ORDER_INVALID_VOID_REQUEST" ->
+                        "Solicitud de cancelación inválida o motivo rechazado.${e.referenceSuffix()}"
+                    "ORDER_NOT_FOUND" ->
+                        "La orden no fue encontrada.${e.referenceSuffix()}"
+                    "ORDER_PAYMENT_NOT_VALIDATABLE" ->
+                        "El pago de la orden no está en un estado válido para esta operación.${e.referenceSuffix()}"
+                    else ->
+                        "Error del servidor al cancelar: ${e.message ?: "Error desconocido"}${e.referenceSuffix()}"
+                }
+                refreshAfterVoidFailure(currentSession, oldSnapshot, errorMsg)
+            } catch (e: java.io.IOException) {
+                refreshAfterVoidFailure(currentSession, oldSnapshot, "Error de red. Intenta de nuevo.")
+            } catch (e: Exception) {
+                refreshAfterVoidFailure(currentSession, oldSnapshot, "Error inesperado: ${e.message ?: "Error desconocido"}")
+            }
+        }
+    }
+
+    private suspend fun refreshAfterVoidFailure(sessionAtStart: Long, fallbackOrders: List<com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto>, errorMessage: String) {
+        val repo = operationalOrderRepository ?: return
+        try {
+            val raw = repo.getOperationalActiveOrders()
+            val filtered = raw.filter { order ->
+                order.orderSource in POS_VOIDABLE_SOURCES && order.status in POS_ACTIVE_STATUSES
+            }
+            if (sessionAtStart != activeOrderSessionGeneration) return
+            _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                orders = filtered,
+                confirmingVoid = null,
+                submittingVoidFor = null,
+                voidError = errorMessage
+            )
+        } catch (_: Exception) {
+            if (sessionAtStart != activeOrderSessionGeneration) return
+            _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                orders = fallbackOrders,
+                confirmingVoid = null,
+                submittingVoidFor = null,
+                voidError = errorMessage
+            )
+        }
+    }
+
+
 }
