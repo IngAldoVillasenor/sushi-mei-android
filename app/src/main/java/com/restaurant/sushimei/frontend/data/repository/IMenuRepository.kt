@@ -39,7 +39,7 @@ interface IMenuRepository {
     /**
      * Fuerza la actualización del catálogo desde la fuente remota.
      */
-    suspend fun refreshCatalog(standaloneOnly: Boolean? = null)
+    suspend fun refreshCatalog(standaloneOnly: Boolean? = null, includeInactive: Boolean = false)
 
     // ── Lectura puntual (suspend) ─────────────────────────────────────────────
 

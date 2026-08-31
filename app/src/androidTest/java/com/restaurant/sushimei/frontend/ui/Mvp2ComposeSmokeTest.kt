@@ -134,7 +134,7 @@ class Mvp2ComposeSmokeTest {
             override fun observeAll(): kotlinx.coroutines.flow.Flow<List<com.restaurant.sushimei.frontend.data.model.MenuItem>> = kotlinx.coroutines.flow.flowOf(emptyList())
             override fun observeActive(): kotlinx.coroutines.flow.Flow<List<com.restaurant.sushimei.frontend.data.model.MenuItem>> = kotlinx.coroutines.flow.flowOf(emptyList())
             override fun observeActiveCategories(): kotlinx.coroutines.flow.Flow<List<String>> = kotlinx.coroutines.flow.flowOf(emptyList())
-            override suspend fun refreshCatalog(standaloneOnly: Boolean?) {}
+            override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {}
             override suspend fun getCategories(): List<String> = emptyList()
             override suspend fun getProducts(): List<com.restaurant.sushimei.frontend.data.model.MenuItem> = emptyList()
             override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse = TODO()
@@ -322,7 +322,7 @@ class Mvp2ComposeSmokeTest {
             override fun observeAll() = kotlinx.coroutines.flow.flowOf<List<com.restaurant.sushimei.frontend.data.model.MenuItem>>(emptyList())
             override fun observeActive() = kotlinx.coroutines.flow.flowOf<List<com.restaurant.sushimei.frontend.data.model.MenuItem>>(emptyList())
             override fun observeActiveCategories() = kotlinx.coroutines.flow.flowOf<List<String>>(emptyList())
-            override suspend fun refreshCatalog(standaloneOnly: Boolean?) {}
+            override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {}
             override suspend fun getCategories() = emptyList<String>()
             override suspend fun getProducts() = emptyList<com.restaurant.sushimei.frontend.data.model.MenuItem>()
             override suspend fun createProduct(request: com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto): com.restaurant.sushimei.frontend.data.model.MenuItemResponse = TODO()

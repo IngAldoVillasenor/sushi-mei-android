@@ -13,21 +13,6 @@ class RemoteMenuRepository(
 
     private val allProductsFlow = MutableStateFlow<List<MenuItem>>(emptyList())
 
-    // Convert DTO to Domain
-    private fun MenuItemResponse.toDomain() = MenuItem(
-        id = id,
-        nombre = name,
-        categoria = category,
-        precio = price,
-        descripcion = description ?: "",
-        emoji = "🍣", // Fallback emoji for remote items without specific emoji field
-        activo = active,
-        standaloneOrderable = standaloneOrderable,
-        requiresConfiguration = requireNotNull(requiresConfiguration) { "requiresConfiguration must not be omitted by the server" },
-        pricingMode = requireNotNull(pricingMode) { "pricingMode must not be omitted by the server" },
-        tags = tags
-    )
-
     override fun observeAll(): Flow<List<MenuItem>> = allProductsFlow.asStateFlow()
 
     override fun observeActive(): Flow<List<MenuItem>> = allProductsFlow.map { list ->
@@ -38,8 +23,8 @@ class RemoteMenuRepository(
         list.map { it.categoria }.distinct().sorted()
     }
 
-    override suspend fun refreshCatalog(standaloneOnly: Boolean?) {
-        val response = api.getMenuItems(standaloneOnly = standaloneOnly)
+        override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {
+        val response = api.getMenuItems(standaloneOnly = standaloneOnly, includeInactive = includeInactive)
         if (response.isSuccessful) {
             val items = response.body()?.map { it.toDomain() } ?: emptyList()
             allProductsFlow.value = items
@@ -60,8 +45,10 @@ class RemoteMenuRepository(
     override suspend fun createProduct(request: MenuItemCreateRequestDto): MenuItemResponse {
         val response = api.createMenuItem(request)
         if (response.isSuccessful) {
-            getProducts() // Refresh catalog
-            return response.body() ?: throw Exception("Create product body null")
+            val body = response.body() ?: throw Exception("Create product body null")
+            val newDomain = body.toDomain()
+            allProductsFlow.value = allProductsFlow.value + newDomain
+            return body
         } else {
             throw Exception("HTTP ${response.code()}: ${response.message()}")
         }
@@ -70,8 +57,10 @@ class RemoteMenuRepository(
     override suspend fun updateProduct(id: Long, request: MenuItemUpdateRequestDto): MenuItemResponse {
         val response = api.updateMenuItem(id, request)
         if (response.isSuccessful) {
-            getProducts() // Refresh catalog
-            return response.body() ?: throw Exception("Update product body null")
+            val body = response.body() ?: throw Exception("Update product body null")
+            val updatedDomain = body.toDomain()
+            allProductsFlow.value = allProductsFlow.value.map { if (it.id == id) updatedDomain else it }
+            return body
         } else if (response.code() == 409) {
             throw Exception("VERSION_CONFLICT")
         } else {

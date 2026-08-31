@@ -13,7 +13,10 @@ data class MenuItem(
     val standaloneOrderable: Boolean = true,
     val requiresConfiguration: Boolean = false,
     val pricingMode: ItemPricingMode = ItemPricingMode.BASE_PLUS_ADJUSTMENTS,
-    val tags: List<CatalogTagSummary> = emptyList()
+    val tags: List<CatalogTagSummary> = emptyList(),
+    val available: Boolean = true,
+    val displayOrder: Int = 0,
+    val version: Long = 0L
 )
 
 /**

@@ -694,3 +694,23 @@ data class VoidOrderResponse(
     val voidedAt: java.time.Instant,
     val voidedByUserId: Long
 )
+
+
+
+    // Convert DTO to Domain
+    fun MenuItemResponse.toDomain() = MenuItem(
+        id = id,
+        nombre = name,
+        categoria = category,
+        precio = price,
+        descripcion = description ?: "",
+        emoji = "🍣", // Fallback emoji for remote items without specific emoji field
+        activo = active,
+        standaloneOrderable = standaloneOrderable,
+        requiresConfiguration = requireNotNull(requiresConfiguration) { "requiresConfiguration must not be omitted by the server" },
+                pricingMode = requireNotNull(pricingMode) { "pricingMode must not be omitted by the server" },
+        tags = tags,
+        available = available,
+        displayOrder = displayOrder,
+        version = version
+    )

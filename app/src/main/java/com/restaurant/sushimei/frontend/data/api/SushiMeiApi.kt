@@ -125,9 +125,10 @@ interface SushiMeiApi {
     // FASE 6A2: Operational Catalog & Configuration
     // ============================================================================
 
-    @GET("/api/v1/menu/items")
+        @GET("/api/v1/menu/items")
     suspend fun getMenuItems(
-        @Query("standaloneOnly") standaloneOnly: Boolean? = null
+        @Query("standaloneOnly") standaloneOnly: Boolean? = null,
+        @Query("includeInactive") includeInactive: Boolean? = null
     ): Response<List<MenuItemResponse>>
 
     @GET("/api/v1/menu/items/{id}")

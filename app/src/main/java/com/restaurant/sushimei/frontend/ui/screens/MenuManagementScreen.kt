@@ -151,6 +151,28 @@ fun MenuManagementScreen(
                 .fillMaxHeight()
                 .padding(16.dp)
         ) {
+            // Error Banner (global)
+            AnimatedVisibility(visible = stateSuccess?.saveError != null) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.errorContainer)
+                        .clickable { viewModel.acknowledgeSaveError() }
+                        .padding(12.dp)
+                ) {
+                    Text(
+                        text = stateSuccess?.saveError ?: "",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Icon(Icons.Default.Close, contentDescription = "Descartar", tint = MaterialTheme.colorScheme.onErrorContainer)
+                }
+            }
+
             // Header
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -254,7 +276,7 @@ fun MenuManagementScreen(
             VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
 
             selectedItem?.let { item ->
-                ProductFormPanel(
+                                ProductFormPanel(
                     item       = item,
                     isSaving   = isSaving,
                     saveSuccess = saveSuccess,
@@ -359,7 +381,7 @@ private fun ProductListItem(
 
             // Toggle activo/inactivo
             Switch(
-                checked         = true,  // siempre true aquí porque filtramos por activo
+                checked         = item.activo,
                 onCheckedChange = { onToggle(it) },
                 modifier        = Modifier.height(24.dp)
             )
@@ -381,11 +403,11 @@ private fun ProductFormPanel(
     onAcknowledge: () -> Unit,
     onOpenConfigurator: () -> Unit
 ) {
-    var nombre      by remember(item.id) { mutableStateOf(item.nombre) }
-    var precio      by remember(item.id) { mutableStateOf(if (item.precio > java.math.BigDecimal.ZERO) item.precio.toString() else "") }
-    var categoria   by remember(item.id) { mutableStateOf(item.categoria) }
-    var emoji       by remember(item.id) { mutableStateOf(item.emoji) }
-    var descripcion by remember(item.id) { mutableStateOf(item.descripcion) }
+    var nombre      by remember(item.id, item.version) { mutableStateOf(item.nombre) }
+    var precio      by remember(item.id, item.version) { mutableStateOf(if (item.precio > java.math.BigDecimal.ZERO) item.precio.toString() else "") }
+    var categoria   by remember(item.id, item.version) { mutableStateOf(item.categoria) }
+    var emoji       by remember(item.id, item.version) { mutableStateOf(item.emoji) }
+    var descripcion by remember(item.id, item.version) { mutableStateOf(item.descripcion) }
 
     val isNew = item.nombre.isBlank()
 
@@ -545,6 +567,7 @@ private fun ProductFormPanel(
                 Text("Guardado correctamente", color = Color(0xFF2E7D32), fontWeight = FontWeight.SemiBold)
             }
         }
+
 
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(

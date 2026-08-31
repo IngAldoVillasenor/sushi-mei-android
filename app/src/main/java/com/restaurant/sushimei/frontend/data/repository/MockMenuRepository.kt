@@ -40,7 +40,7 @@ class MockMenuRepository(private val context: Context) : IMenuRepository {
         list.map { it.categoria }.distinct().sorted()
     }
 
-    override suspend fun refreshCatalog(standaloneOnly: Boolean?) {
+    override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {
         // No-op for mock
     }
 
