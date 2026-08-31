@@ -673,7 +673,7 @@ class FakeManualPosOrderRepository : IManualPosOrderRepository {
 
 class FakeMenuRepository : IMenuRepository {
     override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList()
-    override suspend fun refreshCatalog(standaloneOnly: Boolean?) {}
+    override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {}
     override fun observeAll(): Flow<List<MenuItem>> = flowOf(emptyList())
     override fun observeActive(): Flow<List<MenuItem>> = flowOf(emptyList())
     override fun observeActiveCategories(): Flow<List<String>> = flowOf(emptyList())

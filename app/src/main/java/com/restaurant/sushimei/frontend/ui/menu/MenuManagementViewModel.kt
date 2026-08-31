@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
 import com.restaurant.sushimei.frontend.data.model.MenuItem
+import com.restaurant.sushimei.frontend.data.model.toDomain
 import com.restaurant.sushimei.frontend.data.repository.IMenuRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -13,6 +14,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -33,13 +35,25 @@ sealed interface MenuManagementUiState {
         val categories: List<String> = emptyList(),
         val selectedProduct: MenuItem? = null,
         val isSaving: Boolean = false,
-        val saveSuccess: Boolean = false
+        val saveSuccess: Boolean = false,
+        val saveError: String? = null
     ) : MenuManagementUiState
 }
 
 class MenuManagementViewModel(
     private val repository: IMenuRepository
 ) : ViewModel() {
+
+    init {
+        viewModelScope.launch {
+            try {
+                repository.refreshCatalog(includeInactive = true)
+            } catch (e: Exception) {
+                // Initial load best-effort
+            }
+        }
+    }
+
 
     // ── Filtros ──────────────────────────────────────────────────────────────
 
@@ -79,6 +93,7 @@ class MenuManagementViewModel(
 
     /** true después de guardar con éxito (para mostrar feedback visual). */
     private val _saveSuccess = MutableStateFlow(false)
+    private val _saveError = MutableStateFlow<String?>(null)
 
     private val filterState = combine(
         _searchQuery,
@@ -98,12 +113,14 @@ class MenuManagementViewModel(
         filterState,
         _selectedProduct,
         _isSaving,
-        _saveSuccess
-    ) { filter, selected, saving, success ->
+        _saveSuccess,
+        _saveError
+    ) { filter, selected, saving, success, error ->
         filter.copy(
             selectedProduct = selected,
             isSaving = saving,
-            saveSuccess = success
+            saveSuccess = success,
+            saveError = error
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MenuManagementUiState.Success())
 
@@ -129,7 +146,10 @@ class MenuManagementViewModel(
     }
 
     /** Descarta los cambios del formulario. */
-    fun clearSelection() { _selectedProduct.value = null }
+    fun clearSelection() {
+        _selectedProduct.value = null
+        _saveError.value = null
+    }
 
     /**
      * Guarda el producto (create o update) en Room.
@@ -139,6 +159,7 @@ class MenuManagementViewModel(
         viewModelScope.launch {
             _isSaving.value = true
             _saveSuccess.value = false
+            _saveError.value = null
             try {
                 if (item.id == 0L) {
                     val req = com.restaurant.sushimei.frontend.data.model.MenuItemCreateRequestDto(
@@ -146,11 +167,13 @@ class MenuManagementViewModel(
                         description = item.descripcion,
                         category = item.categoria,
                         price = item.precio,
-                        available = item.activo,
-                        standaloneOrderable = true,
-                        displayOrder = 0
+                        available = item.available,
+                        standaloneOrderable = item.standaloneOrderable,
+                        displayOrder = item.displayOrder
                     )
-                    repository.createProduct(req)
+                    val response = repository.createProduct(req)
+
+                    _selectedProduct.value = response.toDomain()
                 } else {
                     val req = com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto(
                         name = item.nombre,
@@ -158,39 +181,85 @@ class MenuManagementViewModel(
                         category = item.categoria,
                         price = item.precio,
                         active = item.activo,
-                        available = item.activo,
-                        standaloneOrderable = true,
-                        displayOrder = 0,
-                        version = 1L
+                        available = item.available,
+                        standaloneOrderable = item.standaloneOrderable,
+                        displayOrder = item.displayOrder,
+                        version = item.version
                     )
-                    repository.updateProduct(item.id, req)
+                    val response = repository.updateProduct(item.id, req)
+
+                    _selectedProduct.value = item.copy(
+                        nombre = response.name,
+                        descripcion = response.description ?: "",
+                        categoria = response.category,
+                        precio = response.price,
+                        activo = response.active,
+                        available = response.available,
+                        standaloneOrderable = response.standaloneOrderable,
+                        displayOrder = response.displayOrder,
+                        version = response.version
+                    )
                 }
-                
                 _saveSuccess.value = true
-                _selectedProduct.value = item // actualiza el form con datos guardados
+            } catch (e: com.restaurant.sushimei.frontend.data.api.VersionConflictException) {
+                try {
+                    repository.refreshCatalog(includeInactive = true)
+                    val latestList = repository.observeAll().first()
+                    val latest = latestList.find { it.id == item.id }
+                    if (latest != null) {
+                        _selectedProduct.value = latest
+                    }
+                    _saveError.value = "El producto fue modificado por otro usuario. Se han recargado los datos más recientes. Por favor revisa y aplica tus cambios nuevamente.${e.referenceSuffix()}"
+                } catch (refreshEx: Exception) {
+                    _saveError.value = "El producto fue modificado por otro usuario, pero no se pudieron obtener los datos actualizados. Intenta de nuevo.${e.referenceSuffix()}"
+                }
             } catch (e: Exception) {
-                // handle error
+                _saveError.value = "Error al guardar: ${e.message ?: "Desconocido"}"
             } finally {
                 _isSaving.value = false
             }
         }
     }
-
-    /**
-     * Activa o desactiva un producto.
-     * Si se desactiva, desaparece del POS en tiempo real sin reiniciar la app.
-     */
-    fun toggleActive(item: MenuItem, activo: Boolean) {
+fun toggleActive(item: MenuItem, activo: Boolean) {
         viewModelScope.launch {
-            repository.setActive(item.id, activo)
-            // Si el producto estaba en el formulario, refleja el nuevo estado
-            if (_selectedProduct.value?.id == item.id) {
-                _selectedProduct.value = item.copy() // trigger recomposition
+            _saveError.value = null
+            try {
+                val req = com.restaurant.sushimei.frontend.data.model.MenuItemUpdateRequestDto(
+                    name = item.nombre,
+                    description = item.descripcion,
+                    category = item.categoria,
+                    price = item.precio,
+                    active = activo,
+                    available = item.available,
+                    standaloneOrderable = item.standaloneOrderable,
+                    displayOrder = item.displayOrder,
+                    version = item.version
+                )
+                val response = repository.updateProduct(item.id, req)
+                val updated = response.toDomain()
+                if (_selectedProduct.value?.id == item.id) {
+                    _selectedProduct.value = updated
+                }
+            } catch (e: com.restaurant.sushimei.frontend.data.api.VersionConflictException) {
+                try {
+                    repository.refreshCatalog(includeInactive = true)
+                    val latestList = repository.observeAll().first()
+                    val latest = latestList.find { it.id == item.id }
+                    if (latest != null && _selectedProduct.value?.id == item.id) {
+                        _selectedProduct.value = latest
+                    }
+                    _saveError.value = "No se pudo cambiar el estado. El producto fue modificado por otro usuario. Se ha recargado el catálogo.${e.referenceSuffix()}"
+                } catch (refreshEx: Exception) {
+                    _saveError.value = "No se pudo cambiar el estado (conflicto) y falló la actualización del catálogo.${e.referenceSuffix()}"
+                }
+            } catch (e: Exception) {
+                _saveError.value = "Error al cambiar estado: ${e.message ?: "Desconocido"}"
             }
         }
     }
+fun acknowledgeSaveSuccess() { _saveSuccess.value = false }
 
-    fun acknowledgeSaveSuccess() { _saveSuccess.value = false }
+    fun acknowledgeSaveError() { _saveError.value = null }
 
     // ── Factory ──────────────────────────────────────────────────────────────
 

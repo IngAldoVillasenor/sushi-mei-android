@@ -54,7 +54,7 @@ class RoomMenuRepository(
     override fun observeActiveCategories(): Flow<List<String>> =
         dao.observeActiveCategories()
 
-    override suspend fun refreshCatalog(standaloneOnly: Boolean?) {
+    override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {
         // No-op for local database
     }
 
