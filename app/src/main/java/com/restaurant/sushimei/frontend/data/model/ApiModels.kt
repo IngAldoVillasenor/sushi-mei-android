@@ -2,6 +2,7 @@ package com.restaurant.sushimei.frontend.data.model
 
 import java.math.BigDecimal
 import java.time.Instant
+import java.util.UUID
 
 // ============================================================================
 
@@ -517,7 +518,9 @@ data class BusinessDayResponse(
     val actualClosingCashAmount: java.math.BigDecimal?,
     val cashDifferenceAmount: java.math.BigDecimal?,
     val closureId: Long? = null,
-    val closureNumber: Int? = null
+    val closureNumber: Int? = null,
+    val cashExpenseAmount: java.math.BigDecimal = java.math.BigDecimal.ZERO,
+    val cashExpenseCount: Long = 0
 )
 
 data class OpenBusinessDayRequest(
@@ -714,3 +717,31 @@ data class VoidOrderResponse(
         displayOrder = displayOrder,
         version = version
     )
+
+
+data class CashExpenseRequest(
+    val requestId: UUID,
+    val amount: BigDecimal,
+    val description: String,
+    val note: String?
+)
+
+enum class CashExpenseResult {
+    CREATED, ALREADY_CREATED
+}
+
+data class CashExpenseDto(
+    val id: Long,
+    val businessDayId: Long,
+    val requestId: UUID,
+    val amount: BigDecimal,
+    val description: String,
+    val note: String?,
+    val createdAt: Instant,
+    val createdByUserId: Long
+)
+
+data class CashExpenseCreateResponse(
+    val expense: CashExpenseDto,
+    val result: CashExpenseResult
+)

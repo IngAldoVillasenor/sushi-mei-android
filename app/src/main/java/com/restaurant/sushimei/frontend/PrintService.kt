@@ -388,6 +388,7 @@ class PrintService(private val context: Context) {
             out.write("No Clasificado: ${formatCurrency(day.unclassifiedSalesAmount)}\n".toByteArray())
             out.write("--------------------------------\n".toByteArray())
             out.write("Fondo Inicial: ${formatCurrency(day.openingCashAmount)}\n".toByteArray())
+            out.write("Egresos de caja: -${formatCurrency(day.cashExpenseAmount)} (${day.cashExpenseCount})\n".toByteArray())
             out.write("Efectivo Esperado: ${formatCurrency(day.expectedClosingCashAmount)}\n".toByteArray())
             out.write("Efectivo Contado: ${formatCurrency(day.actualClosingCashAmount)}\n".toByteArray())
             out.write("Diferencia: ${formatCurrency(day.cashDifferenceAmount)}\n".toByteArray())
