@@ -277,6 +277,16 @@ interface SushiMeiApi {
     @POST("/api/v1/business-days/current/close")
     suspend fun closeBusinessDay(@Body request: CloseBusinessDayRequest): Response<BusinessDayResponse>
 
+
     @POST("/api/v1/business-days/current/reopen")
     suspend fun reopenCurrentBusinessDay(): Response<BusinessDayResponse>
+
+    @GET("/api/v1/business-days/current/cash-expenses")
+    suspend fun getCashExpenses(): Response<List<CashExpenseDto>>
+
+    @POST("/api/v1/business-days/current/cash-expenses")
+    suspend fun createCashExpense(
+        @Body request: CashExpenseRequest
+    ): Response<CashExpenseCreateResponse>
+
 }

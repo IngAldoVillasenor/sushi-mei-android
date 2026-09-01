@@ -6,6 +6,8 @@ import java.time.format.DateTimeFormatter
 import java.time.LocalDate
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
@@ -61,11 +63,33 @@ fun BusinessDayScreen(
     val printMessage by viewModel.printMessage.collectAsState()
     val reopenMessage by viewModel.reopenMessage.collectAsState()
     var showReopenDialog by remember { mutableStateOf(false) }
+    val expensesState by viewModel.expensesState.collectAsState()
+    val cashExpensesMessage by viewModel.cashExpensesMessage.collectAsState()
+    val isSubmittingExpense by viewModel.isSubmittingExpense.collectAsState()
+    val expenseSubmitError by viewModel.expenseSubmitError.collectAsState()
+    val expenseSubmittedSuccessfully by viewModel.expenseSubmittedSuccessfully.collectAsState()
+
+    var showExpenseDialog by remember { mutableStateOf(false) }
+    var expenseAmount by remember { mutableStateOf("") }
+    var expenseDescription by remember { mutableStateOf("") }
+    var expenseNote by remember { mutableStateOf("") }
+
+    LaunchedEffect(expenseSubmittedSuccessfully) {
+        if (expenseSubmittedSuccessfully) {
+            showExpenseDialog = false
+            expenseAmount = ""
+            expenseDescription = ""
+            expenseNote = ""
+            viewModel.clearExpenseMessageState()
+        }
+    }
+
     val isPrinting by viewModel.isPrinting.collectAsState()
     val requireBluetoothPermission = rememberBluetoothPermissionGateway()
     var inputAmount by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
+    val scrollState = rememberScrollState()
 
     LaunchedEffect(printMessage) {
         printMessage?.let {
@@ -90,6 +114,7 @@ fun BusinessDayScreen(
             .fillMaxSize()
             .padding(paddingValues)
             .padding(24.dp)
+            .verticalScroll(scrollState)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -144,6 +169,78 @@ fun BusinessDayScreen(
                 }
             }
                         is BusinessDayState.Open -> {
+                if (showExpenseDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            if (!isSubmittingExpense) {
+                                showExpenseDialog = false
+                                viewModel.clearExpenseMessageState()
+                            }
+                        },
+                        title = { Text("Registrar egreso") },
+                        text = {
+                            Column {
+                                OutlinedTextField(
+                                    value = expenseAmount,
+                                    onValueChange = { expenseAmount = it },
+                                    label = { Text("Monto") },
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = expenseDescription,
+                                    onValueChange = { expenseDescription = it },
+                                    label = { Text("Descripción") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                OutlinedTextField(
+                                    value = expenseNote,
+                                    onValueChange = { expenseNote = it },
+                                    label = { Text("Nota (opcional)") },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                                if (expenseSubmitError != null) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Text(expenseSubmitError ?: "", color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        },
+                        confirmButton = {
+                            val amt = expenseAmount.toBigDecimalOrNull()
+                            val isAmtValid = amt != null && amt > BigDecimal.ZERO && amt.scale() <= 2
+                            val descNorm = expenseDescription.trim().replace(Regex("\\s+"), " ")
+                            val isDescValid = descNorm.isNotBlank() && descNorm.length <= 500
+                            val noteNorm = expenseNote.trim().replace(Regex("\\s+"), " ")
+                            val isNoteValid = noteNorm.isEmpty() || noteNorm.length <= 500
+
+                            Button(
+                                onClick = {
+                                    viewModel.submitCashExpense(amt ?: BigDecimal.ZERO, expenseDescription, expenseNote)
+                                },
+                                enabled = !isSubmittingExpense && isAmtValid && isDescValid && isNoteValid
+                            ) {
+                                Text(if (isSubmittingExpense) "Guardando..." else "Guardar")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    showExpenseDialog = false
+                                    viewModel.abandonPendingExpenseSubmission()
+                                    expenseAmount = ""
+                                    expenseDescription = ""
+                                    expenseNote = ""
+                                },
+                                enabled = !isSubmittingExpense
+                            ) {
+                                Text("Cancelar")
+                            }
+                        }
+                    )
+                }
+
                 val day = currState.day
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -163,6 +260,62 @@ fun BusinessDayScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
 
                         Spacer(modifier = Modifier.height(24.dp))
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text("Egresos de caja", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        when (val expState = expensesState) {
+                            is CashExpensesState.Idle, is CashExpensesState.Loading -> {
+                                Text("Cargando egresos...", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            is CashExpensesState.Error -> {
+                                Text("Error al cargar egresos: ${expState.message}", color = MaterialTheme.colorScheme.error)
+                                TextButton(onClick = { viewModel.loadCashExpenses(currState.day.businessDayId) }) { Text("Reintentar") }
+                            }
+                            is CashExpensesState.Loaded -> {
+                                val expList = expState.expenses
+                                if (expList.isEmpty()) {
+                                    Text("No hay egresos registrados.", style = MaterialTheme.typography.bodyMedium)
+                                } else {
+                                    val totalExp = expList.fold(BigDecimal.ZERO) { acc, e -> acc + e.amount }
+                                    Text("Total de egresos: ${formatCurrency(totalExp)} (${expList.size})", style = MaterialTheme.typography.labelLarge)
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    expList.forEach { exp ->
+                                        Card(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                                                    Text(exp.description, style = MaterialTheme.typography.bodyLarge)
+                                                    Text(formatCurrency(exp.amount), style = MaterialTheme.typography.titleMedium)
+                                                }
+                                                if (!exp.note.isNullOrBlank()) {
+                                                    Spacer(modifier = Modifier.height(4.dp))
+                                                    Text(exp.note, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                }
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                Text(formatInstant(exp.createdAt), style = MaterialTheme.typography.labelSmall)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        if (cashExpensesMessage != null) {
+                            Text(cashExpensesMessage ?: "", color = MaterialTheme.colorScheme.error)
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = {
+                                viewModel.clearExpenseMessageState()
+                                showExpenseDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Registrar egreso")
+                        }
+
                         OutlinedTextField(
                             value = inputAmount,
                             onValueChange = { inputAmount = it },
@@ -199,6 +352,7 @@ fun BusinessDayScreen(
 
                         Text("Fondo Inicial: ${formatCurrency(day.openingCashAmount)}")
                         Text("Ventas Efectivo: ${formatCurrency(day.cashSalesAmount)}")
+                        Text("Egresos de caja: -${formatCurrency(day.cashExpenseAmount)} (Cant: ${day.cashExpenseCount})")
                         Text("Efectivo Esperado: ${formatCurrency(day.expectedClosingCashAmount)}")
                         Text("Efectivo Contado: ${formatCurrency(day.actualClosingCashAmount)}")
                         Text("Diferencia: ${formatCurrency(day.cashDifferenceAmount)}")

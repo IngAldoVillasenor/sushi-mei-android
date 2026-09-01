@@ -4,6 +4,9 @@ import com.restaurant.sushimei.frontend.data.api.SushiMeiApi
 import com.restaurant.sushimei.frontend.data.model.BusinessDayResponse
 import com.restaurant.sushimei.frontend.data.model.CloseBusinessDayRequest
 import com.restaurant.sushimei.frontend.data.model.OpenBusinessDayRequest
+import com.restaurant.sushimei.frontend.data.model.CashExpenseRequest
+import com.restaurant.sushimei.frontend.data.model.CashExpenseCreateResponse
+import com.restaurant.sushimei.frontend.data.model.CashExpenseDto
 
 class RemoteBusinessDayRepository(
     private val api: SushiMeiApi
@@ -61,6 +64,32 @@ class RemoteBusinessDayRepository(
                 // Assuming interceptors handle this or we just throw ApiException
                 // But wait, the standard interceptor probably handles HTTP codes and throws ApiException.
                 // Let's just use the same pattern or throw the parsed exception.
+                Result.failure(Exception("HTTP : "))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun getCashExpenses(): Result<List<CashExpenseDto>> {
+        return try {
+            val response = api.getCashExpenses()
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
+                Result.failure(Exception("HTTP : "))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    override suspend fun createCashExpense(request: CashExpenseRequest): Result<CashExpenseCreateResponse> {
+        return try {
+            val response = api.createCashExpense(request)
+            if (response.isSuccessful && response.body() != null) {
+                Result.success(response.body()!!)
+            } else {
                 Result.failure(Exception("HTTP : "))
             }
         } catch (e: Exception) {
