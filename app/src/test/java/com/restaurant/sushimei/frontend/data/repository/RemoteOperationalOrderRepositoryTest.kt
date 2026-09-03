@@ -82,8 +82,6 @@ class RemoteOperationalOrderRepositoryTest {
             fail("Expected ApiException")
         } catch (e: Exception) {
             assertTrue(e is ApiException)
-            
-            
         }
     }
 }
