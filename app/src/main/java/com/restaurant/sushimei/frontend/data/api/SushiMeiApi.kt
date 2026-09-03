@@ -100,6 +100,12 @@ interface SushiMeiApi {
     @PUT("/api/orders/{id}/validate-payment")
     suspend fun validatePayment(@Path("id") orderId: Long): Response<Unit>
 
+    @PUT("/api/orders/{id}/collect-payment")
+    suspend fun collectPayment(
+        @Path("id") orderId: Long,
+        @Body request: com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionRequest
+    ): Response<com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionResponse>
+
     // ============================================================================
     // ORDERS (POS / Phase 6B)
     // ============================================================================

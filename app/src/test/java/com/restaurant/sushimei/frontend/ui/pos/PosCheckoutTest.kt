@@ -37,7 +37,6 @@ class PosCheckoutTest {
 
         // Mock the repository to return BusinessDayClosedException
         fakeManualRepo.shouldFailWithApiError = com.restaurant.sushimei.frontend.data.api.BusinessDayClosedException()
-
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -111,7 +110,6 @@ class PosCheckoutTest {
         viewModel.updateDeliveryAddress("123 Fake St")
         viewModel.updatePaymentMethod(PaymentMethod.CASH)
         viewModel.updateCashDenomination(BigDecimal("200.00"))
-
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -296,7 +294,8 @@ class PosCheckoutTest {
 
         assertEquals(0, fakeManualRepo.submitCount)
         assertTrue((viewModel.uiState.value as PosUiState.Success).currentCart.isNotEmpty())
-        assertTrue((viewModel.uiState.value as PosUiState.Success).checkoutState is CheckoutState.Error)
+        val st1 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(st1 is CheckoutState.Error)
 
         // more than 120 trimmed characters
         viewModel.resetCheckoutState()
@@ -304,7 +303,8 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(0, fakeManualRepo.submitCount)
-        assertTrue((viewModel.uiState.value as PosUiState.Success).checkoutState is CheckoutState.Error)
+        val st2 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(st2 is CheckoutState.Error)
 
         // --- DELIVERY ---
         // empty/too-short effective delivery address
@@ -314,7 +314,8 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(0, fakeManualRepo.submitCount)
-        assertTrue((viewModel.uiState.value as PosUiState.Success).checkoutState is CheckoutState.Error)
+        val st3 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(st3 is CheckoutState.Error)
 
         // more than 500 trimmed characters
         viewModel.resetCheckoutState()
@@ -322,7 +323,8 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(0, fakeManualRepo.submitCount)
-        assertTrue((viewModel.uiState.value as PosUiState.Success).checkoutState is CheckoutState.Error)
+        val st4 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(st4 is CheckoutState.Error)
 
         // --- CARD ---
         // CARD + DELIVERY rejected
@@ -332,7 +334,8 @@ class PosCheckoutTest {
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
         assertEquals(0, fakeManualRepo.submitCount)
-        assertTrue((viewModel.uiState.value as PosUiState.Success).checkoutState is CheckoutState.Error)
+        val st5 = (viewModel.uiState.value as PosUiState.Success).checkoutState
+        assertTrue(st5 is CheckoutState.Error)
 
         // CARD + PICKUP accepted
         viewModel.resetCheckoutState()
@@ -396,7 +399,6 @@ class PosCheckoutTest {
         viewModel.updateCashDenomination(BigDecimal("500.00"))
         viewModel.updatePaymentMethod(PaymentMethod.TRANSFER)
         testDispatcher.scheduler.advanceUntilIdle()
-
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -482,7 +484,7 @@ class PosCheckoutTest {
         for ((code, expectedMessage) in cases) {
             viewModel.resetCheckoutState()
             fakeManualRepo.shouldFailWithApiError = ApiException(code, "Backend Message")
-            viewModel.cobrarOrden()
+        viewModel.cobrarOrden()
             testDispatcher.scheduler.advanceUntilIdle()
 
             val error = (viewModel.uiState.value as PosUiState.Success).checkoutState as CheckoutState.Error
@@ -580,7 +582,6 @@ class PosCheckoutTest {
         io.mockk.coEvery {
             printManager.enqueuePrintJob(any<com.restaurant.sushimei.frontend.data.model.PrintDocumentType>(), any<Long>(), any<String>(), any())
         } throws RuntimeException("DB Save Failed")
-
         viewModel.cobrarOrden()
         testDispatcher.scheduler.advanceUntilIdle()
 
@@ -610,13 +611,11 @@ class PosCheckoutTest {
                 "job-1", "req-1", com.restaurant.sushimei.frontend.data.model.PrintDocumentType.ORDER, 1L, null, com.restaurant.sushimei.frontend.data.model.PrintJobStatus.PENDING, null, 0L, 0L, null, null
             )
         }
-
         viewModel.cobrarOrden()
 
         testDispatcher.scheduler.advanceUntilIdle()
 
-                val state = viewModel.uiState.value as PosUiState.Success
-        println("STATE BEFORE RESUME: " + state.checkoutState)
+        val state = viewModel.uiState.value as PosUiState.Success
         org.junit.Assert.assertTrue("CheckoutState should not be Success before resume", state.checkoutState !is CheckoutState.Success)
         org.junit.Assert.assertTrue("Cart should not be empty", state.currentCart.isNotEmpty())
 
@@ -626,6 +625,144 @@ class PosCheckoutTest {
         val finalState = viewModel.uiState.value as PosUiState.Success
         org.junit.Assert.assertTrue(finalState.checkoutState is CheckoutState.Success)
         org.junit.Assert.assertTrue(finalState.currentCart.isEmpty())
+    }
+
+    @Test
+    fun `test PICKUP preserves ON_DELIVERY`() = runTest(testDispatcher) {
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY)
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY)
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP)
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        val meta = viewModel.uiState.value as com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success
+
+        assertEquals(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP, meta.fulfillmentType)
+        assertEquals(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY, meta.paymentTiming)
+        assertNull(meta.paymentMethod)
+        assertNull(meta.cashDenomination)
+        assertNull(meta.deliveryAddress)
+    }
+
+    @Test
+    fun `test deferred timing clears payment fields and immediate restores CASH`() = runTest(testDispatcher) {
+        viewModel.updatePaymentMethod(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH)
+        viewModel.updateCashDenomination(BigDecimal("200.00"))
+
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY)
+        testDispatcher.scheduler.advanceUntilIdle()
+        var state = viewModel.uiState.value as com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success
+        assertEquals(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY, state.paymentTiming)
+        assertNull(state.paymentMethod)
+        assertNull(state.cashDenomination)
+
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.IMMEDIATE)
+        testDispatcher.scheduler.advanceUntilIdle()
+        state = viewModel.uiState.value as com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success
+        assertEquals(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.IMMEDIATE, state.paymentTiming)
+        assertEquals(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH, state.paymentMethod)
+        assertNull(state.cashDenomination)
+    }
+
+    @Test
+    fun `test PICKUP ON_DELIVERY request preserves pickup fulfillment and unpaid payment fields`() = runTest(testDispatcher) {
+        fillCart()
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP)
+        viewModel.updatePickupName("Ana")
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY)
+        fakeManualRepo.shouldFailWithNetworkError = true
+
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val request = fakeManualRepo.lastRequest
+        assertNotNull(request)
+        assertEquals(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP, request?.fulfillmentType)
+        assertEquals(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY, request?.paymentTiming)
+        assertNull(request?.paymentMethod)
+        assertNull(request?.cashDenomination)
+        assertEquals("Ana", request?.pickupName)
+        assertNull(request?.deliveryAddress)
+    }
+
+    @Test
+    fun `test DELIVERY ON_DELIVERY request preserves delivery fulfillment and unpaid payment fields`() = runTest(testDispatcher) {
+        fillCart()
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY)
+        viewModel.updateDeliveryAddress("Av. Falsa 123")
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY)
+        fakeManualRepo.shouldFailWithNetworkError = true
+
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val request = fakeManualRepo.lastRequest
+        assertNotNull(request)
+        assertEquals(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY, request?.fulfillmentType)
+        assertEquals(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY, request?.paymentTiming)
+        assertNull(request?.paymentMethod)
+        assertNull(request?.cashDenomination)
+        assertNull(request?.pickupName)
+        assertEquals("Av. Falsa 123", request?.deliveryAddress)
+    }
+
+    @Test
+    fun `test DELIVERY immediate CARD invalid-state prevention`() = runTest(testDispatcher) {
+        fillCart() // ensure it's not empty/loading
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP)
+        viewModel.updatePaymentMethod(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CARD)
+
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.DELIVERY)
+
+        testDispatcher.scheduler.advanceUntilIdle()
+        val meta = viewModel.uiState.value as com.restaurant.sushimei.frontend.ui.pos.PosUiState.Success
+
+        assertNull(meta.paymentMethod)
+    }
+    @Test
+    fun `test updatePaymentTiming rotates request id on material change`() = runTest(testDispatcher) {
+        // Phase 1: Initial submit fails with IOException — pending request ID is preserved for idempotency
+
+        fillCart()
+        viewModel.updateFulfillmentType(com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP)
+        viewModel.updatePickupName("TestName")
+        viewModel.updatePaymentMethod(com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH)
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.IMMEDIATE)
+        fakeManualRepo.shouldFailWithNetworkError = true
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        val initialSubmitCount = fakeManualRepo.submitCount
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(initialSubmitCount + 1, fakeManualRepo.submitCount)
+        val requestIdA = fakeManualRepo.lastRequest?.requestId
+        assertNotNull(requestIdA)
+
+        // Phase 2: No-op timing assignment — same IMMEDIATE value must reuse the SAME request ID
+        viewModel.resetCheckoutState()
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.IMMEDIATE)
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(initialSubmitCount + 2, fakeManualRepo.submitCount)
+        val requestIdNoOp = fakeManualRepo.lastRequest?.requestId
+        assertEquals("No-op timing must NOT rotate request ID", requestIdA, requestIdNoOp)
+
+        // Phase 3: material IMMEDIATE -> ON_DELIVERY rotates the request ID.
+        viewModel.resetCheckoutState()
+        // Simulate material timing change: IMMEDIATE -> ON_DELIVERY rotates the ID
+        viewModel.updatePaymentTiming(com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY)
+        // ON_DELIVERY preserves the existing valid PICKUP fulfillment.
+
+        viewModel.cobrarOrden()
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(initialSubmitCount + 3, fakeManualRepo.submitCount)
+        val requestIdB = fakeManualRepo.lastRequest?.requestId
+        assertNotNull(requestIdB)
+        assertNotEquals("Material timing change must rotate request ID", requestIdA, requestIdB)
     }
 }
 
@@ -670,6 +807,7 @@ class FakeManualPosOrderRepository : IManualPosOrderRepository {
         )
     }
 }
+
 
 class FakeMenuRepository : IMenuRepository {
     override suspend fun getMenuItemComponents(menuItemId: Long): List<com.restaurant.sushimei.frontend.data.model.DefaultComponentResponse> = emptyList()

@@ -925,18 +925,21 @@ class PosViewModelTest {
     private fun makePosOrder(
         id: Long,
         orderSource: String = "ANDROID_MANUAL",
-        status: String = "PENDING"
+        status: String = "PENDING",
+        requiresPaymentCollection: Boolean = false,
+        total: java.math.BigDecimal = java.math.BigDecimal("150.00")
     ) = com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto(
         id = id,
         orderSource = orderSource,
         status = status,
+        requiresPaymentCollection = requiresPaymentCollection,
         fulfillmentType = com.restaurant.sushimei.frontend.data.model.FulfillmentType.PICKUP,
         paymentMethod = null,
         deliveryAddress = null,
         pickupName = "Test",
         cashDenomination = null,
         phoneNumber = null,
-        total = java.math.BigDecimal("150.00"),
+        total = total,
         createdAt = java.time.Instant.now(),
         requiresPaymentValidation = false,
         structuredLinesAvailable = true
@@ -1231,4 +1234,215 @@ class PosViewModelTest {
         assertTrue("activeOrderManagementState must return to Idle", viewModel.activeOrderManagementState.value is ActiveOrderManagementState.Idle)
     }
 
+
+    @Test
+    fun `collection action state is only eligible for READY + requiresPaymentCollection`() = runTest {
+        val nonReadyOrder = makePosOrder(id = 1L, status = "PREPARING", requiresPaymentCollection = true)
+        val readyOrder = makePosOrder(id = 2L, status = "READY", requiresPaymentCollection = false)
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(nonReadyOrder, readyOrder)
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CASH, java.math.BigDecimal.TEN)
+        testScheduler.advanceUntilIdle()
+        var state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals("La orden no está disponible para cobro.", state.collectionError)
+
+        viewModel.clearCollectionState()
+        viewModel.submitCollection(2L, PaymentMethod.CASH, java.math.BigDecimal.TEN)
+        testScheduler.advanceUntilIdle()
+        state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals("La orden no está disponible para cobro.", state.collectionError)
+    }
+
+    @Test
+    fun `CASH denomination below total does not call repository`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CASH, BigDecimal("50.00"))
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals("Denominación inválida para pago en efectivo.", state.collectionError)
+        coVerify(exactly = 0) { operationalOrderRepository.collectPayment(any(), any(), any()) }
+    }
+
+    @Test
+    fun `CASH null denomination does not call repository`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CASH, null)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertEquals("Denominación inválida para pago en efectivo.", state.collectionError)
+        coVerify(exactly = 0) { operationalOrderRepository.collectPayment(any(), any(), any()) }
+    }
+
+    @Test
+    fun `valid CASH sends denomination`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } returns mockk()
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CASH, BigDecimal("150.00"))
+        testScheduler.advanceUntilIdle()
+
+        coVerify { operationalOrderRepository.collectPayment(1L, PaymentMethod.CASH, BigDecimal("150.00")) }
+    }
+
+    @Test
+    fun `TRANSFER always sends null denomination`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } returns mockk()
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.TRANSFER, BigDecimal("150.00"))
+        testScheduler.advanceUntilIdle()
+
+        coVerify { operationalOrderRepository.collectPayment(1L, PaymentMethod.TRANSFER, null) }
+    }
+
+    @Test
+    fun `CARD always sends null denomination`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } returns mockk()
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, BigDecimal("150.00"))
+        testScheduler.advanceUntilIdle()
+
+        coVerify { operationalOrderRepository.collectPayment(1L, PaymentMethod.CARD, null) }
+    }
+
+    @Test
+    fun `stale CASH denomination does not leak after selecting TRANSFER`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } returns mockk()
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.TRANSFER, BigDecimal("150.00"))
+        testScheduler.advanceUntilIdle()
+
+        coVerify { operationalOrderRepository.collectPayment(1L, PaymentMethod.TRANSFER, null) }
+    }
+
+    @Test
+    fun `stale CASH denomination does not leak after selecting CARD`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } returns mockk()
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, BigDecimal("150.00"))
+        testScheduler.advanceUntilIdle()
+
+        coVerify { operationalOrderRepository.collectPayment(1L, PaymentMethod.CARD, null) }
+    }
+
+    @Test
+    fun `duplicate collection tap results in exactly one repository collectPayment call`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+
+        val deferred = CompletableDeferred<com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionResponse>()
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } coAnswers { deferred.await() }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, null)
+        viewModel.submitCollection(1L, PaymentMethod.CARD, null) // duplicate tap
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { operationalOrderRepository.collectPayment(1L, PaymentMethod.CARD, null) }
+        deferred.complete(mockk())
+    }
+
+    @Test
+    fun `in-flight collection state is cleared after success`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } returns mockk()
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, null)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNull(state.collectionInFlightOrderId)
+        assertEquals("Cobro registrado correctamente.", state.collectionSuccessMessage)
+    }
+
+    @Test
+    fun `in-flight collection state is cleared after API failure`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } throws ApiException("ORDER_INVALID_TRANSITION", "Invalid transition")
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, null)
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNull(state.collectionInFlightOrderId)
+        assertNotNull(state.collectionError)
+    }
+
+    @Test
+    fun `structured collection ApiException does not trigger reconciliation`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } throws ApiException("ORDER_INVALID_TRANSITION", "Invalid transition")
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, null)
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { operationalOrderRepository.getOperationalActiveOrders() } // only initial
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertTrue(state.collectionError!!.contains("estado válido para cobro"))
+    }
+
+    @Test
+    fun `stale active-order session response cannot overwrite a newer session in collection`() = runTest {
+        val order = makePosOrder(id = 1L, status = "READY", requiresPaymentCollection = true, total = BigDecimal("100.00"))
+        coEvery { operationalOrderRepository.getOperationalActiveOrders() } returns listOf(order)
+
+        val deferred = CompletableDeferred<com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionResponse>()
+        coEvery { operationalOrderRepository.collectPayment(any(), any(), any()) } coAnswers { deferred.await() }
+
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        viewModel.submitCollection(1L, PaymentMethod.CARD, null)
+
+        viewModel.closeActiveOrderManagement() // Increments session generator
+        viewModel.openActiveOrderManagement()
+        testScheduler.advanceUntilIdle()
+
+        deferred.complete(mockk())
+        testScheduler.advanceUntilIdle()
+
+        val state = viewModel.activeOrderManagementState.value as ActiveOrderManagementState.Content
+        assertNull(state.collectionSuccessMessage) // Output blocked
+    }
 }

@@ -641,8 +641,15 @@ class PrintService(private val context: Context) {
 
         out.write(boldOff)
 
-        if (order.paymentMethod != null) {
+        if (order.paymentTiming == com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY && order.requiresPaymentCollection && order.paymentMethod == null) {
+            // Pending pay-on-delivery
+            out.write("Pago: Contra entrega\n".toByteArray())
+        } else if (order.paymentMethod != null) {
             out.write("Pago: ${order.paymentMethod.name}\n".toByteArray())
+            if (order.paymentTiming == com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY && !order.requiresPaymentCollection) {
+                // Settled pay-on-delivery — show modality
+                out.write("Modalidad: Cobrado contra entrega\n".toByteArray())
+            }
         } else {
             out.write("Pago: DESCONOCIDO\n".toByteArray())
         }
