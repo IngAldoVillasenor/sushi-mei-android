@@ -21,7 +21,8 @@ import kotlinx.coroutines.withContext
 class KitchenViewModel(
     private val orderRepository: IOrderRepository,
     private val api: SushiMeiApi = NetworkModule.sushiMeiApi,
-    private val autoStartPolling: Boolean = true
+    private val autoStartPolling: Boolean = true,
+    private val operationalOrderRepository: com.restaurant.sushimei.frontend.data.repository.IOperationalOrderRepository? = null
 ) : ViewModel() {
     private val _operationalSummaries = MutableStateFlow<List<com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto>>(emptyList())
 
@@ -57,7 +58,7 @@ class KitchenViewModel(
         }
     }
 
-    private suspend fun fetchBackendOrders() {
+    internal suspend fun fetchBackendOrders() {
         try {
             val response = api.getOperationalActiveOrders()
 
@@ -252,14 +253,123 @@ class KitchenViewModel(
         }
     }
 
+    private val _collectionInFlightOrderId = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    val collectionInFlightOrderId: kotlinx.coroutines.flow.StateFlow<Long?> = _collectionInFlightOrderId.asStateFlow()
+
+    private val _collectionConfirmationOrderId = kotlinx.coroutines.flow.MutableStateFlow<Long?>(null)
+    val collectionConfirmationOrderId: kotlinx.coroutines.flow.StateFlow<Long?> = _collectionConfirmationOrderId.asStateFlow()
+
+    private val _collectionError = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val collectionError: kotlinx.coroutines.flow.StateFlow<String?> = _collectionError.asStateFlow()
+
+    private val _collectionSuccessMessage = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+    val collectionSuccessMessage: kotlinx.coroutines.flow.StateFlow<String?> = _collectionSuccessMessage.asStateFlow()
+
+    private var activeOrderSessionGeneration = 0
+
+    fun openCollectionConfirmation(orderId: Long) {
+        _collectionConfirmationOrderId.value = orderId
+        _collectionError.value = null
+        _collectionSuccessMessage.value = null
+    }
+
+    fun closeCollectionConfirmation() {
+        if (_collectionInFlightOrderId.value != null) return
+        _collectionConfirmationOrderId.value = null
+        _collectionError.value = null
+        _collectionSuccessMessage.value = null
+        activeOrderSessionGeneration++
+    }
+
+    fun clearCollectionState() {
+        _collectionConfirmationOrderId.value = null
+        _collectionError.value = null
+        _collectionSuccessMessage.value = null
+        activeOrderSessionGeneration++
+    }
+
+    fun submitCollection(orderId: Long, method: com.restaurant.sushimei.frontend.data.model.PaymentMethod, denomination: java.math.BigDecimal?) {
+        val repo = operationalOrderRepository ?: return
+        if (_collectionInFlightOrderId.value != null) return
+
+        val order = _operationalSummaries.value.find { it.id == orderId } ?: run {
+            _collectionError.value = "La orden no está disponible para cobro."
+            return
+        }
+
+        val validated = try {
+            com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.validateCollection(
+                orderStatus = order.status,
+                requiresPaymentCollection = order.requiresPaymentCollection,
+                orderTotal = order.total,
+                method = method,
+                denomination = denomination
+            )
+        } catch (e: IllegalArgumentException) {
+            _collectionError.value = e.message
+            return
+        }
+
+        val currentSession = activeOrderSessionGeneration
+        _collectionInFlightOrderId.value = orderId
+        _collectionError.value = null
+
+        viewModelScope.launch {
+            try {
+                repo.collectPayment(orderId, validated.method, validated.denomination)
+                if (currentSession != activeOrderSessionGeneration) return@launch
+
+                _collectionConfirmationOrderId.value = null
+                _collectionInFlightOrderId.value = null
+                _collectionSuccessMessage.value = "Cobro registrado correctamente."
+                fetchBackendOrders()
+            } catch (e: com.restaurant.sushimei.frontend.data.api.ApiException) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                _collectionInFlightOrderId.value = null
+                _collectionError.value = com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.mapCollectionApiError(e)
+            } catch (e: java.io.IOException) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                try {
+                    val outcome = com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.executeReconciliation(repo, orderId)
+                    if (outcome is com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.ReconciliationOutcome.Success) {
+                        _collectionConfirmationOrderId.value = null
+                        _collectionInFlightOrderId.value = null
+                        _collectionSuccessMessage.value = "Cobro registrado correctamente."
+                        fetchBackendOrders()
+                    } else {
+                        val msg = when (outcome) {
+                            is com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.ReconciliationOutcome.Retryable -> outcome.message
+                            is com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.ReconciliationOutcome.Uncertain -> outcome.message
+                            else -> "Fallo desconocido."
+                        }
+                        if (currentSession != activeOrderSessionGeneration) return@launch
+                        _collectionInFlightOrderId.value = null
+                        _collectionError.value = msg
+                    }
+                } catch (fallback: Exception) {
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    _collectionInFlightOrderId.value = null
+                    _collectionError.value = "Fallo de red. El estado del cobro es incierto. Refresca las órdenes antes de intentar de nuevo."
+                }
+            } catch (e: Exception) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                _collectionInFlightOrderId.value = null
+                _collectionError.value = "Error inesperado: ${e.message}"
+            }
+        }
+    }
+
+
     companion object {
         fun factory(context: Context): ViewModelProvider.Factory =
-
             object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
-
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return KitchenViewModel(provideOrderRepository(context)) as T
+                    return KitchenViewModel(
+                        provideOrderRepository(context),
+                        api = NetworkModule.sushiMeiApi,
+                        operationalOrderRepository = com.restaurant.sushimei.frontend.data.repository.RemoteOperationalOrderRepository(NetworkModule.sushiMeiApi)
+                    ) as T
                 }
             }
     }

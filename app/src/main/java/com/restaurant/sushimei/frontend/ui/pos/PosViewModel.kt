@@ -75,10 +75,14 @@ sealed interface ActiveOrderManagementState {
     /** Orders loaded and displayed. confirmingVoid contains the order the user wants to cancel. */
     data class Content(
         val orders: List<com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto>,
-        val confirmingVoid: Long? = null,   // orderId of the order being confirmed
-        val submittingVoidFor: Long? = null, // orderId currently in-flight
-        val voidError: String? = null,       // transient error from last void attempt
-        val voidSuccessMessage: String? = null
+        val confirmingVoid: Long? = null,
+        val submittingVoidFor: Long? = null,
+        val voidError: String? = null,
+        val voidSuccessMessage: String? = null,
+        val collectionConfirmationOrderId: Long? = null,
+        val collectionInFlightOrderId: Long? = null,
+        val collectionError: String? = null,
+        val collectionSuccessMessage: String? = null
     ) : ActiveOrderManagementState
 
     data class Error(val message: String) : ActiveOrderManagementState
@@ -99,7 +103,8 @@ sealed interface PosUiState {
         val quoteState: QuoteState = QuoteState.Idle,
         val checkoutState: CheckoutState = CheckoutState.Idle,
         val fulfillmentType: FulfillmentType = FulfillmentType.PICKUP,
-        val paymentMethod: PaymentMethod = PaymentMethod.CASH,
+        val paymentTiming: OrderPaymentTiming = OrderPaymentTiming.IMMEDIATE,
+        val paymentMethod: PaymentMethod? = PaymentMethod.CASH,
         val pickupName: String? = "",
         val deliveryAddress: String? = "",
         val cashDenomination: BigDecimal? = null
@@ -189,7 +194,8 @@ class PosViewModel(
 
     private val _fulfillmentType = MutableStateFlow(FulfillmentType.PICKUP)
 
-    private val _paymentMethod = MutableStateFlow(PaymentMethod.CASH)
+    private val _paymentTiming = MutableStateFlow(OrderPaymentTiming.IMMEDIATE)
+    private val _paymentMethod = MutableStateFlow<PaymentMethod?>(PaymentMethod.CASH)
 
     private val _pickupName = MutableStateFlow<String?>("")
 
@@ -222,9 +228,15 @@ class PosViewModel(
             )
         },
         combine(_isLoading, _quoteState, _checkoutState, ::Triple),
-        combine(_fulfillmentType, _paymentMethod, _pickupName, _deliveryAddress, _cashDenomination) { f, p, pn, da, cd ->
-
-            MetadataState(f, p, pn, da, cd)
+        combine(_fulfillmentType, _paymentTiming, _paymentMethod, _pickupName, _deliveryAddress, _cashDenomination) { args: Array<Any?> ->
+            MetadataState(
+                fulfillmentType = args[0] as FulfillmentType,
+                paymentTiming = args[1] as OrderPaymentTiming,
+                paymentMethod = args[2] as PaymentMethod?,
+                pickupName = args[3] as String?,
+                deliveryAddress = args[4] as String?,
+                cashDenomination = args[5] as BigDecimal?
+            )
         }
     ) { catalog, (loading, quote, checkout), metadata ->
 
@@ -255,6 +267,7 @@ class PosViewModel(
                 quoteState = quote,
                 checkoutState = checkout,
                 fulfillmentType = metadata.fulfillmentType,
+                paymentTiming = metadata.paymentTiming,
                 paymentMethod = metadata.paymentMethod,
                 pickupName = metadata.pickupName,
                 deliveryAddress = metadata.deliveryAddress,
@@ -265,7 +278,8 @@ class PosViewModel(
 
     private data class MetadataState(
         val fulfillmentType: FulfillmentType,
-        val paymentMethod: PaymentMethod,
+        val paymentTiming: OrderPaymentTiming,
+        val paymentMethod: PaymentMethod?,
         val pickupName: String?,
         val deliveryAddress: String?,
         val cashDenomination: BigDecimal?
@@ -380,7 +394,29 @@ class PosViewModel(
     fun updateFulfillmentType(type: FulfillmentType) {
         if (_fulfillmentType.value != type) {
             _fulfillmentType.value = type
+            if (type == FulfillmentType.PICKUP) {
+                _deliveryAddress.value = null
+            } else {
+                _pickupName.value = null
+                if (_paymentTiming.value == OrderPaymentTiming.IMMEDIATE && _paymentMethod.value == PaymentMethod.CARD) {
+                    _paymentMethod.value = null
+                }
+            }
+            invalidateRequestId()
+        }
+    }
 
+    fun updatePaymentTiming(timing: OrderPaymentTiming) {
+        if (_paymentTiming.value != timing) {
+            _paymentTiming.value = timing
+            if (timing == OrderPaymentTiming.ON_DELIVERY) {
+                _paymentMethod.value = null
+                _cashDenomination.value = null
+            } else if (timing == OrderPaymentTiming.IMMEDIATE) {
+                if (_paymentMethod.value == null) {
+                    _paymentMethod.value = PaymentMethod.CASH
+                }
+            }
             invalidateRequestId()
         }
     }
@@ -787,6 +823,7 @@ class PosViewModel(
 
     private fun resetCheckoutMetadata() {
         _fulfillmentType.value = FulfillmentType.PICKUP
+        _paymentTiming.value = OrderPaymentTiming.IMMEDIATE
         _paymentMethod.value = PaymentMethod.CASH
         _pickupName.value = ""
         _deliveryAddress.value = ""
@@ -797,36 +834,36 @@ class PosViewModel(
 
     private fun validateCheckout(
         fulfillment: FulfillmentType,
-        payment: PaymentMethod,
+        payment: PaymentMethod?,
         pickup: String?,
         address: String?,
         denomination: BigDecimal?,
-        total: BigDecimal
+        total: BigDecimal,
+        timing: OrderPaymentTiming
     ): String? {
+        if (timing == OrderPaymentTiming.IMMEDIATE) {
+            if (payment == null) return "Seleccione un método de pago para cobro inmediato."
+        }
+
         if (fulfillment == FulfillmentType.PICKUP) {
             val trimmedName = pickup?.trim()
-
             if (trimmedName.isNullOrEmpty() || trimmedName.length < 2 || trimmedName.length > 120) {
                 return "El nombre para recoger debe tener entre 2 y 120 caracteres."
             }
         } else if (fulfillment == FulfillmentType.DELIVERY) {
             val trimmedAddress = address?.trim()
-
             if (trimmedAddress.isNullOrEmpty() || trimmedAddress.length < 5 || trimmedAddress.length > 500) {
                 return "La dirección de entrega debe tener entre 5 y 500 caracteres."
             }
-
-            if (payment == PaymentMethod.CARD) {
+            if (timing == OrderPaymentTiming.IMMEDIATE && payment == PaymentMethod.CARD) {
                 return "El pago con tarjeta solo está disponible para pedidos a recoger."
             }
-
-            if (payment == PaymentMethod.CASH) {
+            if (timing == OrderPaymentTiming.IMMEDIATE && payment == PaymentMethod.CASH) {
                 if (denomination == null || denomination < total) {
-                    return "Debes ingresar una denominación válida mayor a cero."
+                    return "Debe ingresar con cuánto va a pagar, y debe ser mayor o igual al total."
                 }
             }
         }
-
         return null
     }
 
@@ -840,17 +877,13 @@ class PosViewModel(
         // Logical snapshot of the checkout metadata
 
         val fulfillment = _fulfillmentType.value
-
+        val timing = _paymentTiming.value
         val payment = _paymentMethod.value
-
         val pickup = _pickupName.value?.trim()
-
         val address = _deliveryAddress.value?.trim()
-
         val denomination = _cashDenomination.value
-
         val total = getTotal()
-        val validationError = validateCheckout(fulfillment, payment, pickup, address, denomination, total)
+        val validationError = validateCheckout(fulfillment, payment, pickup, address, denomination, total, timing)
 
         if (validationError != null) {
             _checkoutState.value = CheckoutState.Error(validationError)
@@ -867,13 +900,15 @@ class PosViewModel(
         }
 
         val manualItems = _manualCart.value
+        val isOnDelivery = timing == OrderPaymentTiming.ON_DELIVERY
         val requestSnapshot = ManualPosOrderRequest(
             requestId = pendingRequestId.toString(),
             fulfillmentType = fulfillment,
-            paymentMethod = payment,
+            paymentMethod = if (isOnDelivery) null else payment,
+            paymentTiming = timing,
             deliveryAddress = if (fulfillment == FulfillmentType.DELIVERY) address else null,
             pickupName = if (fulfillment == FulfillmentType.PICKUP) pickup else null,
-            cashDenomination = if (fulfillment == FulfillmentType.DELIVERY && payment == PaymentMethod.CASH) denomination else null,
+            cashDenomination = if (!isOnDelivery && fulfillment == FulfillmentType.DELIVERY && payment == PaymentMethod.CASH) denomination else null,
             lines = items.map { buildRequestLine(it) },
             manualLines = manualItems.map {
                 com.restaurant.sushimei.frontend.data.model.ManualPricedLineRequest(
@@ -1342,4 +1377,141 @@ class PosViewModel(
     }
 
 
+
+    fun openCollectionConfirmation(orderId: Long) {
+        val existing = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        _activeOrderManagementState.value = existing.copy(
+            collectionConfirmationOrderId = orderId,
+            collectionError = null,
+            collectionSuccessMessage = null
+        )
+    }
+
+    fun closeCollectionConfirmation() {
+        val existing = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        if (existing.collectionInFlightOrderId != null) return
+        _activeOrderManagementState.value = existing.copy(
+            collectionConfirmationOrderId = null,
+            collectionError = null,
+            collectionSuccessMessage = null
+        )
+    }
+
+    fun clearCollectionState() {
+        val existing = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        _activeOrderManagementState.value = existing.copy(
+            collectionConfirmationOrderId = null,
+            collectionError = null,
+            collectionSuccessMessage = null
+        )
+    }
+
+    fun submitCollection(orderId: Long, method: com.restaurant.sushimei.frontend.data.model.PaymentMethod, denomination: java.math.BigDecimal?) {
+        val existing = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return
+        val repo = operationalOrderRepository ?: return
+        if (existing.collectionInFlightOrderId != null) return
+
+        val order = existing.orders.find { it.id == orderId } ?: run {
+            _activeOrderManagementState.value = existing.copy(collectionError = "La orden no está disponible para cobro.")
+            return
+        }
+
+        val validated = try {
+            com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.validateCollection(
+                orderStatus = order.status,
+                requiresPaymentCollection = order.requiresPaymentCollection,
+                orderTotal = order.total,
+                method = method,
+                denomination = denomination
+            )
+        } catch (e: IllegalArgumentException) {
+            _activeOrderManagementState.value = existing.copy(collectionError = e.message)
+            return
+        }
+
+        _activeOrderManagementState.value = existing.copy(
+            collectionInFlightOrderId = orderId,
+            collectionError = null
+        )
+
+        val currentSession = activeOrderSessionGeneration
+
+        viewModelScope.launch {
+            try {
+                repo.collectPayment(orderId, validated.method, validated.denomination)
+                if (currentSession != activeOrderSessionGeneration) return@launch
+
+                try {
+                    val raw = repo.getOperationalActiveOrders()
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    val filtered = raw.filter { o -> o.orderSource in POS_VOIDABLE_SOURCES && o.status in POS_ACTIVE_STATUSES }
+                    _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                        orders = filtered,
+                        collectionSuccessMessage = "Cobro registrado correctamente."
+                    )
+                } catch (e: Exception) {
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                        orders = emptyList(),
+                        collectionSuccessMessage = "Cobro registrado, pero error al actualizar lista."
+                    )
+                }
+            } catch (e: com.restaurant.sushimei.frontend.data.api.ApiException) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return@launch
+                _activeOrderManagementState.value = current.copy(
+                    collectionInFlightOrderId = null,
+                    collectionError = com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.mapCollectionApiError(e)
+                )
+            } catch (e: java.io.IOException) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                try {
+                    val outcome = com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.executeReconciliation(repo, orderId)
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    if (outcome is com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.ReconciliationOutcome.Success) {
+                        try {
+                            val raw = repo.getOperationalActiveOrders()
+                            if (currentSession != activeOrderSessionGeneration) return@launch
+                            val filtered = raw.filter { o -> o.orderSource in POS_VOIDABLE_SOURCES && o.status in POS_ACTIVE_STATUSES }
+                            _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                                orders = filtered,
+                                collectionSuccessMessage = "Cobro registrado correctamente tras recuperación."
+                            )
+                        } catch (ex: Exception) {
+                            if (currentSession != activeOrderSessionGeneration) return@launch
+                            _activeOrderManagementState.value = ActiveOrderManagementState.Content(
+                                orders = emptyList(),
+                                collectionSuccessMessage = "Cobro registrado, pero error al actualizar lista."
+                            )
+                        }
+                    } else {
+                        val msg = when (outcome) {
+                            is com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.ReconciliationOutcome.Retryable -> outcome.message
+                            is com.restaurant.sushimei.frontend.ui.shared.CollectionOrchestrator.ReconciliationOutcome.Uncertain -> outcome.message
+                            else -> "Fallo desconocido."
+                        }
+                        val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return@launch
+                        _activeOrderManagementState.value = current.copy(
+                            collectionInFlightOrderId = null,
+                            collectionError = msg
+                        )
+                    }
+                } catch (fallback: Exception) {
+                    if (currentSession != activeOrderSessionGeneration) return@launch
+                    val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return@launch
+                    _activeOrderManagementState.value = current.copy(
+                        collectionInFlightOrderId = null,
+                        collectionError = "Fallo de red. El estado del cobro es incierto."
+                    )
+                }
+            } catch (e: Exception) {
+                if (currentSession != activeOrderSessionGeneration) return@launch
+                val current = _activeOrderManagementState.value as? ActiveOrderManagementState.Content ?: return@launch
+                _activeOrderManagementState.value = current.copy(
+                    collectionInFlightOrderId = null,
+                    collectionError = "Error inesperado: ${e.message}"
+                )
+            }
+        }
+    }
 }

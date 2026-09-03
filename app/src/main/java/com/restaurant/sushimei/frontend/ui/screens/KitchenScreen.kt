@@ -103,6 +103,51 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
 
     val errorMsg by viewModel.kitchenError.collectAsState()
 
+    val collectionConfirmationOrderId by viewModel.collectionConfirmationOrderId.collectAsState()
+    val collectionInFlightOrderId by viewModel.collectionInFlightOrderId.collectAsState()
+    val collectionError by viewModel.collectionError.collectAsState()
+    val collectionSuccessMessage by viewModel.collectionSuccessMessage.collectAsState()
+
+    if (collectionConfirmationOrderId != null) {
+        val order = backendSummaries.find { it.id == collectionConfirmationOrderId }
+        if (order != null) {
+            com.restaurant.sushimei.frontend.ui.shared.CollectionConfirmationDialog(
+                order = order,
+                isCollectionInFlight = collectionInFlightOrderId == order.id,
+                onDismiss = { viewModel.closeCollectionConfirmation() },
+                onSubmit = { method, denom -> viewModel.submitCollection(order.id, method, denom) },
+                titleOverride = "Registrar pago",
+                submitLabelOverride = "Cobrar y entregar"
+            )
+        }
+    }
+
+    if (collectionError != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCollectionState() },
+            title = { Text("Error al cobrar") },
+            text = { Text(collectionError!!) },
+            confirmButton = {
+                Button(onClick = { viewModel.clearCollectionState() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+    if (collectionSuccessMessage != null) {
+        AlertDialog(
+            onDismissRequest = { viewModel.clearCollectionState() },
+            title = { Text("Éxito") },
+            text = { Text(collectionSuccessMessage!!) },
+            confirmButton = {
+                Button(onClick = { viewModel.clearCollectionState() }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
     if (errorMsg != null) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissError() },
@@ -137,7 +182,7 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
 
                 items(pendingBackend) { summary ->
 
-                    OperationalOrderCard(summary, detailCache[summary.id], viewModel)
+                    OperationalOrderCard(summary, detailCache[summary.id], viewModel, collectionInFlightOrderId == summary.id)
                 }
             }
         }
@@ -157,7 +202,7 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
 
                 items(preparingBackend) { summary ->
 
-                    OperationalOrderCard(summary, detailCache[summary.id], viewModel)
+                    OperationalOrderCard(summary, detailCache[summary.id], viewModel, collectionInFlightOrderId == summary.id)
                 }
             }
         }
@@ -177,7 +222,7 @@ fun KitchenScreen(viewModel: KitchenViewModel = run {
 
                 items(readyBackend) { summary ->
 
-                    OperationalOrderCard(summary, detailCache[summary.id], viewModel)
+                    OperationalOrderCard(summary, detailCache[summary.id], viewModel, collectionInFlightOrderId == summary.id)
                 }
             }
 
@@ -414,7 +459,7 @@ fun ReceiptImageDialog(imageUrl: String, onDismiss: () -> Unit) {
 
 @Composable
 
-fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: OperationalOrderDetailDto?, viewModel: KitchenViewModel) {
+fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: OperationalOrderDetailDto?, viewModel: KitchenViewModel, isCollectionInFlight: Boolean) {
     val isPending = summary.status == "PENDING" || summary.status == "PENDING_VALIDATION"
 
     val context = LocalContext.current
@@ -543,8 +588,22 @@ fun OperationalOrderCard(summary: OperationalOrderSummaryDto, detail: Operationa
                     }
 
                     "READY" -> {
-                        Button(onClick = { viewModel.completeOperationalOrder(summary.id) }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))) {
-                            Text("🏍️ Entregado / Despachar")
+                        if (isCollectionInFlight) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text("Procesando cobro...")
+                            }
+                        } else {
+                            Button(onClick = {
+                                if (summary.requiresPaymentCollection) {
+                                    viewModel.openCollectionConfirmation(summary.id)
+                                } else {
+                                    viewModel.completeOperationalOrder(summary.id)
+                                }
+                            }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0))) {
+                                Text("Entregado / Despachar")
+                            }
                         }
                     }
                 }

@@ -7,6 +7,8 @@ import androidx.compose.runtime.Composable
 
 import com.restaurant.sushimei.frontend.ui.util.formatCurrency
 import com.restaurant.sushimei.frontend.ui.util.rememberBluetoothPermissionGateway
+import com.restaurant.sushimei.frontend.ui.shared.CollectionConfirmationDialog
+
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -38,6 +40,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.List
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.ShoppingCart
@@ -60,23 +64,22 @@ import com.restaurant.sushimei.frontend.data.model.ConfiguredProduct
 import com.restaurant.sushimei.frontend.data.model.MenuItem
 import com.restaurant.sushimei.frontend.data.model.FulfillmentType
 import com.restaurant.sushimei.frontend.data.model.PaymentMethod
+import com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming
 import com.restaurant.sushimei.frontend.data.model.Promotion
 import com.restaurant.sushimei.frontend.data.model.PromotionBenefit
 import com.restaurant.sushimei.frontend.data.model.QuotedRewardItem
 import com.restaurant.sushimei.frontend.data.local.provideMenuRepository
 import com.restaurant.sushimei.frontend.data.local.provideManualPosOrderRepository
+import com.restaurant.sushimei.frontend.data.local.provideOperationalOrderRepository
 import com.restaurant.sushimei.frontend.data.local.providePromotionRepository
 import com.restaurant.sushimei.frontend.data.api.NetworkModule
 import com.restaurant.sushimei.frontend.PrintService
 import com.restaurant.sushimei.frontend.ui.pos.PosViewModel
+import com.restaurant.sushimei.frontend.ui.pos.ActiveOrderManagementState
 import com.restaurant.sushimei.frontend.ui.pos.PosUiState
 import com.restaurant.sushimei.frontend.ui.pos.CheckoutState
 import com.restaurant.sushimei.frontend.ui.pos.QuoteState
 import com.restaurant.sushimei.frontend.ui.pos.FlexibleBogoPickerDialog
-import com.restaurant.sushimei.frontend.ui.pos.ActiveOrderManagementState
-import com.restaurant.sushimei.frontend.data.local.provideOperationalOrderRepository
-import androidx.compose.material.icons.filled.List
-import androidx.compose.material.icons.filled.Close
 import java.math.BigDecimal
 import java.util.Locale
 import com.restaurant.sushimei.frontend.ui.pos.configurator.ConfiguratorScreen
@@ -144,6 +147,7 @@ fun PosScreen() {
     }
 
     val activeOrderManagementState by viewModel.activeOrderManagementState.collectAsStateWithLifecycle()
+
     val currentPrintState by viewModel.currentPrintState.collectAsStateWithLifecycle()
     var pendingPrintRetry by remember { mutableStateOf(false) }
 
@@ -430,15 +434,14 @@ fun PosScreen() {
             state = activeOrderManagementState,
             onClose = { viewModel.closeActiveOrderManagement() },
             onRefresh = { viewModel.refreshActiveOrders() },
-            onRequestCancel = { orderId -> viewModel.requestVoidConfirmation(orderId) },
-            onCancelConfirm = { orderId, reason -> viewModel.submitVoidOrder(orderId, reason) },
+            onRequestCancel = viewModel::requestVoidConfirmation,
+            onCancelConfirm = viewModel::submitVoidOrder,
             onCancelDismiss = { viewModel.cancelVoidConfirmation() },
-            onDismissError = {
-                val s = activeOrderManagementState
-                if (s is ActiveOrderManagementState.Content) {
-                    viewModel.refreshActiveOrders()
-                }
-            }
+            onOpenCollection = viewModel::openCollectionConfirmation,
+            onCollectionSubmit = viewModel::submitCollection,
+            onCollectionDismiss = { viewModel.closeCollectionConfirmation() },
+            onDismissCollectionMessage = { viewModel.clearCollectionState() },
+            onDismissError = { viewModel.refreshActiveOrders() }
         )
     }
 
@@ -469,9 +472,7 @@ fun PosScreen() {
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    OutlinedButton(
-                        onClick = { viewModel.openActiveOrderManagement() }
-                    ) {
+                    OutlinedButton(onClick = viewModel::openActiveOrderManagement) {
                         Icon(
                             imageVector = Icons.Default.List,
                             contentDescription = null,
@@ -1117,6 +1118,391 @@ private fun PromotionItemPickerDialog(
     )
 }
 
+@Composable
+fun PosActiveOrdersDialog(
+    state: ActiveOrderManagementState,
+    onClose: () -> Unit,
+    onRefresh: () -> Unit,
+    onRequestCancel: (Long) -> Unit,
+    onCancelConfirm: (Long, String) -> Unit,
+    onCancelDismiss: () -> Unit,
+    onOpenCollection: (Long) -> Unit,
+    onCollectionSubmit: (Long, PaymentMethod, BigDecimal?) -> Unit,
+    onCollectionDismiss: () -> Unit,
+    onDismissCollectionMessage: () -> Unit,
+    onDismissError: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            tonalElevation = 4.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.9f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        "Pedidos activos (POS)",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Row {
+                        if (state is ActiveOrderManagementState.Content) {
+                            IconButton(onClick = onRefresh) {
+                                Icon(imageVector = Icons.Default.Add, contentDescription = "Actualizar")
+                            }
+                        }
+                        IconButton(onClick = onClose) {
+                            Icon(imageVector = Icons.Default.Close, contentDescription = "Cerrar")
+                        }
+                    }
+                }
+                HorizontalDivider()
+
+                when (state) {
+                    is ActiveOrderManagementState.LoadingOrders -> {
+                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                CircularProgressIndicator()
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("Cargando pedidos activos...")
+                            }
+                        }
+                    }
+                    is ActiveOrderManagementState.Error -> {
+                        Box(
+                            modifier = Modifier.fillMaxSize().padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    state.message,
+                                    color = MaterialTheme.colorScheme.error,
+                                    textAlign = TextAlign.Center
+                                )
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Button(onClick = onRefresh) { Text("Reintentar") }
+                            }
+                        }
+                    }
+                    is ActiveOrderManagementState.Content -> {
+                        state.voidError?.let { err ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = err,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    TextButton(onClick = onDismissError) { Text("Cerrar") }
+                                }
+                            }
+                        }
+
+                        state.voidSuccessMessage?.let { msg ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = msg,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+
+                        state.collectionError?.let { err ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = err,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    TextButton(onClick = onDismissCollectionMessage) { Text("Cerrar") }
+                                }
+                            }
+                        }
+
+                        state.collectionSuccessMessage?.let { msg ->
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = msg,
+                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                        modifier = Modifier.weight(1f),
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                    TextButton(onClick = onDismissCollectionMessage) { Text("Cerrar") }
+                                }
+                            }
+                        }
+
+                        if (state.orders.isEmpty()) {
+                            Box(
+                                modifier = Modifier.weight(1f).fillMaxWidth(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    "No hay pedidos activos de POS en este momento.",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.padding(16.dp)
+                                )
+                            }
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                items(state.orders, key = { it.id }) { order ->
+                                    PosActiveOrderCard(
+                                        order = order,
+                                        isSubmittingVoid = state.submittingVoidFor == order.id,
+                                        isCollectionInFlight = state.collectionInFlightOrderId == order.id,
+                                        onCancelClick = { onRequestCancel(order.id) },
+                                        onCollectClick = { onOpenCollection(order.id) }
+                                    )
+                                }
+                            }
+                        }
+
+                        HorizontalDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(16.dp),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = onClose) { Text("Cerrar") }
+                        }
+                    }
+                    is ActiveOrderManagementState.Idle -> Unit
+                }
+            }
+        }
+    }
+
+    val contentState = state as? ActiveOrderManagementState.Content
+    val confirmingId = contentState?.confirmingVoid
+    if (confirmingId != null) {
+        PosVoidConfirmationDialog(
+            orderId = confirmingId,
+            isSubmitting = contentState.submittingVoidFor == confirmingId,
+            onConfirm = { reason -> onCancelConfirm(confirmingId, reason) },
+            onDismiss = onCancelDismiss
+        )
+    }
+
+    val collectionOrder = contentState
+        ?.collectionConfirmationOrderId
+        ?.let { orderId -> contentState.orders.find { it.id == orderId } }
+    if (collectionOrder != null) {
+        CollectionConfirmationDialog(
+            order = collectionOrder,
+            isCollectionInFlight = contentState.collectionInFlightOrderId == collectionOrder.id,
+            onDismiss = onCollectionDismiss,
+            onSubmit = { method, denomination ->
+                onCollectionSubmit(collectionOrder.id, method, denomination)
+            }
+        )
+    }
+}
+
+@Composable
+private fun PosActiveOrderCard(
+    order: com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto,
+    isSubmittingVoid: Boolean,
+    isCollectionInFlight: Boolean,
+    onCancelClick: () -> Unit,
+    onCollectClick: () -> Unit
+) {
+    val dateFormatter = remember {
+        java.time.format.DateTimeFormatter.ofPattern("dd MMM, HH:mm")
+            .withZone(java.time.ZoneId.of("America/Mexico_City"))
+    }
+    val dateStr = order.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
+    val collectionEligible = order.status == "READY" && order.requiresPaymentCollection
+
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Pedido #${order.id}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                    Text("Estado: ${order.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("Fecha: $dateStr", style = MaterialTheme.typography.bodySmall)
+                    order.fulfillmentType?.let { Text("Tipo: ${it.name}", style = MaterialTheme.typography.bodySmall) }
+                    order.pickupName?.takeIf { it.isNotBlank() }?.let { Text("Recoge: $it", style = MaterialTheme.typography.bodySmall) }
+                    order.deliveryAddress?.takeIf { it.isNotBlank() }?.let {
+                        Text(
+                            "Dirección: $it",
+                            style = MaterialTheme.typography.bodySmall,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = order.total?.let { formatCurrency(it) } ?: "No disponible",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)
+            ) {
+                if (collectionEligible) {
+                    Button(
+                        onClick = onCollectClick,
+                        enabled = !isCollectionInFlight && !isSubmittingVoid
+                    ) {
+                        if (isCollectionInFlight) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text("Cobrar y completar")
+                    }
+                }
+                Button(
+                    onClick = onCancelClick,
+                    enabled = !isSubmittingVoid && !isCollectionInFlight,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    )
+                ) {
+                    if (isSubmittingVoid) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onError
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text("Cancelar")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PosVoidConfirmationDialog(
+    orderId: Long,
+    isSubmitting: Boolean,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var reason by remember { mutableStateOf("") }
+    val maxChars = 500
+    val trimmedReason = reason.trim()
+    val isBlank = trimmedReason.isBlank()
+    val isTooLong = trimmedReason.length > maxChars
+    val hasError = isBlank || isTooLong
+
+    AlertDialog(
+        onDismissRequest = { if (!isSubmitting) onDismiss() },
+        title = { Text("Cancelar orden #$orderId") },
+        text = {
+            Column {
+                Text(
+                    "Esta acción marcará la orden como cancelada y no podrá continuar en cocina.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = reason,
+                    onValueChange = { if (it.length <= maxChars + 50) reason = it },
+                    label = { Text("Motivo de cancelación *") },
+                    placeholder = { Text("Ej: Cliente canceló el pedido") },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isSubmitting,
+                    isError = reason.isNotEmpty() && hasError,
+                    supportingText = {
+                        val charsUsed = trimmedReason.length
+                        val color = if (isTooLong) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                        Text(
+                            text = when {
+                                isBlank && reason.isNotEmpty() -> "El motivo no puede estar vacío."
+                                isTooLong -> "Máximo $maxChars caracteres ($charsUsed/$maxChars)."
+                                else -> "$charsUsed/$maxChars caracteres"
+                            },
+                            color = color,
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    },
+                    minLines = 2,
+                    maxLines = 4
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(reason) },
+                enabled = !isSubmitting && !hasError,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                if (isSubmitting) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onError
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Text("Confirmar cancelación")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isSubmitting) { Text("Volver") }
+        }
+    )
+}
+
 private fun promotionBenefitLabel(promotion: Promotion): String {
     return when (val benefit = promotion.benefit) {
         is PromotionBenefit.FixedUnitPrice -> "${formatCurrency(benefit.amount)} por roll"
@@ -1150,6 +1536,7 @@ fun CheckoutDialog(
 
     // Derived values directly from UI state
     val type = uiState.fulfillmentType
+    val timing = uiState.paymentTiming
     val method = uiState.paymentMethod
     val pickup = uiState.pickupName ?: ""
     val address = uiState.deliveryAddress ?: ""
@@ -1159,9 +1546,9 @@ fun CheckoutDialog(
     // Client side validation matching ViewModel
     val isPickupValid = type != FulfillmentType.PICKUP || (pickup.isNotBlank() && pickup.trim().length in 2..120)
     val isDeliveryValid = type != FulfillmentType.DELIVERY || (address.isNotBlank() && address.trim().length in 5..500)
-    val isCashValid = method != PaymentMethod.CASH || (uiState.cashDenomination != null && uiState.cashDenomination >= total)
-    val isCardValid = method != PaymentMethod.CARD || type == FulfillmentType.PICKUP
-    val isValid = isPickupValid && isDeliveryValid && isCashValid && isCardValid
+    val isCashValid = timing == OrderPaymentTiming.ON_DELIVERY || (method != PaymentMethod.CASH || (uiState.cashDenomination != null && uiState.cashDenomination >= total))
+    val isCardValid = timing == OrderPaymentTiming.ON_DELIVERY || (method != PaymentMethod.CARD || type == FulfillmentType.PICKUP)
+    val isValid = isPickupValid && isDeliveryValid && isCashValid && isCardValid && (timing == OrderPaymentTiming.ON_DELIVERY || method != null)
 
     AlertDialog(
         onDismissRequest = { if (!isLoading) onDismiss() },
@@ -1221,28 +1608,45 @@ fun CheckoutDialog(
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     FilterChip(
-                        selected = method == PaymentMethod.CASH,
-                        onClick = { viewModel.updatePaymentMethod(PaymentMethod.CASH) },
+                        selected = timing == OrderPaymentTiming.IMMEDIATE && method == PaymentMethod.CASH,
+                        onClick = {
+                            viewModel.updatePaymentTiming(OrderPaymentTiming.IMMEDIATE)
+                            viewModel.updatePaymentMethod(PaymentMethod.CASH)
+                        },
                         label = { Text("Efectivo") },
                         enabled = !isLoading
                     )
                     if (type == FulfillmentType.PICKUP) {
                         FilterChip(
-                            selected = method == PaymentMethod.CARD,
-                            onClick = { viewModel.updatePaymentMethod(PaymentMethod.CARD) },
+                            selected = timing == OrderPaymentTiming.IMMEDIATE && method == PaymentMethod.CARD,
+                            onClick = {
+                                viewModel.updatePaymentTiming(OrderPaymentTiming.IMMEDIATE)
+                                viewModel.updatePaymentMethod(PaymentMethod.CARD)
+                            },
                             label = { Text("Tarjeta") },
                             enabled = !isLoading
                         )
                     }
                     FilterChip(
-                        selected = method == PaymentMethod.TRANSFER,
-                        onClick = { viewModel.updatePaymentMethod(PaymentMethod.TRANSFER) },
+                        selected = timing == OrderPaymentTiming.IMMEDIATE && method == PaymentMethod.TRANSFER,
+                        onClick = {
+                            viewModel.updatePaymentTiming(OrderPaymentTiming.IMMEDIATE)
+                            viewModel.updatePaymentMethod(PaymentMethod.TRANSFER)
+                        },
                         label = { Text("Transferencia") },
+                        enabled = !isLoading
+                    )
+                    FilterChip(
+                        selected = timing == OrderPaymentTiming.ON_DELIVERY,
+                        onClick = { viewModel.updatePaymentTiming(OrderPaymentTiming.ON_DELIVERY) },
+                        label = {
+                            Text(if (type == FulfillmentType.PICKUP) "Pagar al recoger" else "Pago contra entrega")
+                        },
                         enabled = !isLoading
                     )
                 }
 
-                if (method == PaymentMethod.CASH) {
+                if (timing == OrderPaymentTiming.IMMEDIATE && method == PaymentMethod.CASH) {
                     OutlinedTextField(
                         value = denom,
                         onValueChange = {
@@ -1717,304 +2121,6 @@ fun ManualSaleDialog(
                 enabled = !isLoading
             ) {
                 Text("Cancelar")
-            }
-        }
-    )
-}
-
-
-// ============================================================================
-// Active POS Order Management Dialog (feat/pos-order-cancellation-ui)
-// ============================================================================
-
-@Composable
-fun PosActiveOrdersDialog(
-    state: ActiveOrderManagementState,
-    onClose: () -> Unit,
-    onRefresh: () -> Unit,
-    onRequestCancel: (Long) -> Unit,
-    onCancelConfirm: (Long, String) -> Unit,
-    onCancelDismiss: () -> Unit,
-    onDismissError: () -> Unit
-) {
-    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
-        Surface(
-            shape = RoundedCornerShape(16.dp),
-            tonalElevation = 4.dp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.9f)
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                // ---- Header ----
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text("Pedidos activos (POS)", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Row {
-                        if (state is ActiveOrderManagementState.Content) {
-                            IconButton(onClick = onRefresh) {
-                                Icon(imageVector = Icons.Default.Add, contentDescription = "Actualizar")
-                            }
-                        }
-                        IconButton(onClick = onClose) {
-                            Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Cerrar"
-                            )
-                        }
-                    }
-                }
-                HorizontalDivider()
-
-                when (state) {
-                    is ActiveOrderManagementState.LoadingOrders -> {
-                        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                CircularProgressIndicator()
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text("Cargando pedidos activos...")
-                            }
-                        }
-                    }
-                    is ActiveOrderManagementState.Error -> {
-                        Box(modifier = Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.Center) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(state.message, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Button(onClick = onRefresh) { Text("Reintentar") }
-                            }
-                        }
-                    }
-                    is ActiveOrderManagementState.Content -> {
-                        // --- Transient error banner ---
-                        state.voidError?.let { err ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.errorContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = err,
-                                        color = MaterialTheme.colorScheme.onErrorContainer,
-                                        modifier = Modifier.weight(1f),
-                                        style = MaterialTheme.typography.bodySmall
-                                    )
-                                    TextButton(onClick = onDismissError) { Text("Cerrar") }
-                                }
-                            }
-                        }
-
-                        // --- Success banner ---
-                        state.voidSuccessMessage?.let { msg ->
-                            Surface(
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = msg,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                    style = MaterialTheme.typography.bodySmall
-                                )
-                            }
-                        }
-
-                        if (state.orders.isEmpty()) {
-                            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                Text(
-                                    "No hay pedidos activos de POS en este momento.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.padding(16.dp)
-                                )
-                            }
-                        } else {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f),
-                                contentPadding = PaddingValues(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                items(state.orders, key = { it.id }) { order ->
-                                    PosActiveOrderCard(
-                                        order = order,
-                                        isSubmitting = state.submittingVoidFor == order.id,
-                                        onCancelClick = { onRequestCancel(order.id) }
-                                    )
-                                }
-                            }
-                        }
-
-                        // ---- Footer ----
-                        HorizontalDivider()
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(onClick = onClose) { Text("Cerrar") }
-                        }
-                    }
-                    is ActiveOrderManagementState.Idle -> { /* won't be shown */ }
-                }
-            }
-        }
-    }
-
-    // ---- Confirmation Dialog ----
-    val contentState = state as? ActiveOrderManagementState.Content
-    val confirmingId = contentState?.confirmingVoid
-    if (confirmingId != null) {
-        PosVoidConfirmationDialog(
-            orderId = confirmingId,
-            isSubmitting = contentState.submittingVoidFor == confirmingId,
-            onConfirm = { reason -> onCancelConfirm(confirmingId, reason) },
-            onDismiss = onCancelDismiss
-        )
-    }
-}
-
-@Composable
-private fun PosActiveOrderCard(
-    order: com.restaurant.sushimei.frontend.data.model.OperationalOrderSummaryDto,
-    isSubmitting: Boolean,
-    onCancelClick: () -> Unit
-) {
-    val dateFormatter = remember {
-        java.time.format.DateTimeFormatter.ofPattern("dd MMM, HH:mm")
-            .withZone(java.time.ZoneId.of("America/Mexico_City"))
-    }
-    val dateStr = order.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Pedido #${order.id}", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                    Text("Estado: ${order.status}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("Fecha: $dateStr", style = MaterialTheme.typography.bodySmall)
-                    order.fulfillmentType?.let { Text("Tipo: ${it.name}", style = MaterialTheme.typography.bodySmall) }
-                    order.pickupName?.takeIf { it.isNotBlank() }?.let { Text("Recoge: $it", style = MaterialTheme.typography.bodySmall) }
-                    order.deliveryAddress?.takeIf { it.isNotBlank() }?.let { Text("Dirección: $it", style = MaterialTheme.typography.bodySmall, maxLines = 2, overflow = TextOverflow.Ellipsis) }
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = order.total?.let { formatCurrency(it) } ?: "No disponible",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                Button(
-                    onClick = onCancelClick,
-                    enabled = !isSubmitting,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                        contentColor = MaterialTheme.colorScheme.onError
-                    )
-                ) {
-                    if (isSubmitting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.onError
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                    }
-                    Text("Cancelar")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun PosVoidConfirmationDialog(
-    orderId: Long,
-    isSubmitting: Boolean,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var reason by remember { mutableStateOf("") }
-    val maxChars = 500
-    val trimmedReason = reason.trim()
-    val isBlank = trimmedReason.isBlank()
-    val isTooLong = trimmedReason.length > maxChars
-    val hasError = isBlank || isTooLong
-
-    AlertDialog(
-        onDismissRequest = { if (!isSubmitting) onDismiss() },
-        title = { Text("Cancelar orden #$orderId") },
-        text = {
-            Column {
-                Text(
-                    "Esta acción marcará la orden como cancelada y no podrá continuar en cocina.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                OutlinedTextField(
-                    value = reason,
-                    onValueChange = { if (it.length <= maxChars + 50) reason = it },
-                    label = { Text("Motivo de cancelación *") },
-                    placeholder = { Text("Ej: Cliente canceló el pedido") },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !isSubmitting,
-                    isError = reason.isNotEmpty() && hasError,
-                    supportingText = {
-                        val charsUsed = trimmedReason.length
-                        val color = if (isTooLong) MaterialTheme.colorScheme.error
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        Text(
-                            text = when {
-                                isBlank && reason.isNotEmpty() -> "El motivo no puede estar vacío."
-                                isTooLong -> "Máximo $maxChars caracteres ($charsUsed/$maxChars)."
-                                else -> "$charsUsed/$maxChars caracteres"
-                            },
-                            color = color,
-                            style = MaterialTheme.typography.bodySmall
-                        )
-                    },
-                    minLines = 2,
-                    maxLines = 4
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(reason) },
-                enabled = !isSubmitting && !hasError,
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
-            ) {
-                if (isSubmitting) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(16.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.onError
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                Text("Confirmar cancelación")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSubmitting) {
-                Text("Volver")
             }
         }
     )

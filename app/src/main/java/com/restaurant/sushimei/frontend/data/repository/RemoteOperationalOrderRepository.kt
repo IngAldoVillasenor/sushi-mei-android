@@ -60,4 +60,36 @@ class RemoteOperationalOrderRepository(private val api: SushiMeiApi) : IOperatio
             throw Exception("Error ${response.code()}: ${response.message()}")
         }
     }
+
+    override suspend fun collectPayment(
+        orderId: Long,
+        paymentMethod: com.restaurant.sushimei.frontend.data.model.PaymentMethod,
+        cashDenomination: java.math.BigDecimal?
+    ): com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionResponse {
+        val request = com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionRequest(
+            paymentMethod = paymentMethod,
+            cashDenomination = cashDenomination
+        )
+        val response = api.collectPayment(orderId, request)
+        if (response.isSuccessful && response.body() != null) {
+            return response.body()!!
+        }
+
+        if (response.code() in listOf(502, 503, 504)) {
+            throw java.io.IOException("Gateway Error: ${response.code()}")
+        }
+
+        val errorBodyString = try { response.errorBody()?.string() } catch (e: Exception) { null }
+        if (!errorBodyString.isNullOrBlank()) {
+            try {
+                val json = org.json.JSONObject(errorBodyString)
+                val code = json.optString("code", "UNKNOWN_ERROR")
+                val message = json.optString("message", "Error al cobrar orden")
+                throw com.restaurant.sushimei.frontend.data.api.ApiException(code, message)
+            } catch (e: Exception) {
+                if (e is com.restaurant.sushimei.frontend.data.api.ApiException) throw e
+            }
+        }
+        throw com.restaurant.sushimei.frontend.data.api.ApiException("HTTP_ERROR", "Error: HTTP ${response.code()}")
+    }
 }

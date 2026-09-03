@@ -4,6 +4,7 @@ import android.content.Context
 import com.restaurant.sushimei.frontend.data.model.FulfillmentType
 import com.restaurant.sushimei.frontend.data.model.OperationalOrderDetailDto
 import com.restaurant.sushimei.frontend.data.model.OperationalOrderLineDto
+import com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming
 import com.restaurant.sushimei.frontend.data.model.PaymentMethod
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertFalse
@@ -692,5 +693,153 @@ class PrintServiceTest {
         org.junit.Assert.assertTrue(reprintOutput.contains("2x California"))
         org.junit.Assert.assertTrue(reprintOutput.contains("*** REIMPRESION ***"))
         org.junit.Assert.assertEquals(normalBody, reprintBody)
+    }
+
+    // ===== Pay on Delivery Printing Regression Tests =====
+
+    private fun buildOnDeliveryDetail(
+        requiresPaymentCollection: Boolean,
+        paymentMethod: com.restaurant.sushimei.frontend.data.model.PaymentMethod?,
+        paymentCollectedAt: java.time.Instant? = null,
+        paymentCollectedByUserId: Long? = null,
+        cashDenomination: java.math.BigDecimal? = null
+    ): OperationalOrderDetailDto = OperationalOrderDetailDto(
+        id = 200,
+        requestId = null,
+        orderSource = "ANDROID_MANUAL",
+        createdByUserId = 1L,
+        fulfillmentType = FulfillmentType.DELIVERY,
+        paymentMethod = paymentMethod,
+        paymentTiming = com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.ON_DELIVERY,
+        requiresPaymentCollection = requiresPaymentCollection,
+        paymentCollectedAt = paymentCollectedAt,
+        paymentCollectedByUserId = paymentCollectedByUserId,
+        deliveryAddress = "Test Address 123",
+        pickupName = null,
+        cashDenomination = cashDenomination,
+        phoneNumber = null,
+        transferReceiptPath = null,
+        paymentNotes = null,
+        status = if (requiresPaymentCollection) "READY" else "COMPLETED",
+        createdAt = java.time.Instant.now(),
+        total = java.math.BigDecimal("200.00"),
+        legacyOrderDetails = null,
+        lines = emptyList()
+    )
+
+    @Test
+    fun `pending ON_DELIVERY prints Contra entrega and not the final method`() {
+        val detail = buildOnDeliveryDetail(
+            requiresPaymentCollection = true,
+            paymentMethod = null
+        )
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val printService = PrintService(ctx)
+        val output = printService.formatOperationalTicket(detail).toString(Charsets.UTF_8)
+
+        assertTrue("Expected Contra entrega", output.contains("Pago: Contra entrega"))
+        assertFalse("Pending ON_DELIVERY must NOT print real method", output.contains("Pago: CASH"))
+        assertFalse("Pending ON_DELIVERY must NOT print Modalidad", output.contains("Modalidad:"))
+    }
+
+    @Test
+    fun `settled ON_DELIVERY CASH prints actual CASH and Cobrado contra entrega modality`() {
+        val detail = buildOnDeliveryDetail(
+            requiresPaymentCollection = false,
+            paymentMethod = com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH,
+            paymentCollectedAt = java.time.Instant.now(),
+            paymentCollectedByUserId = 1L,
+            cashDenomination = java.math.BigDecimal("200.00")
+        )
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val printService = PrintService(ctx)
+        val output = printService.formatOperationalTicket(detail).toString(Charsets.UTF_8)
+
+        assertTrue("Must print CASH", output.contains("Pago: CASH"))
+        assertTrue("Must print Cobrado contra entrega", output.contains("Modalidad: Cobrado contra entrega"))
+        assertFalse("Settled must NOT print Contra entrega alone", output.contains("Pago: Contra entrega"))
+    }
+
+    @Test
+    fun `settled ON_DELIVERY TRANSFER prints actual TRANSFER and modality`() {
+        val detail = buildOnDeliveryDetail(
+            requiresPaymentCollection = false,
+            paymentMethod = com.restaurant.sushimei.frontend.data.model.PaymentMethod.TRANSFER,
+            paymentCollectedAt = java.time.Instant.now(),
+            paymentCollectedByUserId = 1L
+        )
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val printService = PrintService(ctx)
+        val output = printService.formatOperationalTicket(detail).toString(Charsets.UTF_8)
+
+        assertTrue("Must print TRANSFER", output.contains("Pago: TRANSFER"))
+        assertTrue("Must print Cobrado contra entrega", output.contains("Modalidad: Cobrado contra entrega"))
+        assertFalse("Settled must NOT print Contra entrega alone", output.contains("Pago: Contra entrega"))
+    }
+
+    @Test
+    fun `settled ON_DELIVERY CARD prints actual CARD and modality`() {
+        val detail = buildOnDeliveryDetail(
+            requiresPaymentCollection = false,
+            paymentMethod = com.restaurant.sushimei.frontend.data.model.PaymentMethod.CARD,
+            paymentCollectedAt = java.time.Instant.now(),
+            paymentCollectedByUserId = 1L
+        )
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val printService = PrintService(ctx)
+        val output = printService.formatOperationalTicket(detail).toString(Charsets.UTF_8)
+
+        assertTrue("Must print CARD", output.contains("Pago: CARD"))
+        assertTrue("Must print Cobrado contra entrega", output.contains("Modalidad: Cobrado contra entrega"))
+        assertFalse("Settled must NOT print Contra entrega alone", output.contains("Pago: Contra entrega"))
+    }
+
+    @Test
+    fun `settled ON_DELIVERY must NOT print only Contra entrega`() {
+        val detail = buildOnDeliveryDetail(
+            requiresPaymentCollection = false,
+            paymentMethod = com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH,
+            paymentCollectedAt = java.time.Instant.now(),
+            paymentCollectedByUserId = 1L
+        )
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val printService = PrintService(ctx)
+        val output = printService.formatOperationalTicket(detail).toString(Charsets.UTF_8)
+
+        assertFalse("Settled ON_DELIVERY must NOT print Pago: Contra entrega", output.contains("Pago: Contra entrega"))
+    }
+
+    @Test
+    fun `IMMEDIATE PICKUP CASH print remains unchanged`() {
+        val detail = OperationalOrderDetailDto(
+            id = 300,
+            requestId = null,
+            orderSource = "ANDROID_MANUAL",
+            createdByUserId = 1L,
+            fulfillmentType = FulfillmentType.PICKUP,
+            paymentMethod = com.restaurant.sushimei.frontend.data.model.PaymentMethod.CASH,
+            paymentTiming = com.restaurant.sushimei.frontend.data.model.OrderPaymentTiming.IMMEDIATE,
+            requiresPaymentCollection = false,
+            paymentCollectedAt = null,
+            paymentCollectedByUserId = null,
+            deliveryAddress = null,
+            pickupName = "Juan",
+            cashDenomination = java.math.BigDecimal("200.00"),
+            phoneNumber = null,
+            transferReceiptPath = null,
+            paymentNotes = null,
+            status = "COMPLETED",
+            createdAt = java.time.Instant.now(),
+            total = java.math.BigDecimal("150.00"),
+            legacyOrderDetails = null,
+            lines = emptyList()
+        )
+        val ctx = mockk<android.content.Context>(relaxed = true)
+        val printService = PrintService(ctx)
+        val output = printService.formatOperationalTicket(detail).toString(Charsets.UTF_8)
+
+        assertTrue("IMMEDIATE CASH must print CASH", output.contains("Pago: CASH"))
+        assertFalse("IMMEDIATE must NOT print Contra entrega", output.contains("Contra entrega"))
+        assertFalse("IMMEDIATE must NOT print Modalidad", output.contains("Modalidad:"))
     }
 }

@@ -304,9 +304,27 @@ data class ItemQuoteResponseSelectionDto(
 
 enum class FulfillmentType { PICKUP, DELIVERY }
 
+enum class OrderPaymentTiming { IMMEDIATE, ON_DELIVERY }
+
 enum class PaymentMethod { CASH, TRANSFER, CARD }
 
 enum class OrderResult { CREATED, ALREADY_CREATED }
+
+data class OrderPaymentCollectionRequest(
+    val paymentMethod: PaymentMethod,
+    val cashDenomination: BigDecimal?
+)
+
+data class OrderPaymentCollectionResponse(
+    val orderId: Long,
+    val previousStatus: String,
+    val currentStatus: String,
+    val paymentTiming: OrderPaymentTiming,
+    val paymentMethod: PaymentMethod,
+    val cashDenomination: BigDecimal?,
+    val paymentCollectedAt: Instant?,
+    val paymentCollectedByUserId: Long?
+)
 
 data class ManualPricedLineRequest(
     val lineKey: String,
@@ -318,7 +336,8 @@ data class ManualPricedLineRequest(
 data class ManualPosOrderRequest(
     val requestId: String,
     val fulfillmentType: FulfillmentType,
-    val paymentMethod: PaymentMethod,
+    val paymentMethod: PaymentMethod?,
+    val paymentTiming: OrderPaymentTiming? = null,
     val deliveryAddress: String?,
     val pickupName: String?,
     val cashDenomination: BigDecimal?,
@@ -343,7 +362,11 @@ data class ManualPosOrderResponse(
     val orderSource: String,
     val createdByUserId: Long?,
     val fulfillmentType: FulfillmentType,
-    val paymentMethod: PaymentMethod,
+    val paymentMethod: PaymentMethod?,
+    val paymentTiming: OrderPaymentTiming = OrderPaymentTiming.IMMEDIATE,
+    val requiresPaymentCollection: Boolean = false,
+    val paymentCollectedAt: Instant? = null,
+    val paymentCollectedByUserId: Long? = null,
     val deliveryAddress: String?,
     val pickupName: String?,
     val cashDenomination: BigDecimal?,
@@ -401,6 +424,8 @@ data class OperationalOrderSummaryDto(
     val status: String,
     val fulfillmentType: FulfillmentType?,
     val paymentMethod: PaymentMethod?,
+    val paymentTiming: OrderPaymentTiming = OrderPaymentTiming.IMMEDIATE,
+    val requiresPaymentCollection: Boolean = false,
     val deliveryAddress: String?,
     val pickupName: String?,
     val cashDenomination: BigDecimal?,
@@ -418,6 +443,10 @@ data class OperationalOrderDetailDto(
     val createdByUserId: Long?,
     val fulfillmentType: FulfillmentType?,
     val paymentMethod: PaymentMethod?,
+    val paymentTiming: OrderPaymentTiming = OrderPaymentTiming.IMMEDIATE,
+    val requiresPaymentCollection: Boolean = false,
+    val paymentCollectedAt: Instant? = null,
+    val paymentCollectedByUserId: Long? = null,
     val deliveryAddress: String?,
     val pickupName: String?,
     val cashDenomination: BigDecimal?,
@@ -460,6 +489,8 @@ data class HistoricalOrderSummaryDto(
     val status: String,
     val fulfillmentType: String?,
     val paymentMethod: String?,
+    val paymentTiming: String? = null,
+    val requiresPaymentCollection: Boolean = false,
     val pickupName: String?,
     val total: BigDecimal?,
     val createdAt: Instant?,

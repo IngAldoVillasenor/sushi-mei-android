@@ -21,4 +21,10 @@ interface IOperationalOrderRepository {
         orderId: Long,
         reason: String
     ): com.restaurant.sushimei.frontend.data.model.VoidOrderResponse
+
+    suspend fun collectPayment(
+        orderId: Long,
+        paymentMethod: com.restaurant.sushimei.frontend.data.model.PaymentMethod,
+        cashDenomination: java.math.BigDecimal?
+    ): com.restaurant.sushimei.frontend.data.model.OrderPaymentCollectionResponse
 }
