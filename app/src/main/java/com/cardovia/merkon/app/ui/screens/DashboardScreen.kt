@@ -1,0 +1,1039 @@
+package com.cardovia.merkon.app.ui.screens
+
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+
+import com.cardovia.merkon.app.ui.util.formatCurrency
+
+
+
+import androidx.compose.animation.core.animateFloatAsState
+
+import androidx.compose.animation.core.tween
+
+import androidx.compose.foundation.background
+
+import androidx.compose.foundation.layout.*
+
+import androidx.compose.foundation.lazy.LazyColumn
+
+import androidx.compose.foundation.lazy.items
+
+import androidx.compose.foundation.shape.RoundedCornerShape
+
+import androidx.compose.material3.*
+
+import androidx.compose.runtime.*
+
+import androidx.compose.ui.Alignment
+
+import androidx.compose.ui.Modifier
+
+import androidx.compose.ui.draw.clip
+
+import androidx.compose.ui.graphics.Color
+
+import androidx.compose.ui.platform.LocalContext
+
+import androidx.compose.ui.text.font.FontWeight
+
+import androidx.compose.ui.text.style.TextOverflow
+
+import androidx.compose.ui.unit.dp
+
+import androidx.compose.ui.unit.sp
+
+import androidx.lifecycle.viewmodel.compose.viewModel
+
+import com.cardovia.merkon.app.ui.dashboard.DashboardMetrics
+
+import com.cardovia.merkon.app.ui.dashboard.DashboardUiState
+
+import com.cardovia.merkon.app.ui.dashboard.DashboardViewModel
+
+import com.cardovia.merkon.app.ui.dashboard.DateRangeOption
+
+import com.cardovia.merkon.app.data.model.HistoricalOrderSummaryDto
+
+import kotlinx.coroutines.launch
+import com.cardovia.merkon.app.data.local.providePrintManager
+import com.cardovia.merkon.app.data.local.providePrintJobRepository
+
+
+import java.time.format.DateTimeFormatter
+
+import java.time.ZoneId
+
+
+
+private val ColorPrimary   = Color(0xFF7C4DFF)
+
+private val ColorAccent    = Color(0xFFFF6D00)
+
+private val ColorSuccess   = Color(0xFF00C853)
+
+private val ColorInfo      = Color(0xFF00B0FF)
+
+private val ColorError     = Color(0xFFD32F2F)
+
+
+
+@Composable
+
+fun DashboardScreen(
+
+    dashboardViewModel: DashboardViewModel = run {
+
+        val context = LocalContext.current
+
+        viewModel(factory = DashboardViewModel.factory(context))
+
+    }
+
+) {
+
+    val context = LocalContext.current
+    val printManager = androidx.compose.runtime.remember { providePrintManager(context) }
+    val printJobRepository = androidx.compose.runtime.remember { providePrintJobRepository(context) }
+
+    val uiState by dashboardViewModel.uiState.collectAsState()
+    val detailState by dashboardViewModel.detailState.collectAsState()
+
+
+
+    when (val state = uiState) {
+
+        is DashboardUiState.Loading -> {
+
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+                CircularProgressIndicator()
+
+            }
+
+        }
+
+        is DashboardUiState.Error -> {
+
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+
+                    Text("Error al cargar el dashboard", color = MaterialTheme.colorScheme.error)
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(state.message)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Button(onClick = { dashboardViewModel.refresh() }) {
+
+                        Text("Reintentar")
+
+                    }
+
+                }
+
+            }
+
+        }
+
+        is DashboardUiState.Content -> {
+
+            DashboardContent(
+
+                printManager = printManager,
+                printJobRepository = printJobRepository,
+                state = state,
+
+                onDateRangeSelected = { dashboardViewModel.setDateRange(it) },
+
+                onLoadMore = { dashboardViewModel.loadMore() },
+
+                onRefresh = { dashboardViewModel.refresh() },
+                                onViewDetail = { id -> dashboardViewModel.loadOrderDetail(id) }
+            )
+        }
+    }
+
+    if (detailState !is com.cardovia.merkon.app.ui.dashboard.OrderDetailState.Idle) {
+        OrderDetailDialog(
+            state = detailState,
+            onClose = {
+                dashboardViewModel.closeOrderDetail()
+            },
+            onRetry = {
+                val errorState = detailState as? com.cardovia.merkon.app.ui.dashboard.OrderDetailState.Error
+                if (errorState != null) {
+                    dashboardViewModel.loadOrderDetail(errorState.orderId)
+                }
+            }
+        )
+    }
+}
+
+
+
+@Composable
+
+private fun DashboardContent(
+    printManager: com.cardovia.merkon.app.PrintManager,
+    printJobRepository: com.cardovia.merkon.app.data.repository.IPrintJobRepository,
+
+    state: DashboardUiState.Content,
+
+    onDateRangeSelected: (DateRangeOption) -> Unit,
+
+    onLoadMore: () -> Unit,
+
+    onRefresh: () -> Unit,
+    onViewDetail: (Long) -> Unit
+) {
+
+    val metrics = state.metrics
+
+
+
+    LazyColumn(
+
+        modifier = Modifier
+
+            .fillMaxSize()
+
+            .background(MaterialTheme.colorScheme.background)
+
+            .padding(horizontal = 24.dp),
+
+        contentPadding = PaddingValues(vertical = 24.dp),
+
+        verticalArrangement = Arrangement.spacedBy(20.dp)
+
+    ) {
+
+        item {
+
+            Row(
+
+                modifier = Modifier.fillMaxWidth(),
+
+                horizontalArrangement = Arrangement.SpaceBetween,
+
+                verticalAlignment = Alignment.CenterVertically
+
+            ) {
+
+                Column {
+
+                    Text(
+
+                        text = "Dashboard",
+
+                        style = MaterialTheme.typography.headlineMedium,
+
+                        fontWeight = FontWeight.Bold
+
+                    )
+
+                    Text(
+
+                        text = "Vista de ventas históricas",
+
+                        style = MaterialTheme.typography.bodyMedium,
+
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                    )
+
+                }
+
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+
+                    if (metrics.activeOrderCount > 0) {
+
+                        Badge(containerColor = ColorAccent) {
+
+                            Text(
+
+                                text = "${metrics.activeOrderCount} activas",
+
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+
+                                style = MaterialTheme.typography.labelMedium
+
+                            )
+
+                        }
+
+                    }
+
+                    Button(onClick = onRefresh, enabled = !state.isRefreshing) {
+
+                        Text("Actualizar")
+
+                    }
+
+                }
+
+            }
+
+        }
+
+
+
+        item {
+
+            DateRangeSelector(state.dateRangeOption, onDateRangeSelected)
+
+        }
+
+
+
+        item {
+
+            Row(
+
+                modifier = Modifier.fillMaxWidth(),
+
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+
+            ) {
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Total (Completadas)",
+
+                    value = metrics.completedSalesTotal?.let { "${formatCurrency(it)}" } ?: "--",
+
+                    color = ColorSuccess
+
+                )
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Completadas",
+
+                    value = metrics.completedOrderCount?.toString() ?: "--",
+
+                    color = ColorPrimary
+
+                )
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Ticket promedio",
+
+                    value = metrics.averageCompletedTicket?.let { "${formatCurrency(it)}" } ?: "--",
+
+                    color = ColorInfo
+
+                )
+
+                KpiCard(
+
+                    modifier = Modifier.weight(1f),
+
+                    label = "Anuladas",
+
+                    value = metrics.voidedOrderCount?.toString() ?: "--",
+
+                    color = ColorError
+
+                )
+
+            }
+
+        }
+
+
+
+        item {
+
+            Row(
+
+                modifier = Modifier.fillMaxWidth(),
+
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+
+            ) {
+
+                SalesBySourceCard(
+
+                    salesBySource = metrics.salesBySource,
+
+                    modifier = Modifier.fillMaxWidth() // Takes full width since we removed ContractGapCard
+
+                )
+
+            }
+
+        }
+
+
+
+        item {
+
+            Text(
+
+                "Órdenes Históricas",
+
+                style = MaterialTheme.typography.titleLarge,
+
+                fontWeight = FontWeight.Bold,
+
+                modifier = Modifier.padding(top = 16.dp)
+
+            )
+
+        }
+
+
+
+        items(state.orders) { order ->
+            HistoricalOrderRow(
+                order = order,
+                printManager = printManager,
+                printJobRepository = printJobRepository,
+                onViewDetail = { id -> onViewDetail(id) }
+            )
+        }
+
+
+
+        if (state.paginationError != null) {
+
+            item {
+
+                Text(
+
+                    text = "Error al cargar más: ${state.paginationError}",
+
+                    color = MaterialTheme.colorScheme.error,
+
+                    modifier = Modifier.padding(vertical = 8.dp).fillMaxWidth(),
+
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+
+                )
+
+            }
+
+        }
+
+
+
+        if (state.hasMore) {
+
+            item {
+
+                Box(
+
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+
+                    contentAlignment = Alignment.Center
+
+                ) {
+
+                    if (state.isPaginating) {
+
+                        CircularProgressIndicator()
+
+                    } else {
+
+                        OutlinedButton(onClick = onLoadMore) {
+
+                            Text("Cargar más")
+
+                        }
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    }
+
+}
+
+
+
+@Composable
+
+private fun DateRangeSelector(
+
+    selected: DateRangeOption,
+
+    onSelect: (DateRangeOption) -> Unit
+
+) {
+
+    Row(
+
+        modifier = Modifier.fillMaxWidth(),
+
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+
+    ) {
+
+        val options = listOf(
+
+            DateRangeOption.TODAY to "Hoy",
+
+            DateRangeOption.LAST_7_DAYS to "Últimos 7 días",
+
+            DateRangeOption.LAST_30_DAYS to "Últimos 30 días"
+
+        )
+
+        options.forEach { (option, label) ->
+
+            FilterChip(
+
+                selected = selected == option,
+
+                onClick = { onSelect(option) },
+
+                label = { Text(label) }
+
+            )
+
+        }
+
+    }
+
+}
+
+
+
+@Composable
+
+private fun KpiCard(
+
+    modifier: Modifier,
+
+    label: String,
+
+    value: String,
+
+    color: Color
+
+) {
+
+    Card(
+
+        modifier = modifier,
+
+        shape = RoundedCornerShape(16.dp),
+
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+
+        elevation = CardDefaults.cardElevation(4.dp)
+
+    ) {
+
+        Column(
+
+            modifier = Modifier.padding(16.dp),
+
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+
+        ) {
+
+            Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+            Text(value, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = color)
+
+        }
+
+    }
+
+}
+
+
+
+@Composable
+
+private fun SalesBySourceCard(
+
+    salesBySource: List<Pair<String, java.math.BigDecimal>>?,
+
+    modifier: Modifier
+
+) {
+
+    Card(
+
+        modifier = modifier,
+
+        shape = RoundedCornerShape(16.dp),
+
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+
+        elevation = CardDefaults.cardElevation(4.dp)
+
+    ) {
+
+        Column(
+
+            modifier = Modifier.padding(20.dp),
+
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+
+        ) {
+
+            Text(
+
+                "Ventas por origen",
+
+                style = MaterialTheme.typography.titleMedium,
+
+                fontWeight = FontWeight.Bold
+
+            )
+
+
+
+            if (salesBySource == null) {
+
+                Text(
+
+                    "Métrica no disponible",
+
+                    style = MaterialTheme.typography.bodyMedium,
+
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                )
+
+            } else if (salesBySource.isEmpty()) {
+
+                Text(
+
+                    "Sin órdenes en el periodo",
+
+                    style = MaterialTheme.typography.bodyMedium,
+
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                )
+
+            } else {
+
+                val maxRevenue = salesBySource.firstOrNull()?.second?.toFloat() ?: 1f
+
+                val safeMax = if (maxRevenue <= 0f) 1f else maxRevenue
+
+                salesBySource.forEach { (source, revenue) ->
+
+                    val ratio = (revenue.toFloat() / safeMax).coerceIn(0f, 1f)
+
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+
+                        Row(
+
+                            modifier = Modifier.fillMaxWidth(),
+
+                            horizontalArrangement = Arrangement.SpaceBetween,
+
+                            verticalAlignment = Alignment.CenterVertically
+
+                        ) {
+
+                            Text(
+
+                                text = source,
+
+                                style = MaterialTheme.typography.bodyMedium,
+
+                                fontWeight = FontWeight.Medium
+
+                            )
+
+                            Text(
+
+                                text = "${formatCurrency(revenue)}",
+
+                                style = MaterialTheme.typography.bodyMedium,
+
+                                fontWeight = FontWeight.Bold,
+
+                                color = ColorPrimary
+
+                            )
+
+                        }
+
+                        LinearProgressIndicator(
+
+                            progress = { ratio },
+
+                            modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)),
+
+                            color = ColorPrimary,
+
+                            trackColor = MaterialTheme.colorScheme.surfaceVariant
+
+                        )
+
+                    }
+
+                }
+
+            }
+
+        }
+
+    }
+
+}
+
+
+
+@Composable
+private fun HistoricalOrderRow(
+    order: HistoricalOrderSummaryDto,
+    printManager: com.cardovia.merkon.app.PrintManager,
+    printJobRepository: com.cardovia.merkon.app.data.repository.IPrintJobRepository,
+    onViewDetail: (Long) -> Unit
+) {
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm").withZone(ZoneId.of("America/Mexico_City")) }
+    val formattedDate = order.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
+
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    var orchestrationError by remember { mutableStateOf<String?>(null) }
+    var orchestrationInfo by remember { mutableStateOf<String?>(null) }
+
+    val coroutineScope = rememberCoroutineScope()
+    val requireBluetoothPermission = com.cardovia.merkon.app.ui.util.rememberBluetoothPermissionGateway()
+
+    val jobState by printJobRepository.observeJobByDocument(com.cardovia.merkon.app.data.model.PrintDocumentType.ORDER, order.id).collectAsState(initial = null)
+    val jobId = jobState?.id
+
+    val attempts by (if (jobId != null) printJobRepository.observeAttemptsForJob(jobId) else kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
+    val activeAttempt = attempts.firstOrNull { it.id == jobState?.activeAttemptId }
+    val latestReprint = DashboardAttemptSelector.latestReprintAttempt(attempts)
+
+    val isReprinting = activeAttempt?.type == com.cardovia.merkon.app.data.model.PrintAttemptType.REPRINT
+    val isOriginalPrinting = activeAttempt?.type == com.cardovia.merkon.app.data.model.PrintAttemptType.ORIGINAL
+    val isOriginalRetry = activeAttempt?.type == com.cardovia.merkon.app.data.model.PrintAttemptType.RETRY
+
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("Reimprimir ticket") },
+            text = { Text("Orden #${order.id} - Reimprimir ticket?") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showConfirmDialog = false
+                    requireBluetoothPermission {
+                        coroutineScope.launch {
+                            val result = printManager.reprintOrder(order.id)
+                            when (result) {
+                                is com.cardovia.merkon.app.ReprintStartResult.Error -> orchestrationError = result.message
+                                is com.cardovia.merkon.app.ReprintStartResult.AlreadyProcessing -> orchestrationInfo = "La reimpresión ya está en proceso."
+                                is com.cardovia.merkon.app.ReprintStartResult.RetryingOriginal -> orchestrationInfo = "Reintentando impresión original..."
+                                else -> {}
+                            }
+                        }
+                    }
+                }) {
+                    Text("Confirmar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDialog = false }) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+
+    if (orchestrationError != null) {
+        AlertDialog(
+            onDismissRequest = { orchestrationError = null },
+            title = { Text("Error de orquestación") },
+            text = { Text(orchestrationError ?: "") },
+            confirmButton = {
+                TextButton(onClick = { orchestrationError = null }) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
+
+    if (orchestrationInfo != null) {
+        AlertDialog(
+            onDismissRequest = { orchestrationInfo = null },
+            title = { Text("Información") },
+            text = { Text(orchestrationInfo ?: "") },
+            confirmButton = {
+                TextButton(onClick = { orchestrationInfo = null }) {
+                    Text("Aceptar")
+                }
+            }
+        )
+    }
+
+    Card(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Orden #${order.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (order.externalOrderId != null) {
+                    Text("Ref Ext: ${order.externalOrderId}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(formattedDate, style = MaterialTheme.typography.bodyMedium)
+                Text("Origen: ${order.orderSource ?: "N/A"}", style = MaterialTheme.typography.bodySmall)
+
+                val currentState = jobState
+                if (currentState != null) {
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    if (isReprinting) {
+                        Text("Reimprimiendo...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (isOriginalPrinting) {
+                        Text("Impresión original en proceso", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (isOriginalRetry) {
+                        Text("Reintentando impresión original...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    } else if (latestReprint != null) {
+                        when (latestReprint.status) {
+                            com.cardovia.merkon.app.data.model.PrintAttemptStatus.SUCCEEDED -> {
+                                Text("Reimpresión completada", style = MaterialTheme.typography.labelSmall, color = ColorSuccess)
+                            }
+                            com.cardovia.merkon.app.data.model.PrintAttemptStatus.FAILED -> {
+                                Text("Error al reimprimir: ${latestReprint.error ?: "Desconocido"}", style = MaterialTheme.typography.labelSmall, color = ColorError)
+                            }
+                            com.cardovia.merkon.app.data.model.PrintAttemptStatus.INTERRUPTED -> {
+                                Text("La reimpresión fue interrumpida", style = MaterialTheme.typography.labelSmall, color = ColorError)
+                            }
+                            com.cardovia.merkon.app.data.model.PrintAttemptStatus.PRINTING -> {
+                                Text("Reimprimiendo...", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    } else {
+                        if (currentState.status == com.cardovia.merkon.app.data.model.PrintJobStatus.FAILED || currentState.status == com.cardovia.merkon.app.data.model.PrintJobStatus.INTERRUPTED) {
+                            Text("Impresión original fallida", style = MaterialTheme.typography.labelSmall, color = ColorError)
+                        } else if (currentState.status == com.cardovia.merkon.app.data.model.PrintJobStatus.REPRINT_READY) {
+                            Text("Listo para reimprimir", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else if (currentState.status == com.cardovia.merkon.app.data.model.PrintJobStatus.PRINTING || currentState.status == com.cardovia.merkon.app.data.model.PrintJobStatus.PENDING) {
+                            Text("Impresión original en proceso", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        } else {
+                            Text("Estado original: ${currentState.status}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                    }
+                }
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "${formatCurrency(order.total ?: java.math.BigDecimal.ZERO)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (order.status == "COMPLETED") ColorSuccess else MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Badge(containerColor = if (order.status == "COMPLETED") ColorSuccess else if (order.status == "VOIDED") ColorError else ColorPrimary) {
+                    Text(order.status, modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+
+                val btnText = if (jobState != null && latestReprint == null && (jobState!!.status == com.cardovia.merkon.app.data.model.PrintJobStatus.FAILED || jobState!!.status == com.cardovia.merkon.app.data.model.PrintJobStatus.INTERRUPTED)) {
+                    "Reintentar impresión"
+                } else {
+                    "Reimprimir"
+                }
+
+                val isBusy = jobState?.activeAttemptId != null
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    OutlinedButton(
+                        onClick = { onViewDetail(order.id) }
+                    ) {
+                        Text("Ver pedido")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    OutlinedButton(
+                        onClick = { showConfirmDialog = true },
+                        enabled = !isBusy
+                    ) {
+                        Text(btnText)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OrderDetailDialog(
+    state: com.cardovia.merkon.app.ui.dashboard.OrderDetailState,
+    onClose: () -> Unit,
+    onRetry: () -> Unit
+) {
+    androidx.compose.ui.window.Dialog(onDismissRequest = onClose) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surface,
+            modifier = Modifier.fillMaxWidth().fillMaxHeight(0.9f)
+        ) {
+            Column(modifier = Modifier.fillMaxSize()) {
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text("Detalle del Pedido", style = MaterialTheme.typography.titleLarge)
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Default.Close, contentDescription = "Cerrar")
+                    }
+                }
+                HorizontalDivider()
+
+                // Content
+                Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    when (state) {
+                        is com.cardovia.merkon.app.ui.dashboard.OrderDetailState.Loading -> {
+                            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                        }
+                        is com.cardovia.merkon.app.ui.dashboard.OrderDetailState.Error -> {
+                            Column(modifier = Modifier.align(Alignment.Center).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(state.message, color = MaterialTheme.colorScheme.error)
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Button(onClick = onRetry) {
+                                    Text("Reintentar")
+                                }
+                            }
+                        }
+                        is com.cardovia.merkon.app.ui.dashboard.OrderDetailState.Loaded -> {
+                            OrderDetailContent(state.detail)
+                        }
+                        else -> {}
+                    }
+                }
+
+                // Footer
+                HorizontalDivider()
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onClose) {
+                        Text("Cerrar")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun OrderDetailContent(detail: com.cardovia.merkon.app.data.model.OperationalOrderDetailDto) {
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd MMM yyyy, HH:mm").withZone(ZoneId.of("America/Mexico_City")) }
+    val dateStr = detail.createdAt?.let { dateFormatter.format(it) } ?: "Sin fecha"
+
+    LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp)) {
+        item {
+            Text("Orden #${detail.id}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text("Estado: ${detail.status}", style = MaterialTheme.typography.bodyMedium)
+            Text("Fecha: $dateStr", style = MaterialTheme.typography.bodyMedium)
+            detail.orderSource?.let { Text("Origen: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.fulfillmentType?.let { Text("Tipo: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.paymentMethod?.let { Text("Pago: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.pickupName?.takeIf { it.isNotBlank() }?.let { Text("Recoge: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.deliveryAddress?.takeIf { it.isNotBlank() }?.let { Text("Dirección: $it", style = MaterialTheme.typography.bodyMedium) }
+            detail.phoneNumber?.takeIf { it.isNotBlank() }?.let { Text("Teléfono: $it", style = MaterialTheme.typography.bodyMedium) }
+            Spacer(modifier = Modifier.height(8.dp))
+            HorizontalDivider()
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        if (detail.lines.isNotEmpty()) {
+            items(detail.lines) { line ->
+                Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("${line.quantity}x ${line.name}", fontWeight = FontWeight.Bold)
+                        Text(formatCurrency(line.finalLineTotal), fontWeight = FontWeight.Bold)
+                    }
+                    if (line.omittedComponents.isNotEmpty()) {
+                        line.omittedComponents.forEach { omission ->
+                            val text = if (!omission.detail.isNullOrBlank()) "${omission.displayName} (${omission.detail})" else omission.displayName
+                            Text("SIN: $text", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 16.dp))
+                        }
+                    }
+
+                    if (line.configuration.isNotEmpty()) {
+                        DashboardOrderConfigurationTree(configList = line.configuration, parentIds = listOf(null), indentLevel = 1)
+                    }
+                    if (!line.note.isNullOrBlank()) {
+                        Text("NOTA: ${line.note}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 16.dp))
+                    }
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                HorizontalDivider(color = Color.LightGray.copy(alpha = 0.5f))
+            }
+        } else if (!detail.legacyOrderDetails.isNullOrBlank()) {
+            item {
+                Text(detail.legacyOrderDetails, style = MaterialTheme.typography.bodyMedium)
+            }
+        } else {
+            item {
+                Text("No hay detalle disponible para esta orden.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+
+        item {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text("Total:", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(detail.total?.let { formatCurrency(it) } ?: "No disponible", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+fun DashboardOrderConfigurationTree(
+    configList: List<com.cardovia.merkon.app.data.model.OrderConfigurationSnapshotDto>,
+    parentIds: List<Long?>,
+    indentLevel: Int
+) {
+    val children = configList.filter { it.parentSelectionSnapshotId in parentIds }
+
+    children.forEach { child ->
+        if (child.displayOnTicket) {
+            val indent = 16.dp * indentLevel
+            Column(modifier = Modifier.fillMaxWidth().padding(start = indent, top = 2.dp, bottom = 2.dp)) {
+                Text("${child.quantity}x ${child.itemName}", style = MaterialTheme.typography.bodySmall)
+                if (child.omittedComponents.isNotEmpty()) {
+                    child.omittedComponents.forEach { omission ->
+                        val text = if (!omission.detail.isNullOrBlank()) "${omission.displayName} (${omission.detail})" else omission.displayName
+                        Text("SIN: $text", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(start = 8.dp))
+                    }
+                }
+                if (!child.note.isNullOrBlank()) {
+                    Text("NOTA: ${child.note}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(start = 8.dp))
+                }
+            }
+            DashboardOrderConfigurationTree(configList, listOf(child.id), indentLevel + 1)
+        } else {
+            DashboardOrderConfigurationTree(configList, listOf(child.id), indentLevel)
+        }
+    }
+}

@@ -1,0 +1,144 @@
+package com.cardovia.merkon.app.data.repository
+
+import android.content.Context
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+import com.cardovia.merkon.app.data.model.CatalogTagDto
+import com.cardovia.merkon.app.data.model.MenuItem
+import com.cardovia.merkon.app.data.model.QuoteRequestDto
+import com.cardovia.merkon.app.data.model.QuoteResponseDto
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+
+/**
+ * Implementación mock de [IMenuRepository] basada en `assets/menu.json`.
+ *
+ * Ya no es la implementación de producción — esa es [RoomMenuRepository].
+ * Esta clase se conserva como referencia y para tests de integración que
+ * no quieran levantar Room.
+ *
+ * Los métodos CRUD ([saveProduct], [setActive]) son no-operativos (no-op)
+ * porque el JSON es de solo lectura. Para CRUD real usar [RoomMenuRepository].
+ */
+class MockMenuRepository(private val context: Context) : IMenuRepository {
+
+    private val gson = Gson()
+    private var cachedProducts: List<MenuItem>? = null
+
+    // ── Lectura reactiva ─────────────────────────────────────────────────────
+
+    override fun observeAll(): Flow<List<MenuItem>> =
+        flowOf(cachedProducts ?: emptyList())
+
+    override fun observeActive(): Flow<List<MenuItem>> =
+        flowOf(cachedProducts ?: emptyList())
+
+    override fun observeActiveCategories(): Flow<List<String>> = observeActive().map { list ->
+        list.map { it.categoria }.distinct().sorted()
+    }
+
+    override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {
+        // No-op for mock
+    }
+
+    // ── Lectura puntual ──────────────────────────────────────────────────────
+
+    override suspend fun getProducts(): List<MenuItem> = withContext(Dispatchers.IO) {
+        cachedProducts ?: loadFromAssets().also { cachedProducts = it }
+    }
+
+    override suspend fun getCategories(): List<String> =
+        getProducts().map { it.categoria }.distinct().sorted()
+
+    // ── Escritura (no-op — JSON es de solo lectura) ──────────────────────────
+
+    @android.annotation.SuppressLint("NewApi")
+    override suspend fun createProduct(request: com.cardovia.merkon.app.data.model.MenuItemCreateRequestDto): com.cardovia.merkon.app.data.model.MenuItemResponse {
+        return com.cardovia.merkon.app.data.model.MenuItemResponse(
+            id = 1L, name = request.name, description = request.description, category = request.category,
+            price = request.price,            active = true, available = request.available, standaloneOrderable = request.standaloneOrderable,
+            requiresConfiguration = false, pricingMode = com.cardovia.merkon.app.data.model.ItemPricingMode.BASE_PLUS_ADJUSTMENTS,
+            displayOrder = request.displayOrder,
+            tags = emptyList(), version = 1L, createdAt = java.time.Instant.now(), updatedAt = java.time.Instant.now()
+        )
+    }
+
+    @android.annotation.SuppressLint("NewApi")
+    override suspend fun updateProduct(id: Long, request: com.cardovia.merkon.app.data.model.MenuItemUpdateRequestDto): com.cardovia.merkon.app.data.model.MenuItemResponse {
+        return com.cardovia.merkon.app.data.model.MenuItemResponse(
+            id = id, name = request.name, description = request.description, category = request.category,
+            price = request.price,            active = request.active, available = request.available, standaloneOrderable = request.standaloneOrderable,
+            requiresConfiguration = false, pricingMode = com.cardovia.merkon.app.data.model.ItemPricingMode.BASE_PLUS_ADJUSTMENTS,
+            displayOrder = request.displayOrder,
+            tags = emptyList(), version = request.version, createdAt = java.time.Instant.now(), updatedAt = java.time.Instant.now()
+        )
+    }
+
+    override suspend fun deleteProduct(id: Long) { /* no-op */ }
+
+    override suspend fun setActive(id: Long, activo: Boolean) { /* no-op */ }
+
+    override suspend fun getConfiguration(menuItemId: Long): com.cardovia.merkon.app.data.model.ConfigurationResponseDto {
+        return com.cardovia.merkon.app.data.model.ConfigurationResponseDto(
+            menuItemId = menuItemId,
+            name = "Producto Simple",
+            standaloneOrderable = true,
+            basePrice = java.math.BigDecimal.ZERO,
+            requiresConfiguration = false
+        )
+    }
+
+    override suspend fun quoteItem(menuItemId: Long, request: com.cardovia.merkon.app.data.model.ItemQuoteRequestDto): com.cardovia.merkon.app.data.model.ItemQuoteResponseDto {
+        return com.cardovia.merkon.app.data.model.ItemQuoteResponseDto(
+            menuItemId = menuItemId,
+            name = "Item",
+            quantity = request.quantity,
+            baseUnitPrice = java.math.BigDecimal.ZERO,
+            baseTotal = java.math.BigDecimal.ZERO,
+            unitAdjustmentTotal = java.math.BigDecimal.ZERO,
+            unitTotal = java.math.BigDecimal.ZERO,
+            total = java.math.BigDecimal.ZERO
+        )
+    }
+
+    override suspend fun getTags(): List<com.cardovia.merkon.app.data.model.CatalogTagDto> {
+        return listOf(
+            com.cardovia.merkon.app.data.model.CatalogTagDto(1L, "ROLL", "Rollo", true, 1, 1L)
+        )
+    }
+
+    override suspend fun createTag(tag: com.cardovia.merkon.app.data.model.TagCreateRequestDto): com.cardovia.merkon.app.data.model.CatalogTagDto {
+        return com.cardovia.merkon.app.data.model.CatalogTagDto(1L, tag.code, tag.name, true, tag.displayOrder, 1L)
+    }
+
+    override suspend fun updateTag(id: Long, tag: com.cardovia.merkon.app.data.model.TagUpdateRequestDto): com.cardovia.merkon.app.data.model.CatalogTagDto {
+        return com.cardovia.merkon.app.data.model.CatalogTagDto(id, "CODE", tag.name, tag.active, tag.displayOrder, tag.version)
+    }
+
+    override suspend fun deleteTag(id: Long) { /* no-op */ }
+
+    // ── Privado ──────────────────────────────────────────────────────────────
+
+    private fun loadFromAssets(): List<MenuItem> {
+        val json = context.assets
+            .open("menu.json")
+            .bufferedReader()
+            .use { it.readText() }
+        val type = object : TypeToken<List<MenuItem>>() {}.type
+        return gson.fromJson(json, type)
+    }
+
+    override suspend fun getMenuItemComponents(menuItemId: Long): List<com.cardovia.merkon.app.data.model.DefaultComponentResponse> = emptyList()
+
+    override suspend fun getMenuItemConfigurationDefinitionResponse(id: Long): com.cardovia.merkon.app.data.model.MenuItemConfigurationDefinitionResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun createSelectionGroup(itemId: Long, request: com.cardovia.merkon.app.data.model.CreateMenuSelectionGroupRequest): com.cardovia.merkon.app.data.model.MenuSelectionGroupResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun updateSelectionGroup(itemId: Long, groupId: Long, request: com.cardovia.merkon.app.data.model.UpdateMenuSelectionGroupRequest): com.cardovia.merkon.app.data.model.MenuSelectionGroupResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun deleteSelectionGroup(itemId: Long, groupId: Long) = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun createSelectionRule(groupId: Long, request: com.cardovia.merkon.app.data.model.CreateMenuSelectionRuleRequest): com.cardovia.merkon.app.data.model.MenuSelectionRuleResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun updateSelectionRule(groupId: Long, ruleId: Long, request: com.cardovia.merkon.app.data.model.UpdateMenuSelectionRuleRequest): com.cardovia.merkon.app.data.model.MenuSelectionRuleResponse = throw UnsupportedOperationException("Admin operations not supported in this repository")
+    override suspend fun deleteSelectionRule(groupId: Long, ruleId: Long) = throw UnsupportedOperationException("Admin operations not supported in this repository")
+
+}
