@@ -5,13 +5,13 @@ plugins {
 }
 
 android {
-    namespace = "com.restaurant.sushimei.frontend"
+    namespace = "com.cardovia.merkon.app"
     compileSdk {
         version = release(37)
     }
 
     defaultConfig {
-        applicationId = "com.restaurant.sushimei.frontend"
+        applicationId = "com.cardovia.merkon.app"
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -27,23 +27,23 @@ android {
 
     buildTypes {
         debug {
-            var debugUrl = providers.gradleProperty("SUSHIMEI_DEBUG_BASE_URL").orNull ?: "http://10.0.2.2:8080/"
+            var debugUrl = providers.gradleProperty("MERKON_DEBUG_BASE_URL").orNull ?: providers.gradleProperty("SUSHIMEI_DEBUG_BASE_URL").orNull ?: "http://10.0.2.2:8080/"
             if (!debugUrl.endsWith("/")) {
                 debugUrl += "/"
             }
             buildConfigField("String", "BASE_URL", "\"${debugUrl}\"")
         }
         release {
-            val releaseUrl = providers.gradleProperty("SUSHIMEI_BASE_URL").orNull
+            val releaseUrl = providers.gradleProperty("MERKON_BASE_URL").orNull ?: providers.gradleProperty("SUSHIMEI_BASE_URL").orNull
             val isReleaseBuild = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
             if (isReleaseBuild && releaseUrl == null) {
-                throw GradleException("SUSHIMEI_BASE_URL property is required for release builds.")
+                throw GradleException("MERKON_BASE_URL (or SUSHIMEI_BASE_URL) property is required for release builds.")
             }
             if (releaseUrl != null && !releaseUrl.startsWith("https://")) {
-                throw GradleException("SUSHIMEI_BASE_URL must use https:// for release builds.")
+                throw GradleException("MERKON_BASE_URL (or SUSHIMEI_BASE_URL) must use https:// for release builds.")
             }
             if (releaseUrl != null && (releaseUrl.contains("localhost") || releaseUrl.contains("10.0.2.2") || releaseUrl.contains("127.0.0.1"))) {
-                throw GradleException("SUSHIMEI_BASE_URL cannot use local development addresses in release builds.")
+                throw GradleException("MERKON_BASE_URL (or SUSHIMEI_BASE_URL) cannot use local development addresses in release builds.")
             }
             buildConfigField("String", "BASE_URL", "\"${releaseUrl ?: "https://api.invalid"}\"")
             optimization {

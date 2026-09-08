@@ -1,0 +1,190 @@
+package com.cardovia.merkon.app.data.repository
+
+import com.cardovia.merkon.app.data.api.MerkonApi
+import com.cardovia.merkon.app.data.model.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+
+class RemoteMenuRepository(
+    private val api: MerkonApi
+) : IMenuRepository {
+
+    private val allProductsFlow = MutableStateFlow<List<MenuItem>>(emptyList())
+
+    override fun observeAll(): Flow<List<MenuItem>> = allProductsFlow.asStateFlow()
+
+    override fun observeActive(): Flow<List<MenuItem>> = allProductsFlow.map { list ->
+        list.filter { it.activo }
+    }
+
+    override fun observeActiveCategories(): Flow<List<String>> = observeActive().map { list ->
+        list.map { it.categoria }.distinct().sorted()
+    }
+
+        override suspend fun refreshCatalog(standaloneOnly: Boolean?, includeInactive: Boolean) {
+        val response = api.getMenuItems(standaloneOnly = standaloneOnly, includeInactive = includeInactive)
+        if (response.isSuccessful) {
+            val items = response.body()?.map { it.toDomain() } ?: emptyList()
+            allProductsFlow.value = items
+        } else {
+            throw Exception("HTTP ${response.code()}: ${response.message()}")
+        }
+    }
+
+    override suspend fun getProducts(): List<MenuItem> {
+        refreshCatalog(standaloneOnly = null)
+        return allProductsFlow.value
+    }
+
+    override suspend fun getCategories(): List<String> {
+        return getProducts().map { it.categoria }.distinct().sorted()
+    }
+
+    override suspend fun createProduct(request: MenuItemCreateRequestDto): MenuItemResponse {
+        val response = api.createMenuItem(request)
+        if (response.isSuccessful) {
+            val body = response.body() ?: throw Exception("Create product body null")
+            val newDomain = body.toDomain()
+            allProductsFlow.value = allProductsFlow.value + newDomain
+            return body
+        } else {
+            throw Exception("HTTP ${response.code()}: ${response.message()}")
+        }
+    }
+
+    override suspend fun updateProduct(id: Long, request: MenuItemUpdateRequestDto): MenuItemResponse {
+        val response = api.updateMenuItem(id, request)
+        if (response.isSuccessful) {
+            val body = response.body() ?: throw Exception("Update product body null")
+            val updatedDomain = body.toDomain()
+            allProductsFlow.value = allProductsFlow.value.map { if (it.id == id) updatedDomain else it }
+            return body
+        } else if (response.code() == 409) {
+            throw Exception("VERSION_CONFLICT")
+        } else {
+            throw Exception("HTTP ${response.code()}: ${response.message()}")
+        }
+    }
+
+    override suspend fun deleteProduct(id: Long) {
+        val response = api.deleteMenuItem(id)
+        if (response.isSuccessful) {
+            getProducts() // Refresh catalog
+        } else {
+            throw Exception("HTTP ${response.code()}: ${response.message()}")
+        }
+    }
+
+    override suspend fun setActive(id: Long, activo: Boolean) {
+        // Obtenemos el producto actual para actualizar su estado (esto requeriría saber su version actual)
+        // Por ahora, dejamos esto como una operación no soportada directamente a menos que pasemos la version.
+        throw UnsupportedOperationException("Usar updateProduct enviando todo el MenuItemUpdateRequestDto.")
+    }
+
+    override suspend fun getConfiguration(menuItemId: Long): ConfigurationResponseDto {
+        val response = api.getMenuItemConfiguration(menuItemId)
+        if (response.isSuccessful) {
+            return response.body() ?: throw Exception("Configuration body null")
+        } else if (response.code() == 404) {
+            throw Exception("MENU_ITEM_NOT_FOUND")
+        } else {
+            throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
+        }
+    }
+
+    override suspend fun quoteItem(menuItemId: Long, request: ItemQuoteRequestDto): ItemQuoteResponseDto {
+        val response = api.quoteMenuItem(menuItemId, request)
+        if (response.isSuccessful) {
+            return response.body() ?: throw Exception("Quote response body null")
+        } else {
+            throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
+        }
+    }
+
+    override suspend fun getTags(): List<CatalogTagDto> {
+        val response = api.getTags(includeInactive = true)
+        if (response.isSuccessful) {
+            return response.body() ?: emptyList()
+        } else {
+            throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
+        }
+    }
+
+    override suspend fun createTag(tag: TagCreateRequestDto): CatalogTagDto {
+        val response = api.createTag(tag)
+        if (response.isSuccessful) {
+            return response.body() ?: throw Exception("Create tag body null")
+        } else {
+            throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
+        }
+    }
+
+    override suspend fun updateTag(id: Long, tag: TagUpdateRequestDto): CatalogTagDto {
+        val response = api.updateTag(id, tag)
+        if (response.isSuccessful) {
+            return response.body() ?: throw Exception("Update tag body null")
+        } else if (response.code() == 409) {
+            throw Exception("VERSION_CONFLICT")
+        } else {
+            throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
+        }
+    }
+
+    override suspend fun deleteTag(id: Long) {
+        val response = api.deleteTag(id)
+        if (!response.isSuccessful) {
+            throw Exception("Error ${response.code()}: ${response.errorBody()?.string()}")
+        }
+    }
+
+    override suspend fun getMenuItemComponents(menuItemId: Long): List<com.cardovia.merkon.app.data.model.DefaultComponentResponse> {
+        val response = api.getMenuItemComponents(menuItemId)
+        if (response.isSuccessful) {
+            return response.body() ?: emptyList()
+        } else {
+            throw Exception("Error : ")
+        }
+    }
+
+    override suspend fun getMenuItemConfigurationDefinitionResponse(id: Long): com.cardovia.merkon.app.data.model.MenuItemConfigurationDefinitionResponse {
+        val response = api.getMenuItemConfigurationDefinitionResponse(id)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun createSelectionGroup(itemId: Long, request: com.cardovia.merkon.app.data.model.CreateMenuSelectionGroupRequest): com.cardovia.merkon.app.data.model.MenuSelectionGroupResponse {
+        val response = api.createSelectionGroup(itemId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun updateSelectionGroup(itemId: Long, groupId: Long, request: com.cardovia.merkon.app.data.model.UpdateMenuSelectionGroupRequest): com.cardovia.merkon.app.data.model.MenuSelectionGroupResponse {
+        val response = api.updateSelectionGroup(itemId, groupId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun deleteSelectionGroup(itemId: Long, groupId: Long) {
+        val response = api.deleteSelectionGroup(itemId, groupId)
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun createSelectionRule(groupId: Long, request: com.cardovia.merkon.app.data.model.CreateMenuSelectionRuleRequest): com.cardovia.merkon.app.data.model.MenuSelectionRuleResponse {
+        val response = api.createSelectionRule(groupId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun updateSelectionRule(groupId: Long, ruleId: Long, request: com.cardovia.merkon.app.data.model.UpdateMenuSelectionRuleRequest): com.cardovia.merkon.app.data.model.MenuSelectionRuleResponse {
+        val response = api.updateSelectionRule(groupId, ruleId, request)
+        if (response.isSuccessful) return response.body()!!
+        throw retrofit2.HttpException(response)
+    }
+
+    override suspend fun deleteSelectionRule(groupId: Long, ruleId: Long) {
+        val response = api.deleteSelectionRule(groupId, ruleId)
+        if (!response.isSuccessful) throw retrofit2.HttpException(response)
+    }
+}

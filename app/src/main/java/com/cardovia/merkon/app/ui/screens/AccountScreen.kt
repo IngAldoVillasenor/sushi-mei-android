@@ -1,0 +1,92 @@
+package com.cardovia.merkon.app.ui.screens
+
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.cardovia.merkon.app.data.model.AuthenticatedUserDto
+import com.cardovia.merkon.app.data.repository.AuthRepository
+import com.cardovia.merkon.app.data.api.NetworkModule
+import kotlinx.coroutines.launch
+
+@Composable
+fun AccountScreen(
+    authRepository: AuthRepository,
+    user: AuthenticatedUserDto,
+    onNavigateToChangePassword: () -> Unit,
+    onNavigateToSessions: () -> Unit,
+    onNavigateToBusinessDay: () -> Unit
+) {
+    val coroutineScope = rememberCoroutineScope()
+    var isLoggingOut by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Text("Mi Cuenta", style = MaterialTheme.typography.headlineMedium)
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text("Nombre: ${user.displayName}", style = MaterialTheme.typography.bodyLarge)
+                Text("Usuario: ${user.username}", style = MaterialTheme.typography.bodyLarge)
+                Text("Rol: ${user.role}", style = MaterialTheme.typography.bodyLarge)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+        Button(
+            onClick = onNavigateToChangePassword,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Cambiar Contraseña")
+        }
+
+        Button(
+            onClick = onNavigateToSessions,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+        ) {
+            Text("Mis Sesiones")
+        }
+
+        if (user.role == com.cardovia.merkon.app.data.model.ApplicationRole.OWNER || user.role == com.cardovia.merkon.app.data.model.ApplicationRole.MANAGER) {
+            Spacer(modifier = Modifier.height(24.dp))
+            Button(
+                onClick = onNavigateToBusinessDay,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                Text("Gestión de Día")
+            }
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = {
+                isLoggingOut = true
+                coroutineScope.launch {
+                    authRepository.logout(NetworkModule.merkonApi)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+            enabled = !isLoggingOut
+        ) {
+            if (isLoggingOut) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(24.dp),
+                    color = MaterialTheme.colorScheme.onError,
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("Cerrar Sesión")
+            }
+        }
+    }
+}

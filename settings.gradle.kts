@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Sushi Mei"
+rootProject.name = "MerkON"
 include(":app")
