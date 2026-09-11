@@ -26,6 +26,28 @@ import java.math.BigDecimal
 @OptIn(ExperimentalCoroutinesApi::class)
 class PosViewModelTest {
 
+    @Test
+    fun `products must be active, available, and standaloneOrderable to be visible`() = runTest {
+        val valid = MenuItem(1L, "Valid", "Cat", BigDecimal("10.0"), "D", "??", true, true, false, ItemPricingMode.BASE_PLUS_ADJUSTMENTS, emptyList(), true, 0, 0L)
+        val inactive = MenuItem(2L, "Inactive", "Cat", BigDecimal("10.0"), "D", "??", false, true, false, ItemPricingMode.BASE_PLUS_ADJUSTMENTS, emptyList(), true, 0, 0L)
+        val unavailable = MenuItem(3L, "Unavailable", "Cat", BigDecimal("10.0"), "D", "??", true, true, false, ItemPricingMode.BASE_PLUS_ADJUSTMENTS, emptyList(), false, 0, 0L)
+        val nonStandalone = MenuItem(4L, "NonStandalone", "Cat", BigDecimal("10.0"), "D", "??", true, false, false, ItemPricingMode.BASE_PLUS_ADJUSTMENTS, emptyList(), true, 0, 0L)
+
+        val freshMenuRepo = io.mockk.mockk<IMenuRepository>(relaxed = true)
+        coEvery { freshMenuRepo.observeActive() } returns flowOf(listOf(valid, inactive, unavailable, nonStandalone))
+        coEvery { freshMenuRepo.observeActiveCategories() } returns flowOf(emptyList())
+        coEvery { freshMenuRepo.refreshCatalog(any(), any()) } returns Unit
+
+        viewModel = PosViewModel(freshMenuRepo, manualPosOrderRepository, promotionRepository, printManager, printJobRepository, operationalOrderRepository)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value as PosUiState.Success
+        val visibleProducts = state.allProducts
+        assertEquals(1, visibleProducts.size)
+        assertEquals("Valid", visibleProducts[0].nombre)
+    }
+
+
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var menuRepository: IMenuRepository
     private lateinit var manualPosOrderRepository: IManualPosOrderRepository
@@ -65,7 +87,7 @@ class PosViewModelTest {
 
         coEvery { menuRepository.observeActiveCategories() } returns flowOf(listOf("Rolls"))
         coEvery { menuRepository.observeActive() } returns flowOf(listOf(catalogItemSimple, catalogItemConfigurable))
-        coEvery { menuRepository.refreshCatalog(any()) } returns Unit
+        coEvery { menuRepository.refreshCatalog(any(), any()) } returns Unit
         coEvery { promotionRepository.getActivePromotions() } returns emptyList()
         coEvery { promotionRepository.quoteCart(any()) } returns OrderPricingPreview(
             subtotal = BigDecimal.ZERO,

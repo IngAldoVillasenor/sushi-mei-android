@@ -32,6 +32,10 @@ android {
                 debugUrl += "/"
             }
             buildConfigField("String", "BASE_URL", "\"${debugUrl}\"")
+
+            val debugHost = providers.gradleProperty("MERKON_VERIFICATION_HOST").orNull ?: "verification.local"
+            manifestPlaceholders["verificationHost"] = debugHost
+            buildConfigField("String", "VERIFICATION_HOST", "\"${debugHost}\"")
         }
         release {
             val releaseUrl = providers.gradleProperty("MERKON_BASE_URL").orNull ?: providers.gradleProperty("SUSHIMEI_BASE_URL").orNull
@@ -46,6 +50,41 @@ android {
                 throw GradleException("MERKON_BASE_URL (or SUSHIMEI_BASE_URL) cannot use local development addresses in release builds.")
             }
             buildConfigField("String", "BASE_URL", "\"${releaseUrl ?: "https://api.invalid"}\"")
+
+            val releaseHostRaw = providers.gradleProperty("MERKON_VERIFICATION_HOST").orNull
+            if (isReleaseBuild && releaseHostRaw == null) {
+                throw GradleException("MERKON_VERIFICATION_HOST property is required for release builds.")
+            }
+            if (isReleaseBuild && releaseHostRaw != null) {
+                if (releaseHostRaw.isBlank()) throw GradleException("MERKON_VERIFICATION_HOST cannot be blank.")
+                if (releaseHostRaw != releaseHostRaw.trim()) throw GradleException("MERKON_VERIFICATION_HOST cannot contain leading or trailing whitespace.")
+                val releaseHost = releaseHostRaw.lowercase()
+                if (releaseHost.any { it <= ' ' }) throw GradleException("MERKON_VERIFICATION_HOST cannot contain whitespace or control characters.")
+                if (releaseHost.contains("://") || releaseHost.contains("/") || releaseHost.contains(":") || releaseHost.contains("?") || releaseHost.contains("#") || releaseHost.contains("@")) {
+                    throw GradleException("MERKON_VERIFICATION_HOST must be a plain ASCII hostname only, without scheme, port, path, query, fragment, or userinfo.")
+                }
+                if (!releaseHost.contains(".")) {
+                    throw GradleException("MERKON_VERIFICATION_HOST must be a multi-label hostname in release builds.")
+                }
+                if (releaseHost.matches(Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"))) {
+                    throw GradleException("MERKON_VERIFICATION_HOST cannot be an IP address in release builds.")
+                }
+                val localSuffixes = listOf(".localhost", ".local", ".invalid", ".test", ".example")
+                if (localSuffixes.any { releaseHost.endsWith(it) }) {
+                    throw GradleException("MERKON_VERIFICATION_HOST cannot use reserved/local development DNS suffixes in release builds.")
+                }
+                val labels = releaseHost.split(".")
+                if (labels.size < 2) throw GradleException("MERKON_VERIFICATION_HOST must contain at least one dot (a valid TLD).")
+                for (label in labels) {
+                    if (label.isEmpty()) throw GradleException("MERKON_VERIFICATION_HOST cannot contain empty DNS labels.")
+                    if (label.startsWith("-") || label.endsWith("-")) throw GradleException("MERKON_VERIFICATION_HOST DNS labels cannot start or end with a hyphen.")
+                    if (!label.matches(Regex("^[a-z0-9-]+$"))) throw GradleException("MERKON_VERIFICATION_HOST DNS labels must contain only alphanumeric characters and hyphens.")
+                }
+            }
+            val safeReleaseHost = releaseHostRaw ?: "verification.invalid"
+            manifestPlaceholders["verificationHost"] = safeReleaseHost
+            buildConfigField("String", "VERIFICATION_HOST", "\"${safeReleaseHost}\"")
+
             optimization {
                 enable = false
             }

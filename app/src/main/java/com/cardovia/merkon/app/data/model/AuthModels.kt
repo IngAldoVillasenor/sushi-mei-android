@@ -73,3 +73,27 @@ data class UserResetPasswordRequestDto(
     val newPassword: String,
     val version: Long
 )
+
+// ============================================================================
+// Public Registration & Verification
+// ============================================================================
+
+data class RegistrationRequestDto(
+    val email: String,
+    val displayName: String,
+    val password: String,
+    val businessName: String,
+    val termsAccepted: Boolean
+)
+
+data class GenericMessageResponseDto(
+    val message: String
+)
+
+data class VerifyEmailRequestDto(
+    val token: String
+)
+
+data class ResendVerificationRequestDto(
+    val email: String
+)
