@@ -50,10 +50,10 @@ class PendingVerificationViewModel(
         errorMessage = null
         successMessage = null
         isVerified = false
-        
+
         val capturedInput = rawInput
         tokenInput = ""
-        
+
         try {
             val token = VerificationTokenParser.parse(capturedInput, BuildConfig.VERIFICATION_HOST)
             if (token == null) {
@@ -62,7 +62,7 @@ class PendingVerificationViewModel(
             }
 
             val response = api.verifyEmail(VerifyEmailRequestDto(token))
-            
+
             if (response.isSuccessful && response.code() == 200) {
                 isVerified = true
             } else {
@@ -303,7 +303,7 @@ fun PendingVerificationScreen(
                     ) {
                         Text("Reenviar correo")
                     }
-                    
+
                     TextButton(
                         onClick = {
                             viewModel.reset()

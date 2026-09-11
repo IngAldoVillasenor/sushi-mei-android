@@ -44,14 +44,14 @@ class RegistrationViewModel(
             if (password.isEmpty()) return false
             val length = password.codePointCount(0, password.length)
             if (length !in 15..128) return false
-            
+
             val normPass = Normalizer.normalize(password, Normalizer.Form.NFKC).lowercase()
             val normEmail = Normalizer.normalize(email.trim(), Normalizer.Form.NFKC).lowercase()
-            
+
             // Check for obvious patterns
             if (normEmail.isNotBlank() && normPass.contains(normEmail)) return false
             if (normPass.contains("merkon") || normPass.contains("sushimei") || normPass.contains("sushi mei")) return false
-            
+
             return true
         }
 
@@ -82,7 +82,7 @@ class RegistrationViewModel(
                     termsAccepted = termsAccepted
                 )
             )
-            
+
             if (response.isSuccessful && response.code() == 202) {
                 clearSecrets()
                 return true

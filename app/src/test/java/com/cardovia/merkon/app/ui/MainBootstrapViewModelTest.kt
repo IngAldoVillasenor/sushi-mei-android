@@ -42,9 +42,9 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.OWNER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
-        
+
         assertEquals(BootstrapState.Empty, viewModel.bootstrapState)
     }
 
@@ -55,9 +55,9 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.OWNER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
-        
+
         assertEquals(BootstrapState.Configured, viewModel.bootstrapState)
     }
 
@@ -68,9 +68,9 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.OWNER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
-        
+
         assertEquals(BootstrapState.Configured, viewModel.bootstrapState)
     }
 
@@ -80,9 +80,9 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.OWNER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
-        
+
         assertEquals(BootstrapState.Error, viewModel.bootstrapState)
     }
 
@@ -91,9 +91,9 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.CASHIER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
-        
+
         assertEquals(BootstrapState.NotRequired, viewModel.bootstrapState)
     }
 
@@ -107,12 +107,12 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.OWNER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
         assertEquals(BootstrapState.Error, viewModel.bootstrapState)
-        
+
         viewModel.retry()
-        
+
         assertEquals(BootstrapState.Empty, viewModel.bootstrapState)
     }
 
@@ -126,12 +126,12 @@ class MainBootstrapViewModelTest {
         val user = mockk<AuthenticatedUserDto>(relaxed = true) {
             io.mockk.every { role } returns ApplicationRole.OWNER
         }
-        
+
         val viewModel = MainBootstrapViewModel(menuRepo, user)
         assertEquals(BootstrapState.Error, viewModel.bootstrapState)
-        
+
         viewModel.retry()
-        
+
         assertEquals(BootstrapState.Configured, viewModel.bootstrapState)
     }
 }

@@ -58,7 +58,7 @@ class RegistrationViewModelTest {
         viewModel.password = "thisissushimei12345"
         assertFalse(viewModel.isPasswordValid)
     }
-    
+
     @Test
     fun isPasswordValid_containsEmail_returnsFalse() {
         val viewModel = RegistrationViewModel(api)
@@ -105,7 +105,7 @@ class RegistrationViewModelTest {
         viewModel.termsAccepted = true
 
         val result = viewModel.register()
-        
+
         assertTrue(result)
         assertEquals("", viewModel.password)
         assertEquals("", viewModel.confirmPassword)
@@ -116,20 +116,20 @@ class RegistrationViewModelTest {
         coEvery { api.register(any()) } throws ApiException("AUTH_PASSWORD_REJECTED", "Password rejected", 400, "123")
         val viewModel = RegistrationViewModel(api)
         viewModel.email = "test@test.com"
-        
+
         val result = viewModel.register()
-        
+
         assertFalse(result)
         assertEquals("La contraseña no cumple con los requisitos de seguridad.", viewModel.errorMessage)
     }
-    
+
     @Test
     fun register_rateLimited_setsErrorMessage() = runTest {
         coEvery { api.register(any()) } throws ApiException("RATE_LIMIT", "Rate limit", 429, "123")
         val viewModel = RegistrationViewModel(api)
-        
+
         val result = viewModel.register()
-        
+
         assertFalse(result)
         assertEquals("Demasiados intentos. Por favor, espera antes de intentar de nuevo.", viewModel.errorMessage)
     }

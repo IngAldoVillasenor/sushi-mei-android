@@ -56,7 +56,7 @@ class VerificationTokenParserTest {
         assertNull(VerificationTokenParser.parse(url, host))
         assertNull(VerificationTokenParser.parse(longToken, host))
     }
-    
+
     @Test
     fun parse_uriLookingUnsupportedScheme_returnsNull() {
         val url = "merkon://$host/verify-email?token=abc-123"

@@ -32,7 +32,7 @@ object VerificationTokenParser {
             val parts = it.split("=")
             parts[0] to if (parts.size > 1) parts[1] else ""
         }
-        
+
         val token = params["token"]
         if (token.isNullOrBlank()) return null
         if (token.length > 512) return null
