@@ -9,6 +9,10 @@ import com.cardovia.merkon.app.data.model.AuthenticatedUserDto
 import com.cardovia.merkon.app.data.model.LoginRequestDto
 import com.cardovia.merkon.app.data.model.RefreshRequestDto
 import com.cardovia.merkon.app.data.model.ApplicationRole
+import com.cardovia.merkon.app.data.model.RegistrationRequestDto
+import com.cardovia.merkon.app.data.model.VerifyEmailRequestDto
+import com.cardovia.merkon.app.data.model.ResendVerificationRequestDto
+import com.cardovia.merkon.app.data.model.GenericMessageResponseDto
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
@@ -16,8 +20,24 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertNotNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import com.cardovia.merkon.app.data.local.IPendingRegistrationStore
 import org.junit.Test
+import io.mockk.mockk
 import retrofit2.Response
+
+class FakePendingStore : IPendingRegistrationStore {
+    var clearCount = 0
+    private val _pendingEmail = MutableStateFlow<String?>("old@example.com")
+    override val pendingEmail: StateFlow<String?> = _pendingEmail.asStateFlow()
+    override fun saveEmail(email: String) { _pendingEmail.value = email }
+    override fun clear() {
+        clearCount++
+        _pendingEmail.value = null
+    }
+}
 
 class FakeSessionStore : ISecureSessionStore {
     var storedSession: AuthResponseDto? = null
@@ -51,10 +71,92 @@ class FakePublicApi(
         if (exceptionToThrow != null) throw exceptionToThrow!!
         return responseToReturn ?: Response.success(newSession)
     }
+
+    override suspend fun register(request: RegistrationRequestDto): Response<GenericMessageResponseDto> {
+        return Response.success(202, GenericMessageResponseDto("Mock"))
+    }
+
+    override suspend fun verifyEmail(request: VerifyEmailRequestDto): Response<GenericMessageResponseDto> {
+        return Response.success(200, GenericMessageResponseDto("Mock"))
+    }
+
+    override suspend fun resendVerification(request: ResendVerificationRequestDto): Response<GenericMessageResponseDto> {
+        return Response.success(202, GenericMessageResponseDto("Mock"))
+    }
 }
 
 class AuthRepositoryTest {
     private val fakeUser = AuthenticatedUserDto(1L, "admin", "Admin", ApplicationRole.OWNER, true, 1L)
+
+    @Test
+    fun `login success clears exactly once`() = runBlocking {
+        val session = AuthResponseDto("access", "2030-01-01T00:00:00Z", "refresh", "2030-01-15T00:00:00Z", fakeUser)
+        val api = FakePublicApi(session)
+        val pendingStore = FakePendingStore()
+        val repo = AuthRepository(api, FakeSessionStore(), FakeDeviceIdentityManager(), FakeTimeProvider(java.time.Instant.now()), pendingStore)
+
+        repo.login("u", "p")
+        assertEquals(1, pendingStore.clearCount)
+    }
+
+    @Test
+    fun `login failure does not clear pending store`() = runBlocking {
+        val session = AuthResponseDto("access", "2030-01-01T00:00:00Z", "refresh", "2030-01-15T00:00:00Z", fakeUser)
+        val api = FakePublicApi(session)
+        api.responseToReturn = Response.error(401, okhttp3.ResponseBody.create(null, ""))
+        val pendingStore = FakePendingStore()
+        val repo = AuthRepository(api, FakeSessionStore(), FakeDeviceIdentityManager(), FakeTimeProvider(java.time.Instant.now()), pendingStore)
+
+        repo.login("u", "p")
+        assertEquals(0, pendingStore.clearCount)
+    }
+
+    @Test
+    fun `initialize with valid non-expired session clears exactly once`() = runBlocking {
+        val session = AuthResponseDto("access", "2030-01-01T00:00:00Z", "refresh", "2030-01-15T00:00:00Z", fakeUser)
+        val store = FakeSessionStore().apply { storedSession = session }
+        val pendingStore = FakePendingStore()
+        val timeProvider = FakeTimeProvider(java.time.Instant.parse("2025-01-01T00:00:00Z"))
+        val repo = AuthRepository(FakePublicApi(session), store, FakeDeviceIdentityManager(), timeProvider, pendingStore)
+
+        repo.initialize()
+        assertEquals(1, pendingStore.clearCount)
+    }
+
+    @Test
+    fun `initialize with no stored session does not clear pending store`() = runBlocking {
+        val store = FakeSessionStore() // No session
+        val pendingStore = FakePendingStore()
+        val repo = AuthRepository(FakePublicApi(mockk(relaxed = true)), store, FakeDeviceIdentityManager(), FakeTimeProvider(java.time.Instant.now()), pendingStore)
+
+        repo.initialize()
+        assertEquals(0, pendingStore.clearCount)
+    }
+
+    @Test
+    fun `initialize with expired access but successful refresh clears exactly once`() = runBlocking {
+        val oldSession = AuthResponseDto("access", "2020-01-01T00:00:00Z", "refresh", "2030-01-15T00:00:00Z", fakeUser)
+        val newSession = AuthResponseDto("new_access", "2030-01-01T00:00:00Z", "new_refresh", "2030-01-15T00:00:00Z", fakeUser)
+        val store = FakeSessionStore().apply { storedSession = oldSession }
+        val pendingStore = FakePendingStore()
+        val timeProvider = FakeTimeProvider(java.time.Instant.parse("2025-01-01T00:00:00Z"))
+        val repo = AuthRepository(FakePublicApi(newSession), store, FakeDeviceIdentityManager(), timeProvider, pendingStore)
+
+        repo.initialize()
+        // initialize -> refreshSession -> clears
+        assertEquals(1, pendingStore.clearCount)
+    }
+
+    @Test
+    fun `direct successful refreshSession clears exactly once`() = runBlocking {
+        val session = AuthResponseDto("access", "2030-01-01T00:00:00Z", "refresh", "2030-01-15T00:00:00Z", fakeUser)
+        val store = FakeSessionStore().apply { storedSession = session }
+        val pendingStore = FakePendingStore()
+        val repo = AuthRepository(FakePublicApi(session), store, FakeDeviceIdentityManager(), FakeTimeProvider(java.time.Instant.now()), pendingStore)
+
+        repo.refreshSession("access")
+        assertEquals(1, pendingStore.clearCount)
+    }
 
     @Test
     fun `test single flight refresh concurrency`() = runBlocking {

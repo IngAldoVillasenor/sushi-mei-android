@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -139,18 +140,23 @@ fun MenuManagementScreen(
         return
     }
 
-    Row(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
+        val isCompact = maxWidth < 600.dp
+        Row(modifier = Modifier.fillMaxSize()) {
         // ── Panel izquierdo: catálogo ──────────────────────────────────────
-        Column(
-            modifier = Modifier
-                .weight(if (selectedItem != null) 0.42f else 1f)
-                .fillMaxHeight()
-                .padding(16.dp)
+        AnimatedVisibility(
+            visible = !isCompact || selectedItem == null,
+            modifier = Modifier.weight(if (isCompact) 1f else (if (selectedItem != null) 0.42f else 1f))
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .padding(16.dp)
+            ) {
             // Error Banner (global)
             AnimatedVisibility(visible = stateSuccess?.saveError != null) {
                 Row(
@@ -172,44 +178,91 @@ fun MenuManagementScreen(
                     Icon(Icons.Default.Close, contentDescription = "Descartar", tint = MaterialTheme.colorScheme.onErrorContainer)
                 }
             }
+            val totalCatalogSize = stateSuccess?.totalCatalogSize ?: 0
 
             // Header
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column {
-                    Text(
-                        text = "Gestión de Menú",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "${products.size} productos",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Gestión de Menú",
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "${products.size} productos",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    FloatingActionButton(
+                        onClick = { viewModel.newProduct() },
+                        containerColor = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(48.dp).padding(start = 8.dp)
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Nuevo producto")
+                    }
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Action buttons below
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     TextButton(onClick = { activeScreen = "promotions_list" }) {
                         Text("Promociones")
                     }
                     TextButton(onClick = { activeScreen = "tags" }) {
                         Text("Gestión de Tags")
                     }
-                    FloatingActionButton(
-                        onClick = { viewModel.newProduct() },
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(48.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "Nuevo producto")
-                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            if (totalCatalogSize == 0) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Text(
+                            text = "Tu catálogo está vacío",
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            text = "Agrega tu primer producto para comenzar a usar MerkON en tu negocio.",
+                            style = MaterialTheme.typography.bodyMedium,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Button(
+                            onClick = { viewModel.newProduct() },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            )
+                        ) {
+                            Text("Crear primer producto")
+                        }
+                    }
+                }
+            } else {
             // Búsqueda
             OutlinedTextField(
                 value = searchQuery,
@@ -254,6 +307,8 @@ fun MenuManagementScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            }
+
             // Lista de productos
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(products, key = { it.id }) { item ->
@@ -261,35 +316,44 @@ fun MenuManagementScreen(
                         item       = item,
                         isSelected = selectedItem?.id == item.id,
                         onClick    = { viewModel.selectProduct(item) },
-                        onToggle   = { activo -> viewModel.toggleActive(item, activo) }
+                        onToggle   = { activo -> viewModel.toggleActive(item, activo) },
+                        onToggleAvailable = { available -> viewModel.toggleAvailable(item, available) }
                     )
                 }
             }
         }
 
+        }
         // ── Panel derecho: formulario ──────────────────────────────────────
         AnimatedVisibility(
             visible = selectedItem != null,
             enter   = slideInHorizontally(initialOffsetX = { it }) + fadeIn(),
-            exit    = slideOutHorizontally(targetOffsetX = { it }) + fadeOut()
+            exit    = slideOutHorizontally(targetOffsetX = { it }) + fadeOut(),
+            modifier = Modifier.weight(if (isCompact) 1f else 0.58f)
         ) {
-            VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+            Row(modifier = Modifier.fillMaxSize()) {
+                if (!isCompact) {
+                    VerticalDivider(color = MaterialTheme.colorScheme.outlineVariant, thickness = 1.dp)
+                }
 
-            selectedItem?.let { item ->
-                                ProductFormPanel(
-                    item       = item,
-                    isSaving   = isSaving,
-                    saveSuccess = saveSuccess,
-                    onSave     = { viewModel.saveProduct(it) },
-                    onDismiss  = { viewModel.clearSelection() },
-                    onAcknowledge = { viewModel.acknowledgeSaveSuccess() },
-                    onOpenConfigurator = {
-                        configTargetId = item.id
-                        activeScreen = "config_builder"
-                    }
-                )
+                selectedItem?.let { item ->
+                    ProductFormPanel(
+                        item       = item,
+                        isSaving   = isSaving,
+                        saveSuccess = saveSuccess,
+                        onSave     = { viewModel.saveProduct(it) },
+                        onDismiss  = { viewModel.clearSelection() },
+                        onAcknowledge = { viewModel.acknowledgeSaveSuccess() },
+                        onOpenConfigurator = {
+                            configTargetId = item.id
+                            activeScreen = "config_builder"
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
+    }
     }
 }
 
@@ -302,7 +366,8 @@ private fun ProductListItem(
     item: MenuItem,
     isSelected: Boolean,
     onClick: () -> Unit,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onToggleAvailable: (Boolean) -> Unit
 ) {
     val catColor = colorForCategory(item.categoria)
 
@@ -379,12 +444,30 @@ private fun ProductListItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            // Toggle activo/inactivo
-            Switch(
-                checked         = item.activo,
-                onCheckedChange = { onToggle(it) },
-                modifier        = Modifier.height(24.dp)
-            )
+            // Toggles
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Activo", style = MaterialTheme.typography.labelSmall)
+                    Spacer(Modifier.width(4.dp))
+                    Switch(
+                        checked         = item.activo,
+                        onCheckedChange = { onToggle(it) },
+                        modifier        = Modifier.height(24.dp)
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (item.available) "Disponible" else "Agotado", style = MaterialTheme.typography.labelSmall, color = if (item.available) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
+                    Spacer(Modifier.width(4.dp))
+                    Switch(
+                        checked         = item.available,
+                        onCheckedChange = { onToggleAvailable(it) },
+                        modifier        = Modifier.height(24.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -401,7 +484,8 @@ private fun ProductFormPanel(
     onSave: (MenuItem) -> Unit,
     onDismiss: () -> Unit,
     onAcknowledge: () -> Unit,
-    onOpenConfigurator: () -> Unit
+    onOpenConfigurator: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     var nombre      by remember(item.id, item.version) { mutableStateOf(item.nombre) }
     var precio      by remember(item.id, item.version) { mutableStateOf(if (item.precio > java.math.BigDecimal.ZERO) item.precio.toString() else "") }
@@ -420,8 +504,7 @@ private fun ProductFormPanel(
     }
 
     Column(
-        modifier = Modifier
-            .width(420.dp)
+        modifier = modifier
             .fillMaxHeight()
             .padding(20.dp)
     ) {
@@ -526,7 +609,7 @@ private fun ProductFormPanel(
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Text(
-                        text = "💡 El precio aquí es local. El backend usará el ID del producto para obtener su precio canónico al procesar órdenes.",
+                        text = "💡 Los cambios se sincronizarán inmediatamente con el catálogo del negocio.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                         modifier = Modifier.padding(10.dp)

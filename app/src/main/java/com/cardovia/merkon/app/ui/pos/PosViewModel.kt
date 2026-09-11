@@ -305,8 +305,8 @@ class PosViewModel(
             }
 
             menuRepository.observeActive().collect { products ->
-
-                _allProducts.value = products
+                val posProducts = products.filter { it.activo && it.available && it.standaloneOrderable }
+                _allProducts.value = posProducts
 
                 _isLoading.value = false
             }

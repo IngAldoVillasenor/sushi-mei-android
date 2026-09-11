@@ -33,6 +33,7 @@ sealed interface MenuManagementUiState {
         val selectedCategory: String? = null,
         val filteredProducts: List<MenuItem> = emptyList(),
         val categories: List<String> = emptyList(),
+        val totalCatalogSize: Int = 0,
         val selectedProduct: MenuItem? = null,
         val isSaving: Boolean = false,
         val saveSuccess: Boolean = false,
@@ -99,13 +100,15 @@ class MenuManagementViewModel(
         _searchQuery,
         _selectedCategory,
         filteredProducts,
-        categories
-    ) { search, category, filtered, cats ->
+        categories,
+        repository.observeAll()
+    ) { search, category, filtered, cats, allProducts ->
         MenuManagementUiState.Success(
             searchQuery = search,
             selectedCategory = category,
             filteredProducts = filtered,
-            categories = cats
+            categories = cats,
+            totalCatalogSize = allProducts.size
         )
     }
 
@@ -152,7 +155,7 @@ class MenuManagementViewModel(
     }
 
     /**
-     * Guarda el producto (create o update) en Room.
+     * Guarda el producto (create o update) en el backend.
      * Los cambios se propagan inmediatamente al POS a través del Flow reactivo.
      */
     fun saveProduct(item: MenuItem) {
@@ -254,6 +257,44 @@ fun toggleActive(item: MenuItem, activo: Boolean) {
                 }
             } catch (e: Exception) {
                 _saveError.value = "Error al cambiar estado: ${e.message ?: "Desconocido"}"
+            }
+        }
+    }
+
+    fun toggleAvailable(item: MenuItem, available: Boolean) {
+        viewModelScope.launch {
+            _saveError.value = null
+            try {
+                val req = com.cardovia.merkon.app.data.model.MenuItemUpdateRequestDto(
+                    name = item.nombre,
+                    description = item.descripcion,
+                    category = item.categoria,
+                    price = item.precio,
+                    active = item.activo,
+                    available = available,
+                    standaloneOrderable = item.standaloneOrderable,
+                    displayOrder = item.displayOrder,
+                    version = item.version
+                )
+                val response = repository.updateProduct(item.id, req)
+                val updated = response.toDomain()
+                if (_selectedProduct.value?.id == item.id) {
+                    _selectedProduct.value = updated
+                }
+            } catch (e: com.cardovia.merkon.app.data.api.VersionConflictException) {
+                try {
+                    repository.refreshCatalog(includeInactive = true)
+                    val latestList = repository.observeAll().first()
+                    val latest = latestList.find { it.id == item.id }
+                    if (latest != null && _selectedProduct.value?.id == item.id) {
+                        _selectedProduct.value = latest
+                    }
+                    _saveError.value = "No se pudo cambiar la disponibilidad. El producto fue modificado por otro usuario. Se ha recargado el catálogo.${e.referenceSuffix()}"
+                } catch (refreshEx: Exception) {
+                    _saveError.value = "No se pudo cambiar la disponibilidad (conflicto) y falló la actualización del catálogo.${e.referenceSuffix()}"
+                }
+            } catch (e: Exception) {
+                _saveError.value = "Error al cambiar disponibilidad: ${e.message ?: "Desconocido"}"
             }
         }
     }

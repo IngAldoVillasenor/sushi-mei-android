@@ -25,11 +25,52 @@ import com.cardovia.merkon.app.data.repository.AuthRepository
 import com.cardovia.merkon.app.data.model.AuthenticatedUserDto
 import com.cardovia.merkon.app.data.model.ApplicationRole
 
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.unit.dp
+
+import kotlinx.coroutines.flow.first
+import com.cardovia.merkon.app.data.local.provideMenuRepository
+
 @Composable
 fun MainScreen(authRepository: AuthRepository, user: AuthenticatedUserDto) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = navBackStackEntry?.destination?.route
+
+    val context = LocalContext.current
+    val menuRepository = remember { provideMenuRepository(context) }
+    val bootstrapViewModel = remember(user) { MainBootstrapViewModel(menuRepository, user) }
+
+    when (bootstrapViewModel.bootstrapState) {
+        BootstrapState.Loading -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            return
+        }
+        BootstrapState.Error -> {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("Error al cargar la configuración inicial del negocio.", color = androidx.compose.material3.MaterialTheme.colorScheme.error)
+                    androidx.compose.foundation.layout.Spacer(Modifier.height(16.dp))
+                    androidx.compose.material3.Button(onClick = { bootstrapViewModel.retry() }) {
+                        Text("Reintentar")
+                    }
+                }
+            }
+            return
+        }
+        else -> {
+            // Proceed to render main navigation
+        }
+    }
 
     // ROLE-AWARE UI FILTERING
     val allowedScreens = Screen.items.filter { screen ->
@@ -76,8 +117,10 @@ fun MainScreen(authRepository: AuthRepository, user: AuthenticatedUserDto) {
             }
         }
 
-        // Determine logical start destination based on role
-        val initialRoute = when (user.role) {
+        // Determine logical start destination based on role and catalog state
+        val initialRoute = if (user.role == ApplicationRole.OWNER && bootstrapViewModel.bootstrapState == BootstrapState.Empty) {
+            Screen.MenuManagement.route
+        } else when (user.role) {
             ApplicationRole.CASHIER -> Screen.Pos.route
             else -> Screen.Kitchen.route
         }

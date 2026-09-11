@@ -34,7 +34,8 @@ class AuthRepository(
     private val publicApi: PublicMerkonApi,
     private val sessionStore: ISecureSessionStore,
     private val deviceIdentityManager: IDeviceIdentityProvider,
-    private val timeProvider: ITimeProvider = object : ITimeProvider {}
+    private val timeProvider: ITimeProvider = object : ITimeProvider {},
+    private val pendingRegistrationStore: com.cardovia.merkon.app.data.local.IPendingRegistrationStore? = null
 ) {
     private val _authState = MutableStateFlow<AuthState>(AuthState.Initializing)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
@@ -66,6 +67,7 @@ class AuthRepository(
                     _authState.value = AuthState.Unauthenticated
                 }
             } else {
+                pendingRegistrationStore?.clear()
                 _authState.value = AuthState.Authenticated(session.user)
             }
         } catch (e: Exception) {
@@ -88,6 +90,7 @@ class AuthRepository(
         if (response.isSuccessful && response.body() != null) {
             val authResponse = response.body()!!
             sessionStore.saveSession(authResponse)
+            pendingRegistrationStore?.clear()
             _authState.value = AuthState.Authenticated(authResponse.user)
             return true
         } else {
@@ -143,6 +146,7 @@ class AuthRepository(
                 if (response.isSuccessful && response.body() != null) {
                     val newSession = response.body()!!
                     sessionStore.saveSession(newSession)
+                    pendingRegistrationStore?.clear()
                     _authState.value = AuthState.Authenticated(newSession.user)
                     return newSession.accessToken
                 } else {

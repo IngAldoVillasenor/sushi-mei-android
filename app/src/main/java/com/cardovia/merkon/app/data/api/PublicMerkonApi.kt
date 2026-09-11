@@ -13,4 +13,13 @@ interface PublicMerkonApi {
 
     @POST("/api/v1/auth/refresh")
     suspend fun refresh(@Body request: RefreshRequestDto): Response<AuthResponseDto>
+
+    @POST("/api/v1/registration")
+    suspend fun register(@Body request: com.cardovia.merkon.app.data.model.RegistrationRequestDto): Response<com.cardovia.merkon.app.data.model.GenericMessageResponseDto>
+
+    @POST("/api/v1/registration/email-verification/verify")
+    suspend fun verifyEmail(@Body request: com.cardovia.merkon.app.data.model.VerifyEmailRequestDto): Response<com.cardovia.merkon.app.data.model.GenericMessageResponseDto>
+
+    @POST("/api/v1/registration/email-verification/resend")
+    suspend fun resendVerification(@Body request: com.cardovia.merkon.app.data.model.ResendVerificationRequestDto): Response<com.cardovia.merkon.app.data.model.GenericMessageResponseDto>
 }

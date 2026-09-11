@@ -24,11 +24,15 @@ import com.cardovia.merkon.app.data.repository.AuthRepository
 import kotlinx.coroutines.launch
 
 @Composable
-fun LoginScreen(authRepository: AuthRepository) {
+fun LoginScreen(
+    authRepository: AuthRepository,
+    prefillEmail: String = "",
+    onNavigateToRegistration: () -> Unit = {}
+) {
     val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    var username by remember { mutableStateOf("") }
+    var username by remember(prefillEmail) { mutableStateOf(prefillEmail) }
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
@@ -93,7 +97,7 @@ fun LoginScreen(authRepository: AuthRepository) {
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("Usuario") },
+                    label = { Text("Correo o usuario") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
@@ -116,7 +120,7 @@ fun LoginScreen(authRepository: AuthRepository) {
                     ),
                     trailingIcon = {
                         val image = if (passwordVisible) Icons.Filled.Visibility else Icons.Filled.VisibilityOff
-                        val description = if (passwordVisible) "Ocultar contrasea" else "Mostrar contrasea"
+                        val description = if (passwordVisible) "Ocultar contraseña" else "Mostrar contraseña"
                         IconButton(onClick = { passwordVisible = !passwordVisible }) {
                             Icon(imageVector = image, contentDescription = description)
                         }
@@ -146,6 +150,14 @@ fun LoginScreen(authRepository: AuthRepository) {
                     } else {
                         Text("Ingresar")
                     }
+                }
+
+                TextButton(
+                    onClick = onNavigateToRegistration,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading
+                ) {
+                    Text("Crear mi negocio")
                 }
             }
         }

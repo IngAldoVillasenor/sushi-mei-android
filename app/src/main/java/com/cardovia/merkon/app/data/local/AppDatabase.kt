@@ -217,12 +217,23 @@ private var businessDayRepositoryInstance: com.cardovia.merkon.app.data.reposito
 /**
  * Devuelve siempre el AuthRepository singleton.
  */
+private var pendingRegistrationStoreInstance: com.cardovia.merkon.app.data.local.IPendingRegistrationStore? = null
+
+fun providePendingRegistrationStore(context: Context): com.cardovia.merkon.app.data.local.IPendingRegistrationStore {
+    return pendingRegistrationStoreInstance ?: synchronized(AppDatabase::class.java) {
+        pendingRegistrationStoreInstance ?: com.cardovia.merkon.app.data.local.PendingRegistrationStore(context.applicationContext).also {
+            pendingRegistrationStoreInstance = it
+        }
+    }
+}
+
 fun provideAuthRepository(context: Context): com.cardovia.merkon.app.data.repository.AuthRepository {
     return authRepositoryInstance ?: synchronized(AppDatabase::class.java) {
         authRepositoryInstance ?: com.cardovia.merkon.app.data.repository.AuthRepository(
             publicApi = com.cardovia.merkon.app.data.api.NetworkModule.publicMerkonApi,
             sessionStore = com.cardovia.merkon.app.data.local.SecureSessionStore(context.applicationContext),
-            deviceIdentityManager = com.cardovia.merkon.app.data.local.DeviceIdentityManager(context.applicationContext)
+            deviceIdentityManager = com.cardovia.merkon.app.data.local.DeviceIdentityManager(context.applicationContext),
+            pendingRegistrationStore = providePendingRegistrationStore(context)
         ).also {
             authRepositoryInstance = it
             // Inicializar el NetworkModule con el AuthRepository
