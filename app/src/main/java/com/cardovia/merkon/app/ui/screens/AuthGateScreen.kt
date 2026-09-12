@@ -1,58 +1,125 @@
 package com.cardovia.merkon.app.ui.screens
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalContext
-import com.cardovia.merkon.app.data.local.PendingRegistrationStore
+import com.cardovia.merkon.app.data.model.DeepLinkEvent
 import com.cardovia.merkon.app.data.repository.AuthRepository
 import com.cardovia.merkon.app.data.repository.AuthState
 import com.cardovia.merkon.app.ui.MainScreen
+import com.cardovia.merkon.app.ui.screens.password_recovery.PasswordRecoveryRequestScreen
+import com.cardovia.merkon.app.ui.screens.password_recovery.PasswordResetScreen
+
+class AuthGateCoordinator(
+    private val authRepository: AuthRepository,
+    private val onDeepLinkEventConsumed: () -> Unit
+) {
+    var activeGateState by mutableStateOf<String?>(null)
+
+    fun onNewDeepLinkEvent(event: DeepLinkEvent?, authState: AuthState) {
+        if (event is DeepLinkEvent.PasswordReset) {
+            activeGateState = "password_reset"
+        } else if (event is DeepLinkEvent.Verification) {
+            if (authState is AuthState.Authenticated) {
+                onDeepLinkEventConsumed() // discard silently when authenticated
+            }
+        }
+    }
+
+    fun consumeDeepLinkEvent() {
+        onDeepLinkEventConsumed()
+    }
+
+    fun onPasswordResetSuccess() {
+        consumeDeepLinkEvent()
+        authRepository.clearSession()
+        activeGateState = "password_reset_success"
+    }
+
+    fun onPasswordResetInvalidToken() {
+        consumeDeepLinkEvent()
+        activeGateState = "password_reset_invalid"
+    }
+
+    fun onPasswordResetNavigateToRequest() {
+        consumeDeepLinkEvent()
+        authRepository.clearSession()
+        activeGateState = "forgot_password"
+    }
+
+    fun onPasswordResetBackToLogin() {
+        consumeDeepLinkEvent()
+        authRepository.clearSession()
+        activeGateState = null
+    }
+}
+
+@Composable
+fun rememberAuthGateCoordinator(
+    authRepository: AuthRepository,
+    onDeepLinkEventConsumed: () -> Unit
+): AuthGateCoordinator {
+    return remember { AuthGateCoordinator(authRepository, onDeepLinkEventConsumed) }
+}
 
 @Composable
 fun AuthGateScreen(
     authRepository: AuthRepository,
-    deepLinkToken: String? = null,
-    onDeepLinkTokenConsumed: () -> Unit = {}
+    deepLinkEvent: DeepLinkEvent? = null,
+    onDeepLinkEventConsumed: () -> Unit = {}
 ) {
     val authState by authRepository.authState.collectAsState()
+    val coordinator = rememberAuthGateCoordinator(authRepository, onDeepLinkEventConsumed)
 
-    androidx.compose.runtime.LaunchedEffect(authRepository) {
+    LaunchedEffect(authRepository) {
         authRepository.initialize()
     }
 
-    when (val state = authState) {
-        is AuthState.Initializing -> {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
+    LaunchedEffect(deepLinkEvent, authState) {
+        coordinator.onNewDeepLinkEvent(deepLinkEvent, authState)
+    }
+
+    if (coordinator.activeGateState == "password_reset" ||
+        coordinator.activeGateState == "password_reset_success" ||
+        coordinator.activeGateState == "password_reset_invalid"
+    ) {
+        PasswordResetScreen(
+            deepLinkToken = (deepLinkEvent as? DeepLinkEvent.PasswordReset)?.token,
+            onDeepLinkTokenConsumed = coordinator::consumeDeepLinkEvent,
+            onResetSuccess = {
+                coordinator.activeGateState = null
+            },
+            onNavigateToRequest = coordinator::onPasswordResetNavigateToRequest,
+            onBackToLogin = coordinator::onPasswordResetBackToLogin,
+            onBackendSuccess = coordinator::onPasswordResetSuccess,
+            onBackendInvalidToken = coordinator::onPasswordResetInvalidToken,
+            isAlreadySuccessful = coordinator.activeGateState == "password_reset_success",
+            isAlreadyInvalid = coordinator.activeGateState == "password_reset_invalid"
+        )
+    } else if (coordinator.activeGateState == "forgot_password") {
+        PasswordRecoveryRequestScreen(
+            onBackToLogin = { coordinator.activeGateState = null }
+        )
+    } else {
+        when (val state = authState) {
+            is AuthState.Initializing -> {
+                // Keep empty or show splash
             }
-        }
-        is AuthState.Unauthenticated -> {
-            UnauthenticatedGate(
-                authRepository = authRepository,
-                deepLinkToken = deepLinkToken,
-                onDeepLinkTokenConsumed = onDeepLinkTokenConsumed
-            )
-        }
-        is AuthState.Authenticated -> {
-            val context = LocalContext.current
-            androidx.compose.runtime.LaunchedEffect(Unit) {
-                com.cardovia.merkon.app.data.local.providePrintManager(context.applicationContext)
+            is AuthState.Unauthenticated -> {
+                UnauthenticatedGate(
+                    authRepository = authRepository,
+                    deepLinkEvent = deepLinkEvent,
+                    onDeepLinkEventConsumed = onDeepLinkEventConsumed,
+                    onNavigateToForgotPassword = { coordinator.activeGateState = "forgot_password" }
+                )
             }
-            androidx.compose.runtime.LaunchedEffect(deepLinkToken) {
-                if (deepLinkToken != null) {
-                    onDeepLinkTokenConsumed()
+            is AuthState.Authenticated -> {
+                val context = LocalContext.current
+                LaunchedEffect(Unit) {
+                    com.cardovia.merkon.app.data.local.providePrintManager(context.applicationContext)
                 }
+                MainScreen(authRepository = authRepository, user = state.user)
             }
-            MainScreen(authRepository = authRepository, user = state.user)
         }
     }
 }
@@ -60,27 +127,28 @@ fun AuthGateScreen(
 @Composable
 fun UnauthenticatedGate(
     authRepository: AuthRepository,
-    deepLinkToken: String?,
-    onDeepLinkTokenConsumed: () -> Unit
+    deepLinkEvent: DeepLinkEvent?,
+    onDeepLinkEventConsumed: () -> Unit,
+    onNavigateToForgotPassword: () -> Unit
 ) {
     val context = LocalContext.current
     val pendingStore = remember { com.cardovia.merkon.app.data.local.providePendingRegistrationStore(context) }
     val pendingEmail by pendingStore.pendingEmail.collectAsState()
 
-    var activeScreen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("login") }
-    var prefillEmail by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf("") }
+    var activeScreen by rememberSaveable { mutableStateOf("login") }
+    var prefillEmail by rememberSaveable { mutableStateOf("") }
 
-    androidx.compose.runtime.LaunchedEffect(deepLinkToken) {
-        if (deepLinkToken != null) {
+    LaunchedEffect(deepLinkEvent) {
+        if (deepLinkEvent is DeepLinkEvent.Verification) {
             activeScreen = "verification"
         }
     }
 
-    if (activeScreen == "verification" || pendingEmail != null || deepLinkToken != null) {
+    if (activeScreen == "verification" || pendingEmail != null || deepLinkEvent is DeepLinkEvent.Verification) {
         PendingVerificationScreen(
             email = pendingEmail,
-            deepLinkToken = deepLinkToken,
-            onDeepLinkTokenConsumed = onDeepLinkTokenConsumed,
+            deepLinkToken = (deepLinkEvent as? DeepLinkEvent.Verification)?.token,
+            onDeepLinkTokenConsumed = onDeepLinkEventConsumed,
             onVerificationSuccess = {
                 if (pendingEmail != null) prefillEmail = pendingEmail!!
                 pendingStore.clear()
@@ -102,8 +170,9 @@ fun UnauthenticatedGate(
     } else {
         LoginScreen(
             authRepository = authRepository,
-            prefillEmail = prefillEmail,
-            onNavigateToRegistration = { activeScreen = "registration" }
+            prefillEmail = if (prefillEmail.isNotEmpty()) prefillEmail else (pendingEmail ?: ""),
+            onNavigateToRegistration = { activeScreen = "registration" },
+            onNavigateToForgotPassword = onNavigateToForgotPassword
         )
     }
 }

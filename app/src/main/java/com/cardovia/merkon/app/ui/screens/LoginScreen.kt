@@ -27,7 +27,8 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     authRepository: AuthRepository,
     prefillEmail: String = "",
-    onNavigateToRegistration: () -> Unit = {}
+    onNavigateToRegistration: () -> Unit = {},
+    onNavigateToForgotPassword: () -> Unit = {}
 ) {
     val coroutineScope = rememberCoroutineScope()
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -150,6 +151,14 @@ fun LoginScreen(
                     } else {
                         Text("Ingresar")
                     }
+                }
+
+                TextButton(
+                    onClick = onNavigateToForgotPassword,
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isLoading
+                ) {
+                    Text("¿Olvidaste tu contraseña?")
                 }
 
                 TextButton(

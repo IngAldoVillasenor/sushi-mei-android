@@ -16,7 +16,7 @@ import com.cardovia.merkon.app.ui.screens.AuthGateScreen
 import kotlinx.coroutines.flow.MutableStateFlow
 
 class MainActivity : ComponentActivity() {
-    private val _deepLinkToken = MutableStateFlow<String?>(null)
+    private val _deepLinkEvent = MutableStateFlow<com.cardovia.merkon.app.data.model.DeepLinkEvent?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
         handleIntent(intent)
 
         setContent {
-            val deepLinkToken by _deepLinkToken.collectAsState()
+            val deepLinkEvent by _deepLinkEvent.collectAsState()
 
             MerkonTheme {
                 Surface(
@@ -34,8 +34,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AuthGateScreen(
                         authRepository = authRepository,
-                        deepLinkToken = deepLinkToken,
-                        onDeepLinkTokenConsumed = { _deepLinkToken.value = null }
+                        deepLinkEvent = deepLinkEvent,
+                        onDeepLinkEventConsumed = { _deepLinkEvent.value = null }
                     )
                 }
             }
@@ -51,9 +51,15 @@ class MainActivity : ComponentActivity() {
     private fun handleIntent(intent: Intent?) {
         if (intent?.action == Intent.ACTION_VIEW) {
             val urlStr = intent.dataString ?: return
-            val token = com.cardovia.merkon.app.util.VerificationTokenParser.parse(urlStr, BuildConfig.VERIFICATION_HOST)
-            if (token != null) {
-                _deepLinkToken.value = token
+
+            val verificationToken = com.cardovia.merkon.app.util.VerificationTokenParser.parse(urlStr, BuildConfig.VERIFICATION_HOST)
+            if (verificationToken != null) {
+                _deepLinkEvent.value = com.cardovia.merkon.app.data.model.DeepLinkEvent.Verification(verificationToken)
+            } else {
+                val resetToken = com.cardovia.merkon.app.util.PasswordResetTokenParser.parse(urlStr, BuildConfig.PASSWORD_RESET_HOST)
+                if (resetToken != null) {
+                    _deepLinkEvent.value = com.cardovia.merkon.app.data.model.DeepLinkEvent.PasswordReset(resetToken)
+                }
             }
             // Scrub intent to prevent reuse on rotation/recreation
             intent.data = null
