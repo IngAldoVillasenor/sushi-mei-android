@@ -22,4 +22,10 @@ interface PublicMerkonApi {
 
     @POST("/api/v1/registration/email-verification/resend")
     suspend fun resendVerification(@Body request: com.cardovia.merkon.app.data.model.ResendVerificationRequestDto): Response<com.cardovia.merkon.app.data.model.GenericMessageResponseDto>
+
+    @POST("/api/v1/auth/password-recovery/request")
+    suspend fun requestPasswordRecovery(@Body request: com.cardovia.merkon.app.data.model.PasswordRecoveryRequestDto): Response<com.cardovia.merkon.app.data.model.GenericMessageResponseDto>
+
+    @POST("/api/v1/auth/password-recovery/confirm")
+    suspend fun confirmPasswordRecovery(@Body request: com.cardovia.merkon.app.data.model.PasswordRecoveryConfirmRequestDto): Response<Void>
 }

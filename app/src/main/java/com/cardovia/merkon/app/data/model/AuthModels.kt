@@ -97,3 +97,22 @@ data class VerifyEmailRequestDto(
 data class ResendVerificationRequestDto(
     val email: String
 )
+
+
+// ============================================================================
+// Password Recovery
+// ============================================================================
+
+data class PasswordRecoveryRequestDto(
+    val email: String
+)
+
+data class PasswordRecoveryConfirmRequestDto(
+    val token: String,
+    val newPassword: String
+)
+
+sealed class DeepLinkEvent {
+    data class Verification(val token: String) : DeepLinkEvent()
+    data class PasswordReset(val token: String) : DeepLinkEvent()
+}

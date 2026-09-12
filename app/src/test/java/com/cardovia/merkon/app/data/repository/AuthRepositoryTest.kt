@@ -83,6 +83,14 @@ class FakePublicApi(
     override suspend fun resendVerification(request: ResendVerificationRequestDto): Response<GenericMessageResponseDto> {
         return Response.success(202, GenericMessageResponseDto("Mock"))
     }
+
+    override suspend fun requestPasswordRecovery(request: com.cardovia.merkon.app.data.model.PasswordRecoveryRequestDto): Response<com.cardovia.merkon.app.data.model.GenericMessageResponseDto> {
+        return Response.success(202, com.cardovia.merkon.app.data.model.GenericMessageResponseDto("Mock"))
+    }
+
+    override suspend fun confirmPasswordRecovery(request: com.cardovia.merkon.app.data.model.PasswordRecoveryConfirmRequestDto): Response<Void> {
+        return Response.success<Void>(204, null)
+    }
 }
 
 class AuthRepositoryTest {

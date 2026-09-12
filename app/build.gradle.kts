@@ -36,6 +36,10 @@ android {
             val debugHost = providers.gradleProperty("MERKON_VERIFICATION_HOST").orNull ?: "verification.local"
             manifestPlaceholders["verificationHost"] = debugHost
             buildConfigField("String", "VERIFICATION_HOST", "\"${debugHost}\"")
+
+            val debugPasswordResetHost = providers.gradleProperty("MERKON_PASSWORD_RESET_HOST").orNull ?: "reset.local"
+            manifestPlaceholders["passwordResetHost"] = debugPasswordResetHost
+            buildConfigField("String", "PASSWORD_RESET_HOST", "\"${debugPasswordResetHost}\"")
         }
         release {
             val releaseUrl = providers.gradleProperty("MERKON_BASE_URL").orNull ?: providers.gradleProperty("SUSHIMEI_BASE_URL").orNull
@@ -84,6 +88,40 @@ android {
             val safeReleaseHost = releaseHostRaw ?: "verification.invalid"
             manifestPlaceholders["verificationHost"] = safeReleaseHost
             buildConfigField("String", "VERIFICATION_HOST", "\"${safeReleaseHost}\"")
+
+            val releasePasswordResetHostRaw = providers.gradleProperty("MERKON_PASSWORD_RESET_HOST").orNull
+            if (isReleaseBuild && releasePasswordResetHostRaw == null) {
+                throw GradleException("MERKON_PASSWORD_RESET_HOST property is required for release builds.")
+            }
+            if (isReleaseBuild && releasePasswordResetHostRaw != null) {
+                if (releasePasswordResetHostRaw.isBlank()) throw GradleException("MERKON_PASSWORD_RESET_HOST cannot be blank.")
+                if (releasePasswordResetHostRaw != releasePasswordResetHostRaw.trim()) throw GradleException("MERKON_PASSWORD_RESET_HOST cannot contain leading or trailing whitespace.")
+                val releaseHost = releasePasswordResetHostRaw.lowercase()
+                if (releaseHost.any { it <= ' ' }) throw GradleException("MERKON_PASSWORD_RESET_HOST cannot contain whitespace or control characters.")
+                if (releaseHost.contains("://") || releaseHost.contains("/") || releaseHost.contains(":") || releaseHost.contains("?") || releaseHost.contains("#") || releaseHost.contains("@")) {
+                    throw GradleException("MERKON_PASSWORD_RESET_HOST must be a plain ASCII hostname only, without scheme, port, path, query, fragment, or userinfo.")
+                }
+                if (!releaseHost.contains(".")) {
+                    throw GradleException("MERKON_PASSWORD_RESET_HOST must be a multi-label hostname in release builds.")
+                }
+                if (releaseHost.matches(Regex("^\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}$"))) {
+                    throw GradleException("MERKON_PASSWORD_RESET_HOST cannot be an IP address in release builds.")
+                }
+                val localSuffixes = listOf(".localhost", ".local", ".invalid", ".test", ".example")
+                if (localSuffixes.any { releaseHost.endsWith(it) }) {
+                    throw GradleException("MERKON_PASSWORD_RESET_HOST cannot use reserved/local development DNS suffixes in release builds.")
+                }
+                val labels = releaseHost.split(".")
+                if (labels.size < 2) throw GradleException("MERKON_PASSWORD_RESET_HOST must contain at least one dot (a valid TLD).")
+                for (label in labels) {
+                    if (label.isEmpty()) throw GradleException("MERKON_PASSWORD_RESET_HOST cannot contain empty DNS labels.")
+                    if (label.startsWith("-") || label.endsWith("-")) throw GradleException("MERKON_PASSWORD_RESET_HOST DNS labels cannot start or end with a hyphen.")
+                    if (!label.matches(Regex("^[a-z0-9-]+$"))) throw GradleException("MERKON_PASSWORD_RESET_HOST DNS labels must contain only alphanumeric characters and hyphens.")
+                }
+            }
+            val safeReleasePasswordResetHost = releasePasswordResetHostRaw ?: "reset.invalid"
+            manifestPlaceholders["passwordResetHost"] = safeReleasePasswordResetHost
+            buildConfigField("String", "PASSWORD_RESET_HOST", "\"${safeReleasePasswordResetHost}\"")
 
             optimization {
                 enable = false
